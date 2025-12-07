@@ -1,0 +1,81 @@
+[package]
+name = "mcplint"
+version = "0.1.0"
+edition = "2021"
+authors = ["Russ Smith <quanticsoul4772@users.noreply.github.com>"]
+description = "MCP Server Testing, Fuzzing, and Security Scanning Platform"
+license = "MIT"
+repository = "https://github.com/quanticsoul4772/mcplint"
+keywords = ["mcp", "security", "fuzzing", "testing", "ai"]
+categories = ["command-line-utilities", "development-tools::testing"]
+
+[dependencies]
+# MCP SDK
+rmcp = { version = "0.9", features = ["client", "transport-io"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+
+# CLI
+clap = { version = "4", features = ["derive", "env", "color"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Parallelism
+rayon = "1"
+
+# Terminal output
+colored = "2"
+indicatif = "0.17"
+
+# HTTP client (for remote MCP servers)
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# URL handling
+url = "2"
+
+# Regex for pattern matching
+regex = "1"
+
+# UUID generation
+uuid = { version = "1", features = ["v4"] }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Config file support
+toml = "0.8"
+directories = "5"
+
+[dev-dependencies]
+# Testing
+proptest = "1"
+arbitrary = { version = "1", features = ["derive"] }
+tempfile = "3"
+assert_cmd = "2"
+predicates = "3"
+
+[features]
+default = []
+fuzz = []
+
+[[bin]]
+name = "mcplint"
+path = "src/main.rs"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

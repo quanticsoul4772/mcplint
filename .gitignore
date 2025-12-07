@@ -1,0 +1,31 @@
+# Rust build artifacts
+/target/
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# MCPLint
+.mcplint/
+*.sarif
+
+# Fuzzing
+/fuzz/target/
+/fuzz/corpus/
+/fuzz/artifacts/
+
+# Testing
+/coverage/
+*.profraw
+*.profdata
+
+# Build logs
+build_*.txt
