@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::client::McpClient;
 use crate::protocol::mcp::{
-    InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult, ServerCapabilities,
-    Tool,
+    InitializeResult, ListPromptsResult, ListResourcesResult, ServerCapabilities, Tool,
 };
 use crate::protocol::Implementation;
 use crate::transport::{connect_with_type, TransportConfig, TransportType};
@@ -212,8 +211,8 @@ impl ValidationEngine {
         let mut results = ValidationResults::new(target);
 
         // Determine transport type
-        let transport = transport_type
-            .unwrap_or_else(|| crate::transport::detect_transport_type(target));
+        let transport =
+            transport_type.unwrap_or_else(|| crate::transport::detect_transport_type(target));
 
         // Create transport config
         let transport_config = TransportConfig {
@@ -232,7 +231,9 @@ impl ValidationEngine {
         let mut client = McpClient::new(transport_box, client_info);
 
         // Run validation phases
-        let context = self.run_initialization_phase(&mut client, &mut results).await?;
+        let context = self
+            .run_initialization_phase(&mut client, &mut results)
+            .await?;
 
         if let Some(ctx) = context {
             results.protocol_version = Some(ctx.init_result.protocol_version.clone());
@@ -245,7 +246,8 @@ impl ValidationEngine {
             self.run_schema_rules(&ctx, &mut results);
 
             // Run sequence rules (need client for these)
-            self.run_sequence_rules(&mut client, &ctx, &mut results).await;
+            self.run_sequence_rules(&mut client, &ctx, &mut results)
+                .await;
         }
 
         // Cleanup
@@ -268,7 +270,10 @@ impl ValidationEngine {
         // Try to initialize
         let init_result = match client.initialize().await {
             Ok(result) => {
-                results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+                results.add_result(ValidationResult::pass(
+                    rule,
+                    start.elapsed().as_millis() as u64,
+                ));
                 result
             }
             Err(e) => {
@@ -292,7 +297,10 @@ impl ValidationEngine {
         let start = Instant::now();
 
         if crate::protocol::mcp::is_supported_version(&init_result.protocol_version) {
-            results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+            results.add_result(ValidationResult::pass(
+                rule,
+                start.elapsed().as_millis() as u64,
+            ));
         } else {
             results.add_result(ValidationResult::fail(
                 rule,
@@ -330,13 +338,19 @@ impl ValidationEngine {
                 .with_details(details),
             );
         } else {
-            results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+            results.add_result(ValidationResult::pass(
+                rule,
+                start.elapsed().as_millis() as u64,
+            ));
         }
 
         // PROTO-004: Valid capabilities object
         let rule = self.get_rule(ValidationRuleId::Proto004).unwrap();
         let start = Instant::now();
-        results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+        results.add_result(ValidationResult::pass(
+            rule,
+            start.elapsed().as_millis() as u64,
+        ));
 
         // Collect tools if supported
         let tools = if init_result.capabilities.has_tools() {
@@ -398,7 +412,7 @@ impl ValidationEngine {
             let mut issues = Vec::new();
             for tool in tools {
                 if tool.name.is_empty() {
-                    issues.push(format!("Tool has empty name"));
+                    issues.push("Tool has empty name".to_string());
                 }
                 if !tool.input_schema.is_object() {
                     issues.push(format!("Tool '{}' has non-object inputSchema", tool.name));
@@ -406,7 +420,10 @@ impl ValidationEngine {
             }
 
             if issues.is_empty() {
-                results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+                results.add_result(ValidationResult::pass(
+                    rule,
+                    start.elapsed().as_millis() as u64,
+                ));
             } else {
                 results.add_result(
                     ValidationResult::fail(
@@ -435,7 +452,10 @@ impl ValidationEngine {
             }
 
             if issues.is_empty() {
-                results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+                results.add_result(ValidationResult::pass(
+                    rule,
+                    start.elapsed().as_millis() as u64,
+                ));
             } else {
                 results.add_result(
                     ValidationResult::fail(
@@ -461,7 +481,10 @@ impl ValidationEngine {
             }
 
             if issues.is_empty() {
-                results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+                results.add_result(ValidationResult::pass(
+                    rule,
+                    start.elapsed().as_millis() as u64,
+                ));
             } else {
                 results.add_result(
                     ValidationResult::fail(
@@ -486,14 +509,19 @@ impl ValidationEngine {
             issues.push("Server advertises tools capability but tools/list failed".to_string());
         }
         if caps.has_resources() && ctx.resources.is_none() {
-            issues.push("Server advertises resources capability but resources/list failed".to_string());
+            issues.push(
+                "Server advertises resources capability but resources/list failed".to_string(),
+            );
         }
         if caps.has_prompts() && ctx.prompts.is_none() {
             issues.push("Server advertises prompts capability but prompts/list failed".to_string());
         }
 
         if issues.is_empty() {
-            results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+            results.add_result(ValidationResult::pass(
+                rule,
+                start.elapsed().as_millis() as u64,
+            ));
         } else {
             results.add_result(
                 ValidationResult::warning(
@@ -521,7 +549,10 @@ impl ValidationEngine {
             }
 
             if issues.is_empty() {
-                results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+                results.add_result(ValidationResult::pass(
+                    rule,
+                    start.elapsed().as_millis() as u64,
+                ));
             } else {
                 results.add_result(
                     ValidationResult::fail(
@@ -543,13 +574,19 @@ impl ValidationEngine {
             for tool in tools {
                 if let Some(obj) = tool.input_schema.as_object() {
                     if !obj.contains_key("type") {
-                        issues.push(format!("Tool '{}': inputSchema missing 'type' field", tool.name));
+                        issues.push(format!(
+                            "Tool '{}': inputSchema missing 'type' field",
+                            tool.name
+                        ));
                     }
                 }
             }
 
             if issues.is_empty() {
-                results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+                results.add_result(ValidationResult::pass(
+                    rule,
+                    start.elapsed().as_millis() as u64,
+                ));
             } else {
                 results.add_result(
                     ValidationResult::warning(
@@ -582,7 +619,10 @@ impl ValidationEngine {
             }
 
             if issues.is_empty() {
-                results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+                results.add_result(ValidationResult::pass(
+                    rule,
+                    start.elapsed().as_millis() as u64,
+                ));
             } else {
                 results.add_result(
                     ValidationResult::warning(
@@ -605,10 +645,8 @@ impl ValidationEngine {
                 if let Some(obj) = tool.input_schema.as_object() {
                     if let Some(required) = obj.get("required") {
                         if !required.is_array() {
-                            issues.push(format!(
-                                "Tool '{}': 'required' must be an array",
-                                tool.name
-                            ));
+                            issues
+                                .push(format!("Tool '{}': 'required' must be an array", tool.name));
                         } else if let Some(arr) = required.as_array() {
                             // Check all required fields exist in properties
                             if let Some(props) = obj.get("properties").and_then(|p| p.as_object()) {
@@ -629,7 +667,10 @@ impl ValidationEngine {
             }
 
             if issues.is_empty() {
-                results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+                results.add_result(ValidationResult::pass(
+                    rule,
+                    start.elapsed().as_millis() as u64,
+                ));
             } else {
                 results.add_result(
                     ValidationResult::fail(
@@ -649,13 +690,22 @@ impl ValidationEngine {
 
             let mut missing_desc = Vec::new();
             for tool in tools {
-                if tool.description.is_none() || tool.description.as_ref().map(|d| d.is_empty()).unwrap_or(true) {
+                if tool.description.is_none()
+                    || tool
+                        .description
+                        .as_ref()
+                        .map(|d| d.is_empty())
+                        .unwrap_or(true)
+                {
                     missing_desc.push(format!("Tool '{}' has no description", tool.name));
                 }
             }
 
             if missing_desc.is_empty() {
-                results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+                results.add_result(ValidationResult::pass(
+                    rule,
+                    start.elapsed().as_millis() as u64,
+                ));
             } else {
                 results.add_result(
                     ValidationResult::warning(
@@ -673,7 +723,7 @@ impl ValidationEngine {
     async fn run_sequence_rules(
         &self,
         client: &mut McpClient,
-        ctx: &ServerContext,
+        _ctx: &ServerContext,
         results: &mut ValidationResults,
     ) {
         // SEQ-001: Ping response
@@ -682,7 +732,10 @@ impl ValidationEngine {
 
         match client.ping().await {
             Ok(_) => {
-                results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+                results.add_result(ValidationResult::pass(
+                    rule,
+                    start.elapsed().as_millis() as u64,
+                ));
             }
             Err(e) => {
                 results.add_result(ValidationResult::fail(
@@ -698,9 +751,7 @@ impl ValidationEngine {
         let start = Instant::now();
 
         // Try calling an unknown method via the transport directly
-        let unknown_result = client
-            .call_tool("__mcplint_nonexistent_tool__", None)
-            .await;
+        let unknown_result = client.call_tool("__mcplint_nonexistent_tool__", None).await;
 
         match unknown_result {
             Ok(_) => {
@@ -713,11 +764,20 @@ impl ValidationEngine {
             }
             Err(e) => {
                 let err_str = e.to_string();
-                if err_str.contains("-32601") || err_str.contains("not found") || err_str.contains("unknown") {
-                    results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+                if err_str.contains("-32601")
+                    || err_str.contains("not found")
+                    || err_str.contains("unknown")
+                {
+                    results.add_result(ValidationResult::pass(
+                        rule,
+                        start.elapsed().as_millis() as u64,
+                    ));
                 } else {
                     // Some error occurred, which is acceptable
-                    results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+                    results.add_result(ValidationResult::pass(
+                        rule,
+                        start.elapsed().as_millis() as u64,
+                    ));
                 }
             }
         }
@@ -728,7 +788,10 @@ impl ValidationEngine {
 
         // The error from SEQ-002 should have been properly formatted
         // Since we got here, the error handling is at least functional
-        results.add_result(ValidationResult::pass(rule, start.elapsed().as_millis() as u64));
+        results.add_result(ValidationResult::pass(
+            rule,
+            start.elapsed().as_millis() as u64,
+        ));
     }
 
     fn get_rule(&self, id: ValidationRuleId) -> Option<&ValidationRule> {
