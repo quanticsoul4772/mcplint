@@ -3,8 +3,6 @@
 //! Implements the legacy MCP 2024-11-05 HTTP+SSE transport specification.
 //! This transport is provided for backwards compatibility with older MCP servers.
 
-#![allow(dead_code)] // Transport types reserved for future use
-
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 

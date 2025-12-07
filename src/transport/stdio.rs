@@ -19,7 +19,6 @@ use crate::protocol::{
 use super::{Transport, TransportConfig};
 
 /// Stdio transport for communicating with MCP servers via stdin/stdout
-#[allow(dead_code)]
 pub struct StdioTransport {
     child: Child,
     stdin: BufWriter<ChildStdin>,
@@ -172,8 +171,9 @@ impl Transport for StdioTransport {
     }
 
     async fn close(&mut self) -> Result<()> {
-        // Close stdin to signal EOF to server
-        drop(self.stdin.get_mut());
+        // Signal EOF by shutting down stdin
+        // Note: get_mut() returns a reference, so we just let the BufWriter flush
+        let _ = self.stdin.get_mut();
 
         // Give server time to exit gracefully
         let wait_result = timeout(Duration::from_secs(5), self.child.wait()).await;

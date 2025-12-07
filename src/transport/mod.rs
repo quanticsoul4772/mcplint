@@ -5,6 +5,8 @@
 //! - `streamable_http` - Remote server communication via HTTP (MCP 2025 spec)
 //! - `sse` - Legacy SSE transport (MCP 2024-11-05 spec)
 
+#![allow(dead_code)] // Transport layer will be used in M1 (Protocol Validator)
+
 pub mod sse;
 pub mod stdio;
 pub mod streamable_http;

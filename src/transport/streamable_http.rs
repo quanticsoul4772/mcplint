@@ -3,8 +3,6 @@
 //! Implements the MCP 2025-03-26 Streamable HTTP transport specification.
 //! Supports session management, SSE response streaming, and proper header handling.
 
-#![allow(dead_code)] // Transport types reserved for future use
-
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 

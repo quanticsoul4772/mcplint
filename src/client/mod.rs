@@ -6,6 +6,8 @@
 //! - Tool discovery and invocation
 //! - Resource and prompt access
 
+#![allow(dead_code)] // Client API will be used in M1 (Protocol Validator)
+
 use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -22,7 +24,6 @@ use crate::protocol::{
 use crate::transport::{connect, Transport, TransportConfig};
 
 /// MCP Client for communicating with MCP servers
-#[allow(dead_code)]
 pub struct McpClient {
     transport: Box<dyn Transport>,
     context: ConnectionContext,
@@ -392,7 +393,6 @@ impl Drop for McpClient {
 }
 
 /// Builder for creating MCP clients with custom configuration
-#[allow(dead_code)]
 pub struct McpClientBuilder {
     client_name: String,
     client_version: String,
