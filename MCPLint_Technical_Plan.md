@@ -1,25 +1,25 @@
 # MCPLint Technical Plan
-## MCP Server Security Testing Tool - Detailed Architecture & Milestones
+## MCP Server Security Testing Tool
 
-**Version:** 1.1
-**Date:** December 7, 2025
+**Version:** 1.2
 **Architecture:** Independent Modules with Smart Defaults
-**Last Updated:** Based on MCP Specification 2025-03-26 and current threat landscape
+**MCP Spec:** 2025-03-26
 
 ---
 
-## Executive Summary
+## What This Is
 
-MCPLint is an **AI-native** security testing tool for Model Context Protocol (MCP) servers. AI powers every operation: protocol validation with semantic understanding, context-aware vulnerability scanning, and adaptive payload generation for fuzzing.
+MCPLint is an **AI-native** security testing tool for MCP servers. AI powers every operation:
+- Protocol validation with semantic understanding
+- Context-aware vulnerability scanning
+- Adaptive payload generation for fuzzing
 
-**Key Capabilities:**
-- Every finding is AI-validated before reporting
-- Fuzzer generates targeted payloads based on schema understanding
-- Reports include synthesized analysis and remediation guidance
-- Supports Anthropic, OpenAI, or local Ollama
-- **Hybrid mode available** for gradual adoption or cost-sensitive environments
-
-This plan outlines a phased development approach with clear milestones, decision points, and integrated caching strategies.
+**Core Features:**
+- AI-validated findings (no raw rule output)
+- Schema-aware payload generation
+- Synthesized remediation guidance
+- Multi-provider: Anthropic, OpenAI, Ollama
+- Hybrid mode for air-gapped/cost-sensitive use
 
 ---
 
@@ -72,12 +72,12 @@ This plan outlines a phased development approach with clear milestones, decision
 | **Penzzer** | MCP fuzzing, schema-aware test generation | MCPLint: AI-powered payload generation |
 | **MCPSafetyScanner** | Role-based testing, auditor simulation | MCPLint: Multi-provider AI, CI/CD ready |
 
-### MCPLint Unique Value Proposition
-1. **Only AI-native MCP security tool** - Competitors use pattern matching only
-2. **Only comprehensive tool** (validate + scan + fuzz) - Others are point solutions
-3. **Only with SARIF/CI integration** - Enterprise-ready from day one
-4. **Only with multi-provider AI** - Flexibility for different environments
-5. **Hybrid mode** - Works without AI for cost-sensitive or air-gapped use
+### Why MCPLint
+- **AI-native** - Competitors use pattern matching only
+- **Comprehensive** - validate + scan + fuzz in one tool
+- **SARIF/CI ready** - Enterprise integration from day one
+- **Multi-provider AI** - Anthropic, OpenAI, Ollama, custom
+- **Hybrid mode** - Works without AI for air-gapped use
 
 ---
 
@@ -113,11 +113,9 @@ This plan outlines a phased development approach with clear milestones, decision
 
 ---
 
-## Development Milestones
+## Implementation
 
-### Milestone 0: Foundation (Transport + Protocol Core)
-**Duration:** 3-4 weeks
-**Goal:** Establish communication with MCP servers
+### M0: Foundation (Transport + Protocol)
 
 #### Deliverables
 - [ ] **stdio transport**: Spawn child process, manage stdin/stdout pipes
@@ -129,28 +127,18 @@ This plan outlines a phased development approach with clear milestones, decision
 - [ ] **Auto-detection**: URL patterns (http/https → Streamable HTTP, else → stdio)
 - [ ] **OAuth 2.1 support**: Token validation for remote HTTP servers (per 2025 spec)
 
-#### Technical Decisions
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Async runtime | Tokio (LTS 1.43+) | Industry standard, LTS until March 2026 |
-| HTTP client | reqwest | Mature, async, Streamable HTTP capable |
-| JSON parsing | serde_json | Fast, well-integrated with Rust ecosystem |
-| Process spawn | tokio::process | Async child process management |
-| TLS | Rustls | Memory-safe TLS, no OpenSSL dependency |
-| Debugging | tokio-console | Async task visualization |
-
-#### Decision Point: Milestone 0 → 1
-**Gate:** Successfully connect to 3+ real MCP servers (stdio and HTTP)
-- Test against: filesystem server, fetch server, a Streamable HTTP server
-- Validate message exchange works correctly
-- Verify OAuth token handling for remote servers
-- **If blocked:** Debug transport issues before proceeding
+#### Tech Stack
+| Component | Choice | Why |
+|-----------|--------|-----|
+| Async runtime | Tokio | Standard, stable |
+| HTTP client | reqwest | Async, mature |
+| JSON | serde_json | Fast |
+| Process spawn | tokio::process | Async child process |
+| TLS | Rustls | Memory-safe, no OpenSSL |
 
 ---
 
-### Milestone 1: Protocol Validator
-**Duration:** 2-3 weeks
-**Goal:** Verify MCP specification compliance
+### M1: Protocol Validator
 
 #### Deliverables
 - [ ] **Required field validation**: Ensure all mandatory fields present
@@ -191,17 +179,9 @@ PROTO-010: Streamable HTTP session management violation
 }
 ```
 
-#### Decision Point: Milestone 1 → 2
-**Gate:** Validator detects known protocol issues in test fixtures
-- Create intentionally malformed server responses
-- Verify all validation rules trigger appropriately
-- **Consider:** Should we support "lenient" mode for development servers?
-
 ---
 
-### Milestone 2: Security Scanner
-**Duration:** 4-5 weeks
-**Goal:** Detect security vulnerabilities in MCP server configurations
+### M2: Security Scanner
 
 #### Rule Categories
 
@@ -262,22 +242,14 @@ CVE-2025-53109 (CVSS 8.2) → SEC-002: Path traversal in file tools
 CVE-2025-32711 → SEC-025: EchoLeak prompt injection
 ```
 
-#### Test Servers for Validation
+#### Test Targets
 - Anthropic SQLite MCP (archived, 5000+ forks, known SQL injection)
 - mcp-remote pre-0.1.16 (CVE-2025-6514)
-- Intentionally vulnerable test server (create for MCPLint)
-
-#### Decision Point: Milestone 2 → 3
-**Gate:** Scanner + AI validation achieves >90% precision on test vulnerable servers
-- Test against documented vulnerable servers
-- Measure false positive rate (<5% target with AI validation)
-- AI must successfully filter obvious false positives
+- Intentionally vulnerable test server
 
 ---
 
-### Milestone 3: Fuzzer (Basic)
-**Duration:** 5-6 weeks
-**Goal:** Discover crashes and unexpected behaviors through input mutation
+### M3: Fuzzer
 
 #### Components
 
@@ -361,12 +333,12 @@ corpus/
 "\u200B\u200C\u200D"  # Zero-width characters
 ```
 
-#### Performance Optimizations (AFL++ Best Practices)
-- **Persistent Mode**: Use `__AFL_LOOP(iterations)` for 5-10x speedup
-- **Deferred Init**: `AFL_DEFER_FORKSRV=1` to skip costly initialization
-- **AddressSanitizer**: Compile targets with `-fsanitize=address` for memory bugs
-- **Parallel Fuzzing**: Coordinate with honggfuzz/libfuzzer via `-F` flag
-- **Custom Mutators**: Protocol-aware mutations via `AFL_CUSTOM_MUTATOR_LIBRARY`
+#### Performance (AFL++ patterns)
+- Persistent mode for 5-10x speedup
+- Deferred init to skip costly startup
+- AddressSanitizer for memory bugs
+- Parallel fuzzing coordination
+- Custom mutators for MCP-aware mutation
 
 #### Crash Detection
 - Exit code non-zero
@@ -376,20 +348,11 @@ corpus/
 - Memory exhaustion signals
 - AddressSanitizer reports
 
-#### Decision Point: Milestone 3 → 4
-**Gate:** AI-powered fuzzer discovers bugs traditional fuzzing would miss
-- Run against intentionally vulnerable server
-- Compare AI-generated payloads vs random mutation discovery rate
-- Measure executions/second performance (target: >100 exec/s)
-- Verify AddressSanitizer integration catches memory issues
-
 ---
 
-### Milestone 4: Caching Layer
-**Duration:** 2 weeks
-**Goal:** Reduce redundant operations for faster repeat scans
+### M4: Caching
 
-#### Cache Architecture
+#### Architecture
 
 ```rust
 enum CacheBackend {
@@ -429,24 +392,19 @@ mcplint cache clear --schemas # Clear only schema cache
 mcplint cache export          # Export corpus for sharing
 ```
 
-#### CI Optimization
+#### CI Example
 ```yaml
-# GitHub Actions example
 - uses: actions/cache@v4
   with:
     path: ~/.mcplint/cache
     key: mcplint-${{ hashFiles('mcp-config.json') }}
-
-- run: mcplint check ./my-server --cache-backend=filesystem
 ```
 
 ---
 
-### Milestone 5: AI Integration (Core)
-**Duration:** 4-5 weeks
-**Goal:** Embed AI as a core component of all MCPLint operations
+### M5: AI Integration
 
-**Philosophy:** MCPLint is an AI-native security tool. Every scan uses AI for payload generation, every finding is AI-validated, every report includes AI analysis.
+MCPLint is AI-native. Every scan uses AI for payload generation, every finding is AI-validated, every report includes AI analysis.
 
 #### AI Modes
 
@@ -456,7 +414,7 @@ mode = "required"  # required | enhanced | disabled
 
 # required  - AI powers all operations, fails without AI
 # enhanced  - AI improves results, works without AI (default for adoption)
-# disabled  - Traditional pattern-matching only (for cost-sensitive CI)
+# disabled  - Traditional pattern-matching only
 ```
 
 #### AI is Embedded Everywhere
@@ -531,7 +489,6 @@ Findings → AI Synthesis → Report
 │  Response Cache (Mandatory)                                  │
 │  - Semantic deduplication                                    │
 │  - TTL: 7 days default                                       │
-│  - Cost tracking & budget alerts                             │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -564,7 +521,6 @@ max_size = "1GB"
 max_tokens_per_request = 4096
 max_requests_per_scan = 100
 timeout = "30s"
-budget_alert_threshold = "$1.00"    # Alert if scan exceeds cost
 ```
 
 #### Startup Validation
@@ -593,20 +549,11 @@ MCPLint v1.0.0
 Scanning (basic mode)...
 ```
 
-#### Decision Point: Milestone 5 → 6
-**Gate:** AI integration is seamless and performant
-- Scan time with AI: <2x baseline (caching helps)
-- Finding quality: >90% user agreement
-- Cost per scan: <$0.10 average (with caching)
-- Enhanced mode works gracefully without AI
-
 ---
 
-### Milestone 6: Advanced Features
-**Duration:** 3-4 weeks
-**Goal:** Polish for production CI/CD and power user workflows
+### M6: Advanced Features
 
-#### 6.1 Baseline/Diff Mode
+#### Baseline/Diff Mode
 ```bash
 # Create baseline
 mcplint scan ./server --output=baseline.json
@@ -622,44 +569,36 @@ mcplint scan ./server --baseline=baseline.json --fail-on-new
 }
 ```
 
-#### 6.2 Watch Mode
+#### Watch Mode
 ```bash
-# Auto-rescan on server changes (development mode)
 mcplint watch ./server-dir --on-change="mcplint check {}"
-
-# Watch specific files
 mcplint watch ./server.py --debounce=500ms
 ```
 
-#### 6.3 Plugin Architecture
+#### Plugin Architecture
 ```rust
-// Custom rule plugin interface
 pub trait SecurityRule {
     fn id(&self) -> &str;
     fn name(&self) -> &str;
     fn severity(&self) -> Severity;
     fn check(&self, context: &ScanContext) -> Vec<Finding>;
 }
-
-// Plugin loading
-mcplint scan ./server --plugin=./my-rules.wasm
-mcplint scan ./server --plugin-dir=./company-rules/
 ```
-
-#### 6.4 Additional Output Formats
 ```bash
-mcplint scan ./server --format=junit     # JUnit XML for CI
-mcplint scan ./server --format=gitlab    # GitLab SAST format
-mcplint scan ./server --format=markdown  # Human-readable report
+mcplint scan ./server --plugin=./my-rules.wasm
 ```
 
-#### 6.5 Resource Limits (CI-Friendly)
+#### Output Formats
+```bash
+mcplint scan ./server --format=sarif|json|junit|gitlab|markdown
+```
+
+#### Resource Limits
 ```bash
 mcplint fuzz ./server --max-time=60s --max-memory=512M --max-execs=10000
-mcplint scan ./server --timeout=30s
 ```
 
-#### 6.6 Exit Codes
+#### Exit Codes
 | Code | Meaning |
 |------|---------|
 | 0 | Success, no findings |
@@ -716,7 +655,7 @@ mcplint check ./my-server
 mcplint check ./my-server --format=sarif --output=results.sarif \
   --severity=high --fail-on-findings
 
-# CI pipeline without AI (cost-sensitive)
+# CI pipeline without AI
 mcplint check ./my-server --ai-mode=disabled --format=sarif
 
 # Deep fuzzing session (AI generates targeted payloads automatically)
@@ -758,7 +697,6 @@ max_size = "1GB"
 [ai.limits]
 max_tokens_per_request = 4096
 timeout = "30s"
-budget_alert = "$1.00"
 
 # Alternative: Local AI (Ollama)
 # [ai]
@@ -812,70 +750,33 @@ include_evidence = true
 
 ---
 
-## Testing Strategy
+## Testing
 
-### Unit Tests
-- JSON-RPC parsing edge cases
-- MCP message validation
-- Rule detection accuracy
-- Mutation strategy coverage
+**Unit:** JSON-RPC parsing, MCP validation, rule detection, mutation coverage
 
-### Integration Tests
-- End-to-end with mock MCP servers
-- Transport reliability (stdio reconnection, Streamable HTTP)
-- Cache hit/miss scenarios
-- OAuth token validation
+**Integration:** Mock MCP servers, transport reliability, cache scenarios, OAuth validation
 
-### Fuzzer Self-Test
-- Run MCPLint's fuzzer against MCPLint's own parser
-- Ensure no crashes in input handling
-- Verify AddressSanitizer catches memory issues
+**Self-test:** Run MCPLint fuzzer against MCPLint parser
 
-### Benchmark Suite
-- Scan time for various server sizes
-- Fuzzer executions/second
-- Memory usage under load
-- Cache performance impact
-- AI vs non-AI mode comparison
+**Benchmarks:** Scan time, fuzzer execs/sec, memory, cache impact, AI vs non-AI
 
-### Vulnerable Server Testing
-- Test against Anthropic SQLite MCP (known SQL injection)
-- Test against mcp-remote pre-0.1.16 (CVE-2025-6514)
-- Create comprehensive intentionally vulnerable server
+**Vulnerable targets:** SQLite MCP (SQL injection), mcp-remote <0.1.16 (CVE-2025-6514)
 
 ---
 
-## Risk Considerations
+## Risks & Mitigations
 
 | Risk | Mitigation |
 |------|------------|
-| MCP spec evolves | Version-tagged validation rules, update mechanism, monitor spec repo |
-| AI provider outage | Support multiple providers, fallback to enhanced→disabled mode |
-| AI costs per scan | Aggressive caching, semantic deduplication, cost tracking, budget alerts |
-| AI latency in CI | Response caching, parallel requests, timeout handling, disabled mode option |
-| Fuzzer causes harm | Sandboxing recommendations, rate limiting, ASAN integration |
-| Performance too slow for CI | Bounded modes, caching, parallel execution, non-AI fallback |
-| No internet access | Ollama local model support for air-gapped environments |
-| Competing tools emerge | Focus on AI-native differentiation, comprehensive tooling |
+| MCP spec evolves | Version-tagged rules, monitor spec repo |
+| AI provider outage | Multi-provider, fallback modes |
+| AI latency in CI | Caching, parallel requests, disabled mode |
+| Fuzzer causes harm | Sandboxing, rate limiting, ASAN |
+| No internet | Ollama local models |
 
 ---
 
-## Success Metrics
-
-| Milestone | Key Metric | Target |
-|-----------|------------|--------|
-| M0 | Server connectivity | 100% success rate (stdio + Streamable HTTP) |
-| M1 | Validation accuracy | 95% on test fixtures |
-| M2 | Detection precision (with AI validation) | >95%, covers all documented CVEs |
-| M3 | AI-payload discovery rate vs random | >3x improvement |
-| M4 | Repeat scan speedup with cache | 10x |
-| M5 | AI response latency (cached) | <100ms |
-| M5 | Enhanced mode without AI | Functional with basic detection |
-| M6 | CI integration time | <60s for typical server |
-
----
-
-## Appendix: File Structure
+## File Structure
 
 ```
 mcplint/
@@ -979,6 +880,3 @@ mcplint/
 - [AFL++ Documentation](https://aflplus.plus/docs/best_practices/)
 - [libFuzzer Guide](https://llvm.org/docs/LibFuzzer.html)
 
----
-
-*Document generated for MCPLint development planning. Version 1.1 incorporates research findings from December 2025 threat landscape analysis.*
