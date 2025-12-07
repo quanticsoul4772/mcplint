@@ -6,6 +6,7 @@ use serde_json::Value;
 use super::{Transport, TransportConfig};
 
 /// SSE transport for communicating with remote MCP servers
+#[allow(dead_code)]
 pub struct SseTransport {
     base_url: String,
     client: reqwest::Client,
@@ -13,6 +14,7 @@ pub struct SseTransport {
     request_id: u64,
 }
 
+#[allow(dead_code)]
 impl SseTransport {
     /// Create a new SSE transport connection
     pub fn new(base_url: &str, config: TransportConfig) -> Result<Self> {

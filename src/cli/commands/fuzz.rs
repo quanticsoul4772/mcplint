@@ -7,6 +7,7 @@ use tracing::{debug, info};
 use crate::fuzzer::FuzzEngine;
 use crate::OutputFormat;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     server: &str,
     args: &[String],
