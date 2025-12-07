@@ -15,7 +15,10 @@ pub async fn run(
     format: OutputFormat,
 ) -> Result<()> {
     info!("Validating MCP server: {}", server);
-    debug!("Args: {:?}, Features: {:?}, Timeout: {}s", args, features, timeout);
+    debug!(
+        "Args: {:?}, Features: {:?}, Timeout: {}s",
+        args, features, timeout
+    );
 
     println!("{}", "Starting protocol validation...".cyan());
     println!("  Server: {}", server.yellow());

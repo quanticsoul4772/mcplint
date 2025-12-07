@@ -31,7 +31,9 @@ impl RuleRegistry {
             Rule {
                 id: "MCP-INJ-001".to_string(),
                 name: "Command Injection via Tool Arguments".to_string(),
-                description: "Detects potential command injection vulnerabilities in tool argument handling".to_string(),
+                description:
+                    "Detects potential command injection vulnerabilities in tool argument handling"
+                        .to_string(),
                 category: "injection".to_string(),
                 severity: "critical".to_string(),
                 references: vec!["CWE-78".to_string(), "CVE-2025-6514".to_string()],
@@ -39,7 +41,8 @@ impl RuleRegistry {
             Rule {
                 id: "MCP-INJ-002".to_string(),
                 name: "SQL Injection in Database Tools".to_string(),
-                description: "Detects SQL injection risks in database-related MCP tools".to_string(),
+                description: "Detects SQL injection risks in database-related MCP tools"
+                    .to_string(),
                 category: "injection".to_string(),
                 severity: "critical".to_string(),
                 references: vec!["CWE-89".to_string()],
@@ -47,7 +50,8 @@ impl RuleRegistry {
             Rule {
                 id: "MCP-INJ-003".to_string(),
                 name: "Path Traversal in File Operations".to_string(),
-                description: "Detects path traversal vulnerabilities in file system tools".to_string(),
+                description: "Detects path traversal vulnerabilities in file system tools"
+                    .to_string(),
                 category: "injection".to_string(),
                 severity: "high".to_string(),
                 references: vec!["CWE-22".to_string(), "CVE-2025-53109".to_string()],
@@ -55,12 +59,12 @@ impl RuleRegistry {
             Rule {
                 id: "MCP-INJ-004".to_string(),
                 name: "SSRF via URL Parameters".to_string(),
-                description: "Detects server-side request forgery risks in URL handling".to_string(),
+                description: "Detects server-side request forgery risks in URL handling"
+                    .to_string(),
                 category: "injection".to_string(),
                 severity: "high".to_string(),
                 references: vec!["CWE-918".to_string()],
             },
-            
             // Authentication rules
             Rule {
                 id: "MCP-AUTH-001".to_string(),
@@ -86,7 +90,6 @@ impl RuleRegistry {
                 severity: "medium".to_string(),
                 references: vec!["CWE-532".to_string()],
             },
-            
             // Transport rules
             Rule {
                 id: "MCP-TRANS-001".to_string(),
@@ -104,7 +107,6 @@ impl RuleRegistry {
                 severity: "medium".to_string(),
                 references: vec!["CWE-295".to_string()],
             },
-            
             // Protocol rules
             Rule {
                 id: "MCP-PROTO-001".to_string(),
@@ -130,7 +132,6 @@ impl RuleRegistry {
                 severity: "low".to_string(),
                 references: vec![],
             },
-            
             // Data exposure rules
             Rule {
                 id: "MCP-DATA-001".to_string(),
@@ -148,7 +149,6 @@ impl RuleRegistry {
                 severity: "low".to_string(),
                 references: vec!["CWE-213".to_string()],
             },
-            
             // DoS rules
             Rule {
                 id: "MCP-DOS-001".to_string(),
@@ -167,17 +167,17 @@ impl RuleRegistry {
                 references: vec!["CWE-770".to_string()],
             },
         ];
-        
+
         Self { rules }
     }
-    
+
     pub fn list_rules(&self, category: Option<&str>) -> Vec<&Rule> {
         match category {
             Some(cat) => self.rules.iter().filter(|r| r.category == cat).collect(),
             None => self.rules.iter().collect(),
         }
     }
-    
+
     pub fn get_rule(&self, id: &str) -> Option<&Rule> {
         self.rules.iter().find(|r| r.id == id)
     }

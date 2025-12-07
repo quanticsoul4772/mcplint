@@ -12,7 +12,10 @@ pub async fn run(extended: bool) -> Result<()> {
     // Version info
     println!("{}", "Version Information".yellow());
     println!("  MCPLint: {}", env!("CARGO_PKG_VERSION").green());
-    println!("  Rust: {}", get_rust_version().unwrap_or_else(|| "unknown".to_string()));
+    println!(
+        "  Rust: {}",
+        get_rust_version().unwrap_or_else(|| "unknown".to_string())
+    );
     println!();
 
     // Check for common MCP server runtimes
@@ -30,7 +33,7 @@ pub async fn run(extended: bool) -> Result<()> {
 
     if extended {
         println!("{}", "Extended Diagnostics".yellow());
-        
+
         // Check network connectivity
         print!("  Network (GitHub): ");
         match check_network("https://github.com").await {
@@ -65,9 +68,7 @@ fn check_runtime(cmd: &str, arg: &str, name: &str) {
     print!("  {}: ", name);
     match Command::new(cmd).arg(arg).output() {
         Ok(output) if output.status.success() => {
-            let version = String::from_utf8_lossy(&output.stdout)
-                .trim()
-                .to_string();
+            let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
             println!("{} ({})", "✓ Found".green(), version.dimmed());
         }
         _ => {
@@ -80,7 +81,7 @@ async fn check_network(url: &str) -> Result<()> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build()?;
-    
+
     client.get(url).send().await?.error_for_status()?;
     Ok(())
 }

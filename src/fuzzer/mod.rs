@@ -34,39 +34,51 @@ pub struct CoverageStats {
 impl FuzzResults {
     pub fn print_text(&self) {
         use colored::Colorize;
-        
+
         println!("{}", "Fuzzing Results".cyan().bold());
         println!("{}", "=".repeat(50));
         println!();
-        
+
         println!("Duration: {}s", self.duration_secs);
         println!("Iterations: {}", self.iterations);
         println!("Interesting inputs: {}", self.interesting_inputs);
         println!();
-        
+
         println!("{}", "Coverage:".yellow());
         println!("  Paths explored: {}", self.coverage.paths_explored);
-        println!("  Edge coverage: {:.1}%", self.coverage.edge_coverage * 100.0);
+        println!(
+            "  Edge coverage: {:.1}%",
+            self.coverage.edge_coverage * 100.0
+        );
         println!();
-        
+
         if self.crashes.is_empty() {
             println!("{}", "No crashes found ✓".green());
         } else {
-            println!("{}", format!("Crashes found: {}", self.crashes.len()).red().bold());
+            println!(
+                "{}",
+                format!("Crashes found: {}", self.crashes.len())
+                    .red()
+                    .bold()
+            );
             for crash in &self.crashes {
                 println!();
-                println!("  {} (iteration {})", crash.crash_type.red(), crash.iteration);
+                println!(
+                    "  {} (iteration {})",
+                    crash.crash_type.red(),
+                    crash.iteration
+                );
                 println!("  Input: {}", crash.input.dimmed());
                 println!("  Error: {}", crash.error);
             }
         }
     }
-    
+
     pub fn print_json(&self) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(self)?);
         Ok(())
     }
-    
+
     pub fn print_sarif(&self) -> Result<()> {
         // TODO: Implement SARIF output for crashes
         println!("SARIF output not yet implemented");
@@ -89,7 +101,7 @@ impl FuzzEngine {
             workers,
         }
     }
-    
+
     pub async fn run(
         &self,
         duration: u64,
@@ -99,25 +111,29 @@ impl FuzzEngine {
     ) -> Result<FuzzResults> {
         use colored::Colorize;
         use std::time::Duration;
-        
+
         // TODO: Implement actual fuzzing
         // For now, simulate a fuzzing session
-        
+
         let target_duration = if duration == 0 { 10 } else { duration.min(10) };
-        
+
         println!("{}", "Fuzzing in progress...".yellow());
-        
+
         for i in 0..target_duration {
             print!("\r  Elapsed: {}s / {}s", i + 1, target_duration);
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
         println!();
         println!();
-        
+
         Ok(FuzzResults {
             server: self.server.clone(),
             duration_secs: target_duration,
-            iterations: if iterations == 0 { target_duration * 100 } else { iterations },
+            iterations: if iterations == 0 {
+                target_duration * 100
+            } else {
+                iterations
+            },
             crashes: vec![],
             coverage: CoverageStats {
                 paths_explored: 47,

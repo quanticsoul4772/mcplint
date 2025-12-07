@@ -24,7 +24,7 @@ pub fn run(category: Option<String>, verbose: bool) -> Result<()> {
 
     for (cat_id, cat_name) in categories {
         let cat_rules: Vec<_> = rules.iter().filter(|r| r.category == cat_id).collect();
-        
+
         if cat_rules.is_empty() {
             continue;
         }
@@ -41,12 +41,7 @@ pub fn run(category: Option<String>, verbose: bool) -> Result<()> {
                 _ => rule.severity.normal(),
             };
 
-            println!(
-                "  {} [{}] {}",
-                rule.id.green(),
-                severity_colored,
-                rule.name
-            );
+            println!("  {} [{}] {}", rule.id.green(), severity_colored, rule.name);
 
             if verbose {
                 println!("    {}", rule.description.dimmed());
