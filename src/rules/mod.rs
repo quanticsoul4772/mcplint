@@ -1,5 +1,7 @@
 //! Security Rules Registry
 
+#![allow(dead_code)] // Rule methods reserved for future use
+
 use serde::{Deserialize, Serialize};
 
 /// A security rule definition
@@ -178,7 +180,6 @@ impl RuleRegistry {
         }
     }
 
-    #[allow(dead_code)]
     pub fn get_rule(&self, id: &str) -> Option<&Rule> {
         self.rules.iter().find(|r| r.id == id)
     }

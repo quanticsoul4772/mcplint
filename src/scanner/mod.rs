@@ -1,5 +1,7 @@
 //! Security Scanner - Vulnerability detection for MCP servers
 
+#![allow(dead_code)] // Scanner types reserved for future implementation
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
@@ -98,7 +100,6 @@ impl ScanFindings {
 }
 
 /// Security scanner for MCP servers
-#[allow(dead_code)]
 pub struct SecurityScanner {
     server: String,
     args: Vec<String>,

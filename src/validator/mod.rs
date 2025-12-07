@@ -1,5 +1,7 @@
 //! Protocol Validator - MCP protocol compliance checking
 
+#![allow(dead_code)] // Validator types reserved for future implementation
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
@@ -73,7 +75,6 @@ impl ValidationResults {
 }
 
 /// Protocol validator for MCP servers
-#[allow(dead_code)]
 pub struct ProtocolValidator {
     server: String,
     args: Vec<String>,

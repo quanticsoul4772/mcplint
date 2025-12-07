@@ -1,5 +1,7 @@
 //! Fuzz Engine - Coverage-guided fuzzing for MCP servers
 
+#![allow(dead_code)] // Fuzzing engine reserved for future implementation
+
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
@@ -87,7 +89,6 @@ impl FuzzResults {
 }
 
 /// Fuzzing engine for MCP servers
-#[allow(dead_code)]
 pub struct FuzzEngine {
     server: String,
     args: Vec<String>,

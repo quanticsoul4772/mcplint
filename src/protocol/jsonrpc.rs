@@ -246,7 +246,8 @@ mod tests {
 
     #[test]
     fn parse_response_with_error() {
-        let json = r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid Request"}}"#;
+        let json =
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid Request"}}"#;
         let msg: JsonRpcResponse = serde_json::from_str(json).unwrap();
         assert!(msg.is_error());
         assert!(msg.error.is_some());

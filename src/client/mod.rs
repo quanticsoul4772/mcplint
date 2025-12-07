@@ -13,10 +13,9 @@ use serde_json::Value;
 
 use crate::protocol::{
     mcp::{
-        self, CallToolParams, CallToolResult, GetPromptParams, GetPromptResult,
-        InitializeParams, InitializeResult, ListPromptsResult, ListResourcesResult,
-        ListToolsResult, PaginationParams, Prompt, ReadResourceParams, ReadResourceResult,
-        Resource, Tool,
+        self, CallToolParams, CallToolResult, GetPromptParams, GetPromptResult, InitializeParams,
+        InitializeResult, ListPromptsResult, ListResourcesResult, ListToolsResult,
+        PaginationParams, Prompt, ReadResourceParams, ReadResourceResult, Resource, Tool,
     },
     ClientCapabilities, ConnectionContext, ConnectionState, Implementation, ServerCapabilities,
 };
@@ -189,7 +188,10 @@ impl McpClient {
     }
 
     /// List tools with pagination
-    pub async fn list_tools_paginated(&mut self, cursor: Option<String>) -> Result<ListToolsResult> {
+    pub async fn list_tools_paginated(
+        &mut self,
+        cursor: Option<String>,
+    ) -> Result<ListToolsResult> {
         self.ensure_ready()?;
 
         if !self.context.server_has_tools() {
@@ -204,7 +206,11 @@ impl McpClient {
     }
 
     /// Call a tool on the server
-    pub async fn call_tool(&mut self, name: &str, arguments: Option<Value>) -> Result<CallToolResult> {
+    pub async fn call_tool(
+        &mut self,
+        name: &str,
+        arguments: Option<Value>,
+    ) -> Result<CallToolResult> {
         self.ensure_ready()?;
 
         if !self.context.server_has_tools() {
@@ -267,7 +273,8 @@ impl McpClient {
             uri: uri.to_string(),
         };
 
-        self.request(mcp::methods::RESOURCES_READ, Some(params)).await
+        self.request(mcp::methods::RESOURCES_READ, Some(params))
+            .await
     }
 
     // =========================================================================
@@ -282,14 +289,17 @@ impl McpClient {
             return Ok(Vec::new());
         }
 
-        let result: ListPromptsResult = self
-            .request(mcp::methods::PROMPTS_LIST, None::<()>)
-            .await?;
+        let result: ListPromptsResult =
+            self.request(mcp::methods::PROMPTS_LIST, None::<()>).await?;
         Ok(result.prompts)
     }
 
     /// Get a prompt by name with optional arguments
-    pub async fn get_prompt(&mut self, name: &str, arguments: Option<Value>) -> Result<GetPromptResult> {
+    pub async fn get_prompt(
+        &mut self,
+        name: &str,
+        arguments: Option<Value>,
+    ) -> Result<GetPromptResult> {
         self.ensure_ready()?;
 
         if !self.context.server_has_prompts() {

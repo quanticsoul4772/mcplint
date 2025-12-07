@@ -3,6 +3,8 @@
 //! Implements the legacy MCP 2024-11-05 HTTP+SSE transport specification.
 //! This transport is provided for backwards compatibility with older MCP servers.
 
+#![allow(dead_code)] // Transport types reserved for future use
+
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
@@ -17,7 +19,6 @@ use crate::protocol::{
 use super::{Transport, TransportConfig};
 
 /// SSE transport for communicating with remote MCP servers (legacy)
-#[allow(dead_code)]
 pub struct SseTransport {
     base_url: Url,
     client: reqwest::Client,

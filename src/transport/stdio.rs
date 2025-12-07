@@ -89,10 +89,7 @@ impl StdioTransport {
             Ok(Ok(0)) => anyhow::bail!("Server closed connection (EOF)"),
             Ok(Ok(_)) => Ok(line),
             Ok(Err(e)) => Err(e).context("Failed to read from stdout"),
-            Err(_) => anyhow::bail!(
-                "Read timeout after {} seconds",
-                self.config.timeout_secs
-            ),
+            Err(_) => anyhow::bail!("Read timeout after {} seconds", self.config.timeout_secs),
         }
     }
 }
@@ -118,7 +115,11 @@ impl Transport for StdioTransport {
         Ok(Some(message))
     }
 
-    async fn request(&mut self, method: &str, params: Option<serde_json::Value>) -> Result<JsonRpcResponse> {
+    async fn request(
+        &mut self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> Result<JsonRpcResponse> {
         let id = self.next_id();
 
         let request = JsonRpcRequest::new(id.clone(), method, params);
@@ -142,7 +143,10 @@ impl Transport for StdioTransport {
                     return Ok(response);
                 }
                 // Response for different request - log and continue
-                tracing::warn!("Received response for unexpected request ID: {}", response.id);
+                tracing::warn!(
+                    "Received response for unexpected request ID: {}",
+                    response.id
+                );
                 continue;
             }
 
@@ -162,7 +166,8 @@ impl Transport for StdioTransport {
 
     async fn notify(&mut self, method: &str, params: Option<serde_json::Value>) -> Result<()> {
         let notification = JsonRpcNotification::new(method, params);
-        let json = serde_json::to_string(&notification).context("Failed to serialize notification")?;
+        let json =
+            serde_json::to_string(&notification).context("Failed to serialize notification")?;
         self.write_message(&json).await
     }
 
@@ -215,6 +220,9 @@ mod tests {
             timeout_secs: 60,
             ..Default::default()
         };
-        assert_eq!(Duration::from_secs(60), Duration::from_secs(config.timeout_secs));
+        assert_eq!(
+            Duration::from_secs(60),
+            Duration::from_secs(config.timeout_secs)
+        );
     }
 }

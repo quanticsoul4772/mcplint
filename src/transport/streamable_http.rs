@@ -3,11 +3,13 @@
 //! Implements the MCP 2025-03-26 Streamable HTTP transport specification.
 //! Supports session management, SSE response streaming, and proper header handling.
 
+#![allow(dead_code)] // Transport types reserved for future use
+
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, CONTENT_TYPE};
+use reqwest::header::{HeaderMap, ACCEPT, CONTENT_TYPE};
 use serde_json::Value;
 use url::Url;
 
@@ -21,7 +23,6 @@ use super::{Transport, TransportConfig};
 const MCP_SESSION_ID_HEADER: &str = "Mcp-Session-Id";
 
 /// Streamable HTTP transport for remote MCP servers
-#[allow(dead_code)]
 pub struct StreamableHttpTransport {
     endpoint: Url,
     client: reqwest::Client,
@@ -51,7 +52,11 @@ impl StreamableHttpTransport {
     }
 
     /// Create with custom reqwest client (for testing or custom TLS)
-    pub fn with_client(endpoint: &str, client: reqwest::Client, config: TransportConfig) -> Result<Self> {
+    pub fn with_client(
+        endpoint: &str,
+        client: reqwest::Client,
+        config: TransportConfig,
+    ) -> Result<Self> {
         let endpoint = Url::parse(endpoint).context("Invalid endpoint URL")?;
 
         Ok(Self {

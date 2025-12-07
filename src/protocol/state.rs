@@ -113,7 +113,10 @@ impl ConnectionContext {
 
     // State transitions
 
-    pub fn transition_to(&mut self, new_state: ConnectionState) -> Result<(), StateTransitionError> {
+    pub fn transition_to(
+        &mut self,
+        new_state: ConnectionState,
+    ) -> Result<(), StateTransitionError> {
         let valid = match (self.state, new_state) {
             // Valid transitions
             (ConnectionState::Disconnected, ConnectionState::Connecting) => true,
@@ -219,7 +222,8 @@ impl ConnectionContext {
     // Pending request tracking
 
     pub fn add_pending_request(&mut self, id: RequestId, method: impl Into<String>) {
-        self.pending_requests.insert(id, PendingRequest::new(method));
+        self.pending_requests
+            .insert(id, PendingRequest::new(method));
     }
 
     pub fn remove_pending_request(&mut self, id: &RequestId) -> Option<PendingRequest> {
