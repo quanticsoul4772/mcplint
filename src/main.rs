@@ -9,7 +9,9 @@ use colored::Colorize;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod cli;
+mod client;
 mod fuzzer;
+mod protocol;
 mod reporter;
 mod rules;
 mod scanner;
