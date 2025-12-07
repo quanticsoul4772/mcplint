@@ -9,7 +9,7 @@ mod rules;
 pub use engine::{
     ValidationConfig, ValidationEngine, ValidationResult, ValidationResults, ValidationSeverity,
 };
-pub use rules::{ValidationCategory, ValidationRule, ValidationRuleId};
+pub use rules::ValidationRuleId;
 
 use anyhow::Result;
 use colored::Colorize;
@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use crate::transport::TransportType;
 
 /// Protocol validation results (legacy structure for compatibility)
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationCheck {
     pub name: String,
@@ -27,6 +28,7 @@ pub struct ValidationCheck {
     pub duration_ms: u64,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CheckStatus {
     Passed,
@@ -53,6 +55,7 @@ impl ProtocolValidator {
         }
     }
 
+    #[allow(dead_code)]
     pub fn with_transport_type(mut self, transport_type: TransportType) -> Self {
         self.transport_type = Some(transport_type);
         self

@@ -22,10 +22,13 @@ pub struct ValidationConfig {
     /// Timeout for server operations in seconds
     pub timeout_secs: u64,
     /// Categories to skip
+    #[allow(dead_code)]
     pub skip_categories: Vec<ValidationCategory>,
     /// Specific rules to skip
+    #[allow(dead_code)]
     pub skip_rules: Vec<ValidationRuleId>,
     /// Enable strict mode (warnings become failures)
+    #[allow(dead_code)]
     pub strict_mode: bool,
 }
 
@@ -96,6 +99,7 @@ impl ValidationResult {
         }
     }
 
+    #[allow(dead_code)]
     pub fn skip(rule: &ValidationRule, reason: impl Into<String>) -> Self {
         Self {
             rule_id: rule.id.to_string(),
@@ -171,6 +175,7 @@ impl ValidationResults {
         self.results.push(result);
     }
 
+    #[allow(dead_code)]
     pub fn has_failures(&self) -> bool {
         self.failed > 0
     }
