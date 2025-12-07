@@ -12,6 +12,8 @@ pub mod mcp;
 pub mod state;
 
 // Re-export commonly used types
-pub use jsonrpc::{JsonRpcMessage, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, RequestId};
+pub use jsonrpc::{
+    JsonRpcMessage, JsonRpcNotification, JsonRpcRequest, JsonRpcResponse, RequestId,
+};
 pub use mcp::{ClientCapabilities, Implementation, ServerCapabilities};
 pub use state::{ConnectionContext, ConnectionState};
