@@ -103,6 +103,7 @@ impl fmt::Display for ValidationCategory {
 pub struct ValidationRule {
     pub id: ValidationRuleId,
     pub name: String,
+    #[allow(dead_code)]
     pub description: String,
     pub category: ValidationCategory,
 }
@@ -225,6 +226,7 @@ pub fn get_all_rules() -> Vec<ValidationRule> {
 }
 
 /// Get rules by category
+#[allow(dead_code)]
 pub fn get_rules_by_category(category: ValidationCategory) -> Vec<ValidationRule> {
     get_all_rules()
         .into_iter()
@@ -233,6 +235,7 @@ pub fn get_rules_by_category(category: ValidationCategory) -> Vec<ValidationRule
 }
 
 /// Get a rule by ID
+#[allow(dead_code)]
 pub fn get_rule_by_id(id: ValidationRuleId) -> Option<ValidationRule> {
     get_all_rules().into_iter().find(|r| r.id == id)
 }
