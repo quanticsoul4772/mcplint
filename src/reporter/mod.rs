@@ -1,19 +1,24 @@
 //! Reporter - Output formatting and reporting
+//!
+//! Provides output formatting for scan results in various formats:
+//! - Text (human-readable console output)
+//! - JSON (machine-readable)
+//! - SARIF (GitHub/GitLab CI integration)
+
+#![allow(dead_code)] // Generic reporter types for future use
 
 pub mod sarif;
 
 use serde::Serialize;
 
-/// Format results for output
-#[allow(dead_code)]
+/// Trait for types that can be reported in multiple formats
 pub trait Reportable {
     fn to_text(&self) -> String;
     fn to_json(&self) -> anyhow::Result<String>;
     fn to_sarif(&self) -> anyhow::Result<String>;
 }
 
-/// Generic report wrapper
-#[allow(dead_code)]
+/// Generic report wrapper with metadata
 #[derive(Debug, Clone, Serialize)]
 pub struct Report<T: Serialize> {
     pub tool: String,
@@ -22,7 +27,6 @@ pub struct Report<T: Serialize> {
     pub data: T,
 }
 
-#[allow(dead_code)]
 impl<T: Serialize> Report<T> {
     pub fn new(data: T) -> Self {
         Self {

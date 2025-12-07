@@ -167,7 +167,10 @@ mod tests {
         assert_eq!(detect_transport_type("./server"), TransportType::Stdio);
         assert_eq!(detect_transport_type("python"), TransportType::Stdio);
         assert_eq!(detect_transport_type("npx"), TransportType::Stdio);
-        assert_eq!(detect_transport_type("/usr/bin/mcp-server"), TransportType::Stdio);
+        assert_eq!(
+            detect_transport_type("/usr/bin/mcp-server"),
+            TransportType::Stdio
+        );
     }
 
     #[test]
@@ -196,7 +199,10 @@ mod tests {
     #[test]
     fn transport_type_display() {
         assert_eq!(format!("{}", TransportType::Stdio), "stdio");
-        assert_eq!(format!("{}", TransportType::StreamableHttp), "streamable_http");
+        assert_eq!(
+            format!("{}", TransportType::StreamableHttp),
+            "streamable_http"
+        );
         assert_eq!(format!("{}", TransportType::SseLegacy), "sse_legacy");
     }
 }
