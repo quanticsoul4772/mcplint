@@ -8,6 +8,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 
 /// MCP transport abstraction
+#[allow(dead_code)]
 #[async_trait]
 pub trait Transport: Send + Sync {
     /// Send a JSON-RPC request and receive a response
@@ -21,6 +22,7 @@ pub trait Transport: Send + Sync {
 }
 
 /// Transport configuration
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct TransportConfig {
     pub timeout_secs: u64,

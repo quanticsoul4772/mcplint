@@ -98,6 +98,7 @@ impl ScanFindings {
 }
 
 /// Security scanner for MCP servers
+#[allow(dead_code)]
 pub struct SecurityScanner {
     server: String,
     args: Vec<String>,

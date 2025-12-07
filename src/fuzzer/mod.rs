@@ -87,6 +87,7 @@ impl FuzzResults {
 }
 
 /// Fuzzing engine for MCP servers
+#[allow(dead_code)]
 pub struct FuzzEngine {
     server: String,
     args: Vec<String>,

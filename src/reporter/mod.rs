@@ -5,6 +5,7 @@ pub mod sarif;
 use serde::Serialize;
 
 /// Format results for output
+#[allow(dead_code)]
 pub trait Reportable {
     fn to_text(&self) -> String;
     fn to_json(&self) -> anyhow::Result<String>;
@@ -12,6 +13,7 @@ pub trait Reportable {
 }
 
 /// Generic report wrapper
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct Report<T: Serialize> {
     pub tool: String,
@@ -20,6 +22,7 @@ pub struct Report<T: Serialize> {
     pub data: T,
 }
 
+#[allow(dead_code)]
 impl<T: Serialize> Report<T> {
     pub fn new(data: T) -> Self {
         Self {

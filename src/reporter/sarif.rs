@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// SARIF 2.1.0 compatible output
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifReport {
     #[serde(rename = "$schema")]
@@ -11,17 +12,20 @@ pub struct SarifReport {
     pub runs: Vec<SarifRun>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifRun {
     pub tool: SarifTool,
     pub results: Vec<SarifResult>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifTool {
     pub driver: SarifDriver,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifDriver {
     pub name: String,
@@ -31,6 +35,7 @@ pub struct SarifDriver {
     pub rules: Vec<SarifRule>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifRule {
     pub id: String,
@@ -43,16 +48,19 @@ pub struct SarifRule {
     pub default_configuration: SarifConfiguration,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifMessage {
     pub text: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifConfiguration {
     pub level: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifResult {
     #[serde(rename = "ruleId")]
@@ -62,23 +70,27 @@ pub struct SarifResult {
     pub locations: Vec<SarifLocation>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifLocation {
     #[serde(rename = "physicalLocation")]
     pub physical_location: SarifPhysicalLocation,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifPhysicalLocation {
     #[serde(rename = "artifactLocation")]
     pub artifact_location: SarifArtifactLocation,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SarifArtifactLocation {
     pub uri: String,
 }
 
+#[allow(dead_code)]
 impl SarifReport {
     pub fn new() -> Self {
         Self {

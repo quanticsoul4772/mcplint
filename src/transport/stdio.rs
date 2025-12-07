@@ -9,12 +9,14 @@ use tokio::process::{Child, Command};
 use super::{Transport, TransportConfig};
 
 /// Stdio transport for communicating with MCP servers via stdin/stdout
+#[allow(dead_code)]
 pub struct StdioTransport {
     child: Child,
     config: TransportConfig,
     request_id: u64,
 }
 
+#[allow(dead_code)]
 impl StdioTransport {
     /// Spawn a new MCP server process
     pub async fn spawn(command: &str, args: &[String], config: TransportConfig) -> Result<Self> {

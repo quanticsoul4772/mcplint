@@ -73,6 +73,7 @@ impl ValidationResults {
 }
 
 /// Protocol validator for MCP servers
+#[allow(dead_code)]
 pub struct ProtocolValidator {
     server: String,
     args: Vec<String>,
