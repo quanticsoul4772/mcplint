@@ -25,7 +25,14 @@ pub async fn run(
 
     println!("{}", "Starting fuzzing session...".cyan());
     println!("  Server: {}", server.yellow());
-    println!("  Duration: {}s", if duration == 0 { "unlimited".to_string() } else { duration.to_string() });
+    println!(
+        "  Duration: {}s",
+        if duration == 0 {
+            "unlimited".to_string()
+        } else {
+            duration.to_string()
+        }
+    );
     println!("  Workers: {}", workers);
     if let Some(ref c) = corpus {
         println!("  Corpus: {}", c);

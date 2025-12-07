@@ -73,7 +73,7 @@ pub fn run(output: &str, force: bool) -> Result<()> {
     info!("Generating config file: {}", output);
 
     let path = Path::new(output);
-    
+
     if path.exists() && !force {
         bail!(
             "Config file already exists: {}. Use --force to overwrite.",

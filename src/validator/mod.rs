@@ -33,11 +33,11 @@ pub enum CheckStatus {
 impl ValidationResults {
     pub fn print_text(&self) {
         use colored::Colorize;
-        
+
         println!("{}", "Validation Results".cyan().bold());
         println!("{}", "=".repeat(50));
         println!();
-        
+
         for check in &self.checks {
             let status = match check.status {
                 CheckStatus::Passed => "✓ PASS".green(),
@@ -50,7 +50,7 @@ impl ValidationResults {
                 println!("    {}", msg.dimmed());
             }
         }
-        
+
         println!();
         println!(
             "Summary: {} passed, {} failed, {} warnings",
@@ -59,12 +59,12 @@ impl ValidationResults {
             self.warnings.to_string().yellow()
         );
     }
-    
+
     pub fn print_json(&self) -> Result<()> {
         println!("{}", serde_json::to_string_pretty(self)?);
         Ok(())
     }
-    
+
     pub fn print_sarif(&self) -> Result<()> {
         // TODO: Implement SARIF output
         println!("SARIF output not yet implemented");
@@ -87,11 +87,11 @@ impl ProtocolValidator {
             timeout,
         }
     }
-    
+
     pub async fn validate(&self) -> Result<ValidationResults> {
         // TODO: Implement actual MCP protocol validation
         // For now, return placeholder results
-        
+
         let checks = vec![
             ValidationCheck {
                 name: "JSON-RPC 2.0 Compliance".to_string(),
@@ -122,7 +122,7 @@ impl ProtocolValidator {
                 duration_ms: 30,
             },
         ];
-        
+
         Ok(ValidationResults {
             server: self.server.clone(),
             passed: 4,

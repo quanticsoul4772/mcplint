@@ -244,8 +244,10 @@ async fn main() -> Result<()> {
             exclude,
             timeout,
         } => {
-            commands::scan::run(&server, &args, profile, include, exclude, timeout, cli.format)
-                .await?;
+            commands::scan::run(
+                &server, &args, profile, include, exclude, timeout, cli.format,
+            )
+            .await?;
         }
         Commands::Fuzz {
             server,
