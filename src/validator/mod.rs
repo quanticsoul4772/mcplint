@@ -1,20 +1,23 @@
 //! Protocol Validator - MCP protocol compliance checking
+//!
+//! This module implements the M1 milestone: Protocol Validator
+//! It validates MCP servers against the protocol specification.
 
-#![allow(dead_code)] // Validator types reserved for future implementation
+mod engine;
+mod rules;
+
+pub use engine::{
+    ValidationConfig, ValidationEngine, ValidationResult, ValidationResults, ValidationSeverity,
+};
+pub use rules::{ValidationCategory, ValidationRule, ValidationRuleId};
 
 use anyhow::Result;
+use colored::Colorize;
 use serde::{Deserialize, Serialize};
 
-/// Protocol validation results
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ValidationResults {
-    pub server: String,
-    pub passed: usize,
-    pub failed: usize,
-    pub warnings: usize,
-    pub checks: Vec<ValidationCheck>,
-}
+use crate::transport::TransportType;
 
+/// Protocol validation results (legacy structure for compatibility)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ValidationCheck {
     pub name: String,
@@ -32,53 +35,12 @@ pub enum CheckStatus {
     Skipped,
 }
 
-impl ValidationResults {
-    pub fn print_text(&self) {
-        use colored::Colorize;
-
-        println!("{}", "Validation Results".cyan().bold());
-        println!("{}", "=".repeat(50));
-        println!();
-
-        for check in &self.checks {
-            let status = match check.status {
-                CheckStatus::Passed => "✓ PASS".green(),
-                CheckStatus::Failed => "✗ FAIL".red(),
-                CheckStatus::Warning => "⚠ WARN".yellow(),
-                CheckStatus::Skipped => "- SKIP".dimmed(),
-            };
-            println!("  {} {}", status, check.name);
-            if let Some(ref msg) = check.message {
-                println!("    {}", msg.dimmed());
-            }
-        }
-
-        println!();
-        println!(
-            "Summary: {} passed, {} failed, {} warnings",
-            self.passed.to_string().green(),
-            self.failed.to_string().red(),
-            self.warnings.to_string().yellow()
-        );
-    }
-
-    pub fn print_json(&self) -> Result<()> {
-        println!("{}", serde_json::to_string_pretty(self)?);
-        Ok(())
-    }
-
-    pub fn print_sarif(&self) -> Result<()> {
-        // TODO: Implement SARIF output
-        println!("SARIF output not yet implemented");
-        Ok(())
-    }
-}
-
 /// Protocol validator for MCP servers
 pub struct ProtocolValidator {
     server: String,
     args: Vec<String>,
     timeout: u64,
+    transport_type: Option<TransportType>,
 }
 
 impl ProtocolValidator {
@@ -87,50 +49,122 @@ impl ProtocolValidator {
             server: server.to_string(),
             args: args.to_vec(),
             timeout,
+            transport_type: None,
         }
     }
 
+    pub fn with_transport_type(mut self, transport_type: TransportType) -> Self {
+        self.transport_type = Some(transport_type);
+        self
+    }
+
+    /// Run full protocol validation
     pub async fn validate(&self) -> Result<ValidationResults> {
-        // TODO: Implement actual MCP protocol validation
-        // For now, return placeholder results
+        // Create validation config
+        let config = ValidationConfig {
+            timeout_secs: self.timeout,
+            skip_categories: Vec::new(),
+            skip_rules: Vec::new(),
+            strict_mode: false,
+        };
 
-        let checks = vec![
-            ValidationCheck {
-                name: "JSON-RPC 2.0 Compliance".to_string(),
-                category: "protocol".to_string(),
-                status: CheckStatus::Passed,
-                message: None,
-                duration_ms: 15,
-            },
-            ValidationCheck {
-                name: "Initialize Handshake".to_string(),
-                category: "lifecycle".to_string(),
-                status: CheckStatus::Passed,
-                message: None,
-                duration_ms: 120,
-            },
-            ValidationCheck {
-                name: "Capability Negotiation".to_string(),
-                category: "lifecycle".to_string(),
-                status: CheckStatus::Passed,
-                message: None,
-                duration_ms: 45,
-            },
-            ValidationCheck {
-                name: "Tools List Response".to_string(),
-                category: "tools".to_string(),
-                status: CheckStatus::Passed,
-                message: None,
-                duration_ms: 30,
-            },
-        ];
+        // Create and run validation engine
+        let mut engine = ValidationEngine::new(config);
 
-        Ok(ValidationResults {
-            server: self.server.clone(),
-            passed: 4,
-            failed: 0,
-            warnings: 0,
-            checks,
-        })
+        // Connect to server and run validation
+        let results = engine
+            .validate_server(&self.server, &self.args, self.transport_type)
+            .await?;
+
+        tracing::info!(
+            "Validation completed: {} passed, {} failed, {} warnings",
+            results.passed,
+            results.failed,
+            results.warnings
+        );
+
+        Ok(results)
+    }
+}
+
+impl ValidationResults {
+    pub fn print_text(&self) {
+        println!("{}", "Validation Results".cyan().bold());
+        println!("{}", "=".repeat(60));
+        println!();
+
+        // Group by category
+        let mut by_category: std::collections::HashMap<&str, Vec<&ValidationResult>> =
+            std::collections::HashMap::new();
+        for result in &self.results {
+            by_category
+                .entry(result.category.as_str())
+                .or_default()
+                .push(result);
+        }
+
+        for (category, results) in by_category.iter() {
+            println!("  {} {}", "▸".cyan(), category.to_uppercase().bold());
+
+            for result in results {
+                let status = match result.severity {
+                    ValidationSeverity::Pass => "✓ PASS".green(),
+                    ValidationSeverity::Fail => "✗ FAIL".red(),
+                    ValidationSeverity::Warning => "⚠ WARN".yellow(),
+                    ValidationSeverity::Info => "ℹ INFO".blue(),
+                    ValidationSeverity::Skip => "- SKIP".dimmed(),
+                };
+
+                let duration = format!("({}ms)", result.duration_ms).dimmed();
+                println!("    {} {} {}", status, result.rule_id, duration);
+
+                if let Some(ref msg) = result.message {
+                    println!("      {}", msg.dimmed());
+                }
+
+                if !result.details.is_empty() {
+                    for detail in &result.details {
+                        println!("      • {}", detail.dimmed());
+                    }
+                }
+            }
+            println!();
+        }
+
+        println!("{}", "─".repeat(60));
+        println!(
+            "Summary: {} passed, {} failed, {} warnings",
+            self.passed.to_string().green(),
+            self.failed.to_string().red(),
+            self.warnings.to_string().yellow()
+        );
+
+        if self.failed > 0 {
+            println!(
+                "\n{}",
+                "Server failed protocol validation.".red().bold()
+            );
+        } else if self.warnings > 0 {
+            println!(
+                "\n{}",
+                "Server passed with warnings.".yellow()
+            );
+        } else {
+            println!(
+                "\n{}",
+                "Server passed all validation checks.".green().bold()
+            );
+        }
+    }
+
+    pub fn print_json(&self) -> Result<()> {
+        println!("{}", serde_json::to_string_pretty(self)?);
+        Ok(())
+    }
+
+    pub fn print_sarif(&self) -> Result<()> {
+        let sarif = crate::reporter::sarif::SarifReport::from_validation_results(self);
+        println!("{}", serde_json::to_string_pretty(&sarif)?);
+        Ok(())
     }
 }

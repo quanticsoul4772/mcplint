@@ -92,6 +92,91 @@ impl SarifReport {
             runs: vec![],
         }
     }
+
+    /// Create a SARIF report from validation results
+    pub fn from_validation_results(results: &crate::validator::ValidationResults) -> Self {
+        use crate::validator::ValidationSeverity;
+
+        // Collect unique rules from results
+        let mut rules: Vec<SarifRule> = Vec::new();
+        let mut seen_rules: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        for result in &results.results {
+            if !seen_rules.contains(&result.rule_id) {
+                seen_rules.insert(result.rule_id.clone());
+                rules.push(SarifRule {
+                    id: result.rule_id.clone(),
+                    name: result.rule_name.clone(),
+                    short_description: SarifMessage {
+                        text: result.rule_name.clone(),
+                    },
+                    full_description: SarifMessage {
+                        text: result
+                            .message
+                            .clone()
+                            .unwrap_or_else(|| result.rule_name.clone()),
+                    },
+                    default_configuration: SarifConfiguration {
+                        level: match result.severity {
+                            ValidationSeverity::Fail => "error".to_string(),
+                            ValidationSeverity::Warning => "warning".to_string(),
+                            _ => "note".to_string(),
+                        },
+                    },
+                });
+            }
+        }
+
+        // Convert results to SARIF results (only failures and warnings)
+        let sarif_results: Vec<SarifResult> = results
+            .results
+            .iter()
+            .filter(|r| {
+                matches!(
+                    r.severity,
+                    ValidationSeverity::Fail | ValidationSeverity::Warning
+                )
+            })
+            .map(|r| SarifResult {
+                rule_id: r.rule_id.clone(),
+                level: match r.severity {
+                    ValidationSeverity::Fail => "error".to_string(),
+                    ValidationSeverity::Warning => "warning".to_string(),
+                    _ => "note".to_string(),
+                },
+                message: SarifMessage {
+                    text: format!(
+                        "{}: {}",
+                        r.rule_name,
+                        r.message.clone().unwrap_or_default()
+                    ),
+                },
+                locations: vec![SarifLocation {
+                    physical_location: SarifPhysicalLocation {
+                        artifact_location: SarifArtifactLocation {
+                            uri: results.server.clone(),
+                        },
+                    },
+                }],
+            })
+            .collect();
+
+        Self {
+            schema: "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json".to_string(),
+            version: "2.1.0".to_string(),
+            runs: vec![SarifRun {
+                tool: SarifTool {
+                    driver: SarifDriver {
+                        name: "mcplint".to_string(),
+                        version: env!("CARGO_PKG_VERSION").to_string(),
+                        information_uri: "https://github.com/quanticsoul4772/mcplint".to_string(),
+                        rules,
+                    },
+                },
+                results: sarif_results,
+            }],
+        }
+    }
 }
 
 impl Default for SarifReport {
