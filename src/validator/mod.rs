@@ -9,7 +9,6 @@ mod rules;
 pub use engine::{
     ValidationConfig, ValidationEngine, ValidationResult, ValidationResults, ValidationSeverity,
 };
-pub use rules::ValidationRuleId;
 
 use anyhow::Result;
 use colored::Colorize;
