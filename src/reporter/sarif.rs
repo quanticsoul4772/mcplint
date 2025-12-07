@@ -145,11 +145,7 @@ impl SarifReport {
                     _ => "note".to_string(),
                 },
                 message: SarifMessage {
-                    text: format!(
-                        "{}: {}",
-                        r.rule_name,
-                        r.message.clone().unwrap_or_default()
-                    ),
+                    text: format!("{}: {}", r.rule_name, r.message.clone().unwrap_or_default()),
                 },
                 locations: vec![SarifLocation {
                     physical_location: SarifPhysicalLocation {

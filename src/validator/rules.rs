@@ -269,20 +269,26 @@ mod tests {
     fn get_protocol_rules() {
         let rules = get_rules_by_category(ValidationCategory::Protocol);
         assert!(!rules.is_empty());
-        assert!(rules.iter().all(|r| r.category == ValidationCategory::Protocol));
+        assert!(rules
+            .iter()
+            .all(|r| r.category == ValidationCategory::Protocol));
     }
 
     #[test]
     fn get_schema_rules() {
         let rules = get_rules_by_category(ValidationCategory::Schema);
         assert!(!rules.is_empty());
-        assert!(rules.iter().all(|r| r.category == ValidationCategory::Schema));
+        assert!(rules
+            .iter()
+            .all(|r| r.category == ValidationCategory::Schema));
     }
 
     #[test]
     fn get_sequence_rules() {
         let rules = get_rules_by_category(ValidationCategory::Sequence);
         assert!(!rules.is_empty());
-        assert!(rules.iter().all(|r| r.category == ValidationCategory::Sequence));
+        assert!(rules
+            .iter()
+            .all(|r| r.category == ValidationCategory::Sequence));
     }
 }

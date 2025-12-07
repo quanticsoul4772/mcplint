@@ -140,15 +140,9 @@ impl ValidationResults {
         );
 
         if self.failed > 0 {
-            println!(
-                "\n{}",
-                "Server failed protocol validation.".red().bold()
-            );
+            println!("\n{}", "Server failed protocol validation.".red().bold());
         } else if self.warnings > 0 {
-            println!(
-                "\n{}",
-                "Server passed with warnings.".yellow()
-            );
+            println!("\n{}", "Server passed with warnings.".yellow());
         } else {
             println!(
                 "\n{}",
