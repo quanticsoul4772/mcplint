@@ -736,14 +736,7 @@ impl ScanEngine {
     fn check_resource_consumption(&self, ctx: &ServerContext) -> Option<Finding> {
         // Check for tools that might consume unbounded resources
         let resource_patterns = [
-            "download",
-            "upload",
-            "stream",
-            "bulk",
-            "batch",
-            "all",
-            "export",
-            "import",
+            "download", "upload", "stream", "bulk", "batch", "all", "export", "import",
         ];
 
         for tool in &ctx.tools {
@@ -863,12 +856,7 @@ mod tests {
     fn scan_results_counting() {
         let mut results = ScanResults::new("test", ScanProfile::Standard);
 
-        results.add_finding(Finding::new(
-            "TEST-001",
-            Severity::Critical,
-            "Test",
-            "Test",
-        ));
+        results.add_finding(Finding::new("TEST-001", Severity::Critical, "Test", "Test"));
         results.add_finding(Finding::new("TEST-002", Severity::High, "Test", "Test"));
         results.add_finding(Finding::new("TEST-003", Severity::Medium, "Test", "Test"));
 

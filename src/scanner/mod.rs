@@ -111,7 +111,8 @@ impl ScanResults {
                 }
 
                 if !finding.references.is_empty() {
-                    let refs: Vec<String> = finding.references.iter().map(|r| r.id.clone()).collect();
+                    let refs: Vec<String> =
+                        finding.references.iter().map(|r| r.id.clone()).collect();
                     println!("    References: {}", refs.join(", ").dimmed());
                 }
 
@@ -132,7 +133,9 @@ impl ScanResults {
         if self.has_critical_or_high() {
             println!(
                 "\n{}",
-                "Server has critical/high severity vulnerabilities!".red().bold()
+                "Server has critical/high severity vulnerabilities!"
+                    .red()
+                    .bold()
             );
         } else if self.total_findings() > 0 {
             println!("\n{}", "Server has security issues to address.".yellow());

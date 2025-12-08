@@ -203,9 +203,9 @@ impl ScanProfile {
     pub fn included_rules(&self) -> Vec<&'static str> {
         match self {
             ScanProfile::Quick => vec![
-                "MCP-INJ-001", // Command injection
-                "MCP-INJ-003", // Path traversal
-                "MCP-AUTH-001", // Missing auth
+                "MCP-INJ-001",   // Command injection
+                "MCP-INJ-003",   // Path traversal
+                "MCP-AUTH-001",  // Missing auth
                 "MCP-TRANS-001", // Unencrypted HTTP
                 "MCP-PROTO-001", // Tool poisoning
             ],
@@ -279,8 +279,7 @@ mod tests {
 
     #[test]
     fn config_filtering() {
-        let config = ScanConfig::default()
-            .with_exclude_rules(vec!["MCP-INJ-001".to_string()]);
+        let config = ScanConfig::default().with_exclude_rules(vec!["MCP-INJ-001".to_string()]);
 
         assert!(!config.should_run_rule("MCP-INJ-001", "injection"));
         assert!(config.should_run_rule("MCP-INJ-002", "injection"));
@@ -288,8 +287,7 @@ mod tests {
 
     #[test]
     fn category_filtering() {
-        let config = ScanConfig::default()
-            .with_include_categories(vec!["injection".to_string()]);
+        let config = ScanConfig::default().with_include_categories(vec!["injection".to_string()]);
 
         assert!(config.should_run_rule("MCP-INJ-001", "injection"));
         assert!(!config.should_run_rule("MCP-AUTH-001", "auth"));
