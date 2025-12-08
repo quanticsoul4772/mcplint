@@ -30,6 +30,7 @@ pub mod key;
 pub mod memory;
 #[cfg(feature = "redis")]
 pub mod redis;
+pub mod rug_pull;
 pub mod stats;
 
 // Re-exports for convenience
@@ -41,8 +42,9 @@ pub use memory::MemoryCache;
 #[cfg(feature = "redis")]
 pub use redis::RedisCache;
 pub use stats::{CacheStats, CategoryStats};
+pub use rug_pull::{detect_rug_pull, RugPullDetection, RugPullSeverity, ToolHashRecord};
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{de::DeserializeOwned, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
