@@ -185,6 +185,27 @@ enum Commands {
         /// Random seed for reproducibility
         #[arg(long)]
         seed: Option<u64>,
+
+        // Resource limit options
+        /// Maximum memory usage (e.g., "512MB", "1GB")
+        #[arg(long)]
+        max_memory: Option<String>,
+
+        /// Maximum time limit (e.g., "5m", "1h")
+        #[arg(long)]
+        max_time: Option<String>,
+
+        /// Maximum corpus size (number of entries)
+        #[arg(long)]
+        max_corpus: Option<usize>,
+
+        /// Maximum server restarts
+        #[arg(long)]
+        max_restarts: Option<u32>,
+
+        /// Disable all resource limits (use with caution)
+        #[arg(long)]
+        no_limits: bool,
     },
 
     /// Generate a configuration file
@@ -367,6 +388,28 @@ enum ScanProfile {
     Enterprise,
 }
 
+impl From<ScanProfile> for scanner::ScanProfile {
+    fn from(p: ScanProfile) -> Self {
+        match p {
+            ScanProfile::Quick => scanner::ScanProfile::Quick,
+            ScanProfile::Standard => scanner::ScanProfile::Standard,
+            ScanProfile::Full => scanner::ScanProfile::Full,
+            ScanProfile::Enterprise => scanner::ScanProfile::Enterprise,
+        }
+    }
+}
+
+impl ScanProfile {
+    fn as_str(self) -> &'static str {
+        match self {
+            ScanProfile::Quick => "Quick",
+            ScanProfile::Standard => "Standard",
+            ScanProfile::Full => "Full",
+            ScanProfile::Enterprise => "Enterprise",
+        }
+    }
+}
+
 fn init_logging(verbosity: u8, quiet: bool) {
     let filter = if quiet {
         EnvFilter::new("error")
@@ -439,9 +482,9 @@ async fn main() -> Result<()> {
             diff_only,
             fail_on,
         } => {
-            commands::scan::run(
-                &server,
-                &args,
+            let scan_args = commands::scan::ScanArgs::new(
+                server,
+                args,
                 profile,
                 include,
                 exclude,
@@ -455,8 +498,8 @@ async fn main() -> Result<()> {
                 update_baseline,
                 diff_only,
                 fail_on,
-            )
-            .await?;
+            );
+            commands::scan::run(scan_args).await?;
         }
         Commands::Fuzz {
             server,
@@ -468,12 +511,30 @@ async fn main() -> Result<()> {
             tools,
             profile,
             seed,
+            max_memory,
+            max_time,
+            max_corpus,
+            max_restarts,
+            no_limits,
         } => {
-            commands::fuzz::run(
-                &server, &args, duration, corpus, iterations, workers, tools, profile, seed,
+            let fuzz_args = commands::fuzz::FuzzArgs::new(
+                server,
+                args,
+                duration,
+                corpus,
+                iterations,
+                workers,
+                tools,
+                profile,
+                seed,
                 cli.format,
-            )
-            .await?;
+                max_memory,
+                max_time,
+                max_corpus,
+                max_restarts,
+                no_limits,
+            );
+            commands::fuzz::run(fuzz_args).await?;
         }
         Commands::Init { output, force } => {
             commands::init::run(&output, force)?;
@@ -539,13 +600,7 @@ async fn main() -> Result<()> {
             debounce,
             clear,
         } => {
-            let scan_profile = match profile {
-                ScanProfile::Quick => scanner::ScanProfile::Quick,
-                ScanProfile::Standard => scanner::ScanProfile::Standard,
-                ScanProfile::Full => scanner::ScanProfile::Full,
-                ScanProfile::Enterprise => scanner::ScanProfile::Enterprise,
-            };
-            commands::watch::run(&server, &args, watch, scan_profile, debounce, clear).await?;
+            commands::watch::run(&server, &args, watch, profile.into(), debounce, clear).await?;
         }
     }
 

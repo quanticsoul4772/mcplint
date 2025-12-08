@@ -18,6 +18,7 @@ use super::corpus::{
 use super::coverage::CoverageTracker;
 use super::detection::{CrashAnalysis, CrashDetector, FuzzResponse};
 use super::input::FuzzInput;
+use super::limits::{FuzzStats, LimitExceeded, ResourceMonitor};
 use super::mutation::strategy::MutationStrategy;
 use super::mutation::MutationEngine;
 use super::{FuzzCrash, FuzzResults};
@@ -38,6 +39,8 @@ pub struct FuzzSession {
     detector: CrashDetector,
     /// Coverage tracker
     coverage: CoverageTracker,
+    /// Resource monitor for limit enforcement
+    resource_monitor: ResourceMonitor,
     /// MCP client (lazily initialized)
     client: Option<McpClient>,
     /// Session start time
@@ -50,6 +53,10 @@ pub struct FuzzSession {
     connection_failures: u32,
     /// Max consecutive connection failures before stopping
     max_connection_failures: u32,
+    /// Server restart count (for resource tracking)
+    restarts: u32,
+    /// Reason for stopping (if limits exceeded)
+    stop_reason: Option<LimitExceeded>,
 }
 
 impl FuzzSession {
@@ -71,6 +78,9 @@ impl FuzzSession {
 
         let timeout_ms = config.request_timeout_ms;
 
+        // Create resource monitor from config limits
+        let resource_monitor = ResourceMonitor::new(config.resource_limits.clone());
+
         Self {
             server: server.to_string(),
             args: args.to_vec(),
@@ -79,12 +89,15 @@ impl FuzzSession {
             corpus,
             detector: CrashDetector::new(timeout_ms),
             coverage: CoverageTracker::new(),
+            resource_monitor,
             client: None,
             start_time: None,
             iterations: 0,
             tools: Vec::new(),
             connection_failures: 0,
             max_connection_failures: 5,
+            restarts: 0,
+            stop_reason: None,
         }
     }
 
@@ -176,12 +189,22 @@ impl FuzzSession {
     /// Reconnect after connection failure
     async fn reconnect(&mut self) -> Result<()> {
         self.connection_failures += 1;
+        self.restarts += 1;
 
         if self.connection_failures >= self.max_connection_failures {
             anyhow::bail!(
                 "Too many consecutive connection failures ({})",
                 self.connection_failures
             );
+        }
+
+        // Check restart limit before attempting
+        let stats = self.get_fuzz_stats();
+        if let Some(exceeded) = self.resource_monitor.check(&stats) {
+            if matches!(exceeded, LimitExceeded::Restarts(_)) {
+                self.stop_reason = Some(exceeded.clone());
+                anyhow::bail!("Restart limit exceeded: {}", exceeded);
+            }
         }
 
         // Wait before reconnecting
@@ -407,22 +430,39 @@ impl FuzzSession {
     }
 
     /// Check if session should stop
-    fn should_stop(&self) -> bool {
+    fn should_stop(&mut self) -> bool {
         let Some(start) = self.start_time else {
             return false;
         };
 
-        // Duration limit
+        // Check legacy duration limit (for backwards compatibility)
         if self.config.duration_secs > 0 && start.elapsed().as_secs() >= self.config.duration_secs {
             return true;
         }
 
-        // Iteration limit
+        // Check legacy iteration limit (for backwards compatibility)
         if self.config.max_iterations > 0 && self.iterations >= self.config.max_iterations {
             return true;
         }
 
+        // Check resource limits
+        let stats = self.get_fuzz_stats();
+        if let Some(exceeded) = self.resource_monitor.check(&stats) {
+            tracing::info!("Resource limit exceeded: {}", exceeded);
+            self.stop_reason = Some(exceeded);
+            return true;
+        }
+
         false
+    }
+
+    /// Get current fuzzing statistics for resource monitoring
+    fn get_fuzz_stats(&self) -> FuzzStats {
+        FuzzStats {
+            executions: self.iterations,
+            corpus_size: self.corpus.corpus_size(),
+            restarts: self.restarts,
+        }
     }
 
     /// Create progress bar

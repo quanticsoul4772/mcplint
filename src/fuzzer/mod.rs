@@ -36,6 +36,7 @@ pub mod corpus;
 pub mod coverage;
 pub mod detection;
 pub mod input;
+pub mod limits;
 pub mod mutation;
 pub mod session;
 
@@ -48,6 +49,11 @@ pub use coverage::CoverageStats;
 pub use detection::{CrashAnalysis, CrashDetector, FuzzResponse};
 #[allow(unused_imports)]
 pub use input::FuzzInput;
+#[allow(unused_imports)]
+pub use limits::{
+    format_bytes, format_duration, FuzzStats, LimitExceeded, LimitType, ResourceLimits,
+    ResourceMonitor, UsageSummary,
+};
 #[allow(unused_imports)]
 pub use mutation::MutationEngine;
 pub use session::FuzzSession;

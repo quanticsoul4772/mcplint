@@ -4,6 +4,7 @@ use anyhow::Result;
 use colored::Colorize;
 
 use crate::rules::RuleRegistry;
+use crate::scanner::Severity;
 
 pub fn run(category: Option<String>, verbose: bool) -> Result<()> {
     let registry = RuleRegistry::default();
@@ -33,13 +34,7 @@ pub fn run(category: Option<String>, verbose: bool) -> Result<()> {
         println!();
 
         for rule in cat_rules {
-            let severity_colored = match rule.severity.as_str() {
-                "critical" => rule.severity.red().bold(),
-                "high" => rule.severity.red(),
-                "medium" => rule.severity.yellow(),
-                "low" => rule.severity.blue(),
-                _ => rule.severity.normal(),
-            };
+            let severity_colored = Severity::colored_from_str(&rule.severity);
 
             println!("  {} [{}] {}", rule.id.green(), severity_colored, rule.name);
 
