@@ -441,8 +441,8 @@ impl AiConfig {
 
     /// Load config from a specific path
     fn load_from_path(path: &std::path::Path) -> Result<Self, ConfigLoadError> {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| ConfigLoadError::ReadError(e.to_string()))?;
+        let content =
+            std::fs::read_to_string(path).map_err(|e| ConfigLoadError::ReadError(e.to_string()))?;
 
         Self::parse_toml(&content)
     }
@@ -496,11 +496,17 @@ impl AiConfig {
         }
 
         // Parse rate limits
-        if let Some(rpm) = ai_section.get("rate_limit_rpm").and_then(|v| v.as_integer()) {
+        if let Some(rpm) = ai_section
+            .get("rate_limit_rpm")
+            .and_then(|v| v.as_integer())
+        {
             config.rate_limit_rpm = rpm as u32;
         }
 
-        if let Some(tpm) = ai_section.get("rate_limit_tpm").and_then(|v| v.as_integer()) {
+        if let Some(tpm) = ai_section
+            .get("rate_limit_tpm")
+            .and_then(|v| v.as_integer())
+        {
             config.rate_limit_tpm = tpm as u32;
         }
 
@@ -597,7 +603,10 @@ mod tests {
 
     #[test]
     fn provider_parsing() {
-        assert_eq!(AiProvider::from_str("anthropic"), Some(AiProvider::Anthropic));
+        assert_eq!(
+            AiProvider::from_str("anthropic"),
+            Some(AiProvider::Anthropic)
+        );
         assert_eq!(AiProvider::from_str("OPENAI"), Some(AiProvider::OpenAI));
         assert_eq!(AiProvider::from_str("local"), Some(AiProvider::Ollama));
         assert_eq!(AiProvider::from_str("invalid"), None);
@@ -605,8 +614,14 @@ mod tests {
 
     #[test]
     fn audience_parsing() {
-        assert_eq!(AudienceLevel::from_str("beginner"), Some(AudienceLevel::Beginner));
-        assert_eq!(AudienceLevel::from_str("EXPERT"), Some(AudienceLevel::Expert));
+        assert_eq!(
+            AudienceLevel::from_str("beginner"),
+            Some(AudienceLevel::Beginner)
+        );
+        assert_eq!(
+            AudienceLevel::from_str("EXPERT"),
+            Some(AudienceLevel::Expert)
+        );
         assert_eq!(AudienceLevel::from_str("invalid"), None);
     }
 

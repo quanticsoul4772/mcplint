@@ -4,8 +4,8 @@
 //! Note: Most tests use mocked responses to avoid API dependencies.
 
 use mcplint::ai::{
-    AiConfig, AiProviderType, AudienceLevel, ExplainEngine, ExplanationContext,
-    Likelihood, VulnerabilityExplanation,
+    AiConfig, AiProviderType, AudienceLevel, ExplainEngine, ExplanationContext, Likelihood,
+    VulnerabilityExplanation,
 };
 use mcplint::scanner::{Evidence, Finding, Severity};
 
@@ -197,7 +197,10 @@ fn test_provider_from_string() {
         AiProviderType::from_str("openai"),
         Some(AiProviderType::OpenAI)
     );
-    assert_eq!(AiProviderType::from_str("gpt"), Some(AiProviderType::OpenAI));
+    assert_eq!(
+        AiProviderType::from_str("gpt"),
+        Some(AiProviderType::OpenAI)
+    );
     assert_eq!(
         AiProviderType::from_str("ollama"),
         Some(AiProviderType::Ollama)

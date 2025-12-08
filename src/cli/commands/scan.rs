@@ -145,11 +145,7 @@ pub async fn run(
         let findings: Vec<_> = results.findings.iter().take(5).collect();
 
         for finding in &findings {
-            println!(
-                "  {} {}",
-                "▶".cyan(),
-                finding.rule_id.yellow()
-            );
+            println!("  {} {}", "▶".cyan(), finding.rule_id.yellow());
 
             match explain_engine.explain(finding).await {
                 Ok(explanation) => {

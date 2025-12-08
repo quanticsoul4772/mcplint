@@ -135,7 +135,11 @@ impl ExplainEngine {
     }
 
     /// Try to get an explanation from cache
-    async fn get_cached(&self, finding: &Finding, context: &ExplanationContext) -> Option<ExplanationResponse> {
+    async fn get_cached(
+        &self,
+        finding: &Finding,
+        context: &ExplanationContext,
+    ) -> Option<ExplanationResponse> {
         let cache = self.cache.as_ref()?;
         let key = self.cache_key(finding, context);
 
@@ -154,7 +158,12 @@ impl ExplainEngine {
     }
 
     /// Store an explanation in cache
-    async fn store_cached(&self, finding: &Finding, context: &ExplanationContext, response: &ExplanationResponse) {
+    async fn store_cached(
+        &self,
+        finding: &Finding,
+        context: &ExplanationContext,
+        response: &ExplanationResponse,
+    ) {
         if let Some(cache) = &self.cache {
             let key = self.cache_key(finding, context);
             if let Err(e) = cache.set(&key, response).await {
@@ -165,7 +174,8 @@ impl ExplainEngine {
 
     /// Explain a single finding
     pub async fn explain(&self, finding: &Finding) -> Result<ExplanationResponse> {
-        self.explain_with_context(finding, &self.default_context).await
+        self.explain_with_context(finding, &self.default_context)
+            .await
     }
 
     /// Explain a finding with custom context

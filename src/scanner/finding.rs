@@ -6,7 +6,19 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// Severity level for security findings
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, clap::ValueEnum)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    clap::ValueEnum,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     Info,

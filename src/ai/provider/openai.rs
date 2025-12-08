@@ -110,11 +110,10 @@ impl OpenAiProvider {
         response_time_ms: u64,
         tokens_used: u32,
     ) -> Result<ExplanationResponse> {
-        let parsed: ParsedExplanation = serde_json::from_str(response_text).map_err(|e| {
-            AiProviderError::ParseError {
+        let parsed: ParsedExplanation =
+            serde_json::from_str(response_text).map_err(|e| AiProviderError::ParseError {
                 message: format!("Failed to parse AI response: {}", e),
-            }
-        })?;
+            })?;
 
         let explanation = VulnerabilityExplanation {
             summary: parsed.explanation.summary,
@@ -226,10 +225,7 @@ impl AiProvider for OpenAiProvider {
             .map(|c| c.message.content.as_str())
             .unwrap_or("");
 
-        let tokens_used = response
-            .usage
-            .map(|u| u.total_tokens)
-            .unwrap_or(0);
+        let tokens_used = response.usage.map(|u| u.total_tokens).unwrap_or(0);
         let response_time_ms = start.elapsed().as_millis() as u64;
 
         self.parse_response(finding, response_text, response_time_ms, tokens_used)
@@ -247,8 +243,11 @@ impl AiProvider for OpenAiProvider {
             "",
         );
 
-        let prompt =
-            PromptBuilder::build_followup_prompt(&finding, &explanation.explanation.summary, question);
+        let prompt = PromptBuilder::build_followup_prompt(
+            &finding,
+            &explanation.explanation.summary,
+            question,
+        );
 
         let messages = vec![
             ChatMessage {

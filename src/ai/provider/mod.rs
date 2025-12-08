@@ -60,7 +60,9 @@ pub trait AiProvider: Send + Sync {
         let response = self.explain_finding(finding, context).await?;
 
         // Send the complete response as a single chunk
-        let _ = sender.send(StreamChunk::text(&response.explanation.summary)).await;
+        let _ = sender
+            .send(StreamChunk::text(&response.explanation.summary))
+            .await;
         let _ = sender.send(StreamChunk::Done).await;
 
         Ok(response)
