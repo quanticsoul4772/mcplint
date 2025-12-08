@@ -1,0 +1,458 @@
+//! Corpus Management - Seed corpus and crash/hang storage
+//!
+//! Manages the fuzzing corpus including seed inputs, discovered crashes,
+//! hangs, and interesting inputs that trigger new coverage.
+
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use super::input::FuzzInput;
+
+/// Manages fuzzing corpus (seeds, crashes, interesting inputs)
+pub struct CorpusManager {
+    /// Base path for corpus storage
+    base_path: Option<PathBuf>,
+    /// Seed inputs
+    seeds: Vec<FuzzInput>,
+    /// Recorded crashes
+    crashes: Vec<CrashRecord>,
+    /// Recorded hangs/timeouts
+    hangs: Vec<HangRecord>,
+    /// Interesting inputs (new coverage)
+    interesting: Vec<InterestingInput>,
+    /// Current index for round-robin seed selection
+    current_index: usize,
+    /// Seen input hashes (for deduplication)
+    seen_hashes: HashSet<u64>,
+}
+
+/// Record of a crash discovered during fuzzing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CrashRecord {
+    /// Unique crash ID
+    pub id: String,
+    /// Input that caused the crash
+    pub input: FuzzInput,
+    /// Type of crash
+    pub crash_type: CrashType,
+    /// Error message
+    pub error_message: String,
+    /// Stack trace if available
+    pub stack_trace: Option<String>,
+    /// Iteration when crash occurred
+    pub iteration: u64,
+    /// Timestamp
+    pub timestamp: String,
+}
+
+/// Record of a hang/timeout discovered during fuzzing
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HangRecord {
+    /// Unique hang ID
+    pub id: String,
+    /// Input that caused the hang
+    pub input: FuzzInput,
+    /// Timeout duration in milliseconds
+    pub timeout_ms: u64,
+    /// Iteration when hang occurred
+    pub iteration: u64,
+    /// Timestamp
+    pub timestamp: String,
+}
+
+/// An input that triggered new coverage
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InterestingInput {
+    /// Unique ID
+    pub id: String,
+    /// The input
+    pub input: FuzzInput,
+    /// Why it's interesting
+    pub reason: InterestingReason,
+    /// Coverage hash that was new
+    pub coverage_hash: u64,
+    /// Iteration when discovered
+    pub iteration: u64,
+}
+
+/// Types of crashes
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CrashType {
+    /// Process panicked
+    Panic,
+    /// Segmentation fault
+    Segfault,
+    /// Out of memory
+    OutOfMemory,
+    /// Connection dropped unexpectedly
+    ConnectionDrop,
+    /// Assertion failure
+    AssertionFailure,
+    /// Unknown crash type
+    Unknown,
+}
+
+impl CrashType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CrashType::Panic => "panic",
+            CrashType::Segfault => "segfault",
+            CrashType::OutOfMemory => "oom",
+            CrashType::ConnectionDrop => "connection_drop",
+            CrashType::AssertionFailure => "assertion",
+            CrashType::Unknown => "unknown",
+        }
+    }
+}
+
+impl std::fmt::Display for CrashType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+/// Why an input is interesting
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InterestingReason {
+    /// Triggered new code path
+    NewCoverage,
+    /// Got unexpected success
+    UnexpectedSuccess,
+    /// Got new error code
+    NewErrorCode,
+    /// Protocol violation response
+    ProtocolViolation,
+}
+
+impl Default for CorpusManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl CorpusManager {
+    /// Create a new corpus manager
+    pub fn new() -> Self {
+        Self {
+            base_path: None,
+            seeds: Vec::new(),
+            crashes: Vec::new(),
+            hangs: Vec::new(),
+            interesting: Vec::new(),
+            current_index: 0,
+            seen_hashes: HashSet::new(),
+        }
+    }
+
+    /// Create with a base path for persistence
+    pub fn with_path(path: PathBuf) -> Self {
+        Self {
+            base_path: Some(path),
+            seeds: Vec::new(),
+            crashes: Vec::new(),
+            hangs: Vec::new(),
+            interesting: Vec::new(),
+            current_index: 0,
+            seen_hashes: HashSet::new(),
+        }
+    }
+
+    /// Initialize corpus with default seeds
+    pub fn initialize(&mut self) -> Result<()> {
+        self.generate_default_seeds();
+
+        // Load existing corpus if path is set
+        if let Some(path) = self.base_path.clone() {
+            self.load_from_disk(&path)?;
+        }
+
+        Ok(())
+    }
+
+    /// Generate default seed corpus
+    fn generate_default_seeds(&mut self) {
+        // Valid MCP message seeds
+        self.seeds.push(FuzzInput::initialize());
+        self.seeds.push(FuzzInput::tools_list());
+        self.seeds.push(FuzzInput::resources_list());
+        self.seeds.push(FuzzInput::prompts_list());
+        self.seeds.push(FuzzInput::ping());
+
+        // Edge case seeds
+        self.seeds.push(FuzzInput::empty_params());
+        self.seeds.push(FuzzInput::null_id());
+        self.seeds.push(FuzzInput::string_id("test-id-123"));
+
+        // Tool call with various argument patterns
+        self.seeds
+            .push(FuzzInput::tool_call("test_tool", serde_json::json!({})));
+        self.seeds.push(FuzzInput::tool_call(
+            "test_tool",
+            serde_json::json!({"key": "value"}),
+        ));
+        self.seeds.push(FuzzInput::tool_call(
+            "test_tool",
+            serde_json::json!({"nested": {"key": "value"}}),
+        ));
+
+        // Resource reads
+        self.seeds
+            .push(FuzzInput::resources_read("file:///test.txt"));
+        self.seeds
+            .push(FuzzInput::resources_read("http://example.com"));
+
+        // Prompts
+        self.seeds.push(FuzzInput::prompts_get("test_prompt", None));
+        self.seeds.push(FuzzInput::prompts_get(
+            "test_prompt",
+            Some(serde_json::json!({"arg": "value"})),
+        ));
+    }
+
+    /// Load corpus from disk
+    fn load_from_disk(&mut self, _path: &Path) -> Result<()> {
+        // TODO: Implement corpus loading from disk
+        // For now, just use default seeds
+        Ok(())
+    }
+
+    /// Get the number of seeds
+    pub fn seed_count(&self) -> usize {
+        self.seeds.len()
+    }
+
+    /// Get next input to fuzz (round-robin through seeds + interesting)
+    pub fn next_input(&mut self) -> &FuzzInput {
+        // Combine seeds and interesting inputs
+        let total = self.seeds.len() + self.interesting.len();
+        if total == 0 {
+            // Fallback - should not happen after initialize()
+            self.seeds.push(FuzzInput::ping());
+            return &self.seeds[0];
+        }
+
+        let idx = self.current_index % total;
+        self.current_index = self.current_index.wrapping_add(1);
+
+        if idx < self.seeds.len() {
+            &self.seeds[idx]
+        } else {
+            &self.interesting[idx - self.seeds.len()].input
+        }
+    }
+
+    /// Add a custom seed input
+    pub fn add_seed(&mut self, input: FuzzInput) {
+        self.seeds.push(input);
+    }
+
+    /// Record a crash
+    pub fn record_crash(&mut self, record: CrashRecord) -> Result<()> {
+        // Save to disk if path is set
+        if let Some(base) = &self.base_path {
+            let crashes_dir = base.join("crashes");
+            fs::create_dir_all(&crashes_dir)?;
+
+            let filename = format!("crash_{}_{}.json", record.crash_type, record.id);
+            let filepath = crashes_dir.join(filename);
+            let json = serde_json::to_string_pretty(&record)?;
+            fs::write(filepath, json)?;
+        }
+
+        self.crashes.push(record);
+        Ok(())
+    }
+
+    /// Record a hang/timeout
+    pub fn record_hang(&mut self, record: HangRecord) -> Result<()> {
+        // Save to disk if path is set
+        if let Some(base) = &self.base_path {
+            let hangs_dir = base.join("hangs");
+            fs::create_dir_all(&hangs_dir)?;
+
+            let filename = format!("hang_{}.json", record.id);
+            let filepath = hangs_dir.join(filename);
+            let json = serde_json::to_string_pretty(&record)?;
+            fs::write(filepath, json)?;
+        }
+
+        self.hangs.push(record);
+        Ok(())
+    }
+
+    /// Record an interesting input (new coverage)
+    pub fn record_interesting(&mut self, record: InterestingInput) -> Result<()> {
+        // Check for duplicates
+        if self.seen_hashes.contains(&record.coverage_hash) {
+            return Ok(());
+        }
+        self.seen_hashes.insert(record.coverage_hash);
+
+        // Save to disk if path is set
+        if let Some(base) = &self.base_path {
+            let interesting_dir = base.join("interesting");
+            fs::create_dir_all(&interesting_dir)?;
+
+            let filename = format!("interesting_{}.json", record.id);
+            let filepath = interesting_dir.join(filename);
+            let json = serde_json::to_string_pretty(&record)?;
+            fs::write(filepath, json)?;
+        }
+
+        self.interesting.push(record);
+        Ok(())
+    }
+
+    /// Get all crashes
+    pub fn crashes(&self) -> &[CrashRecord] {
+        &self.crashes
+    }
+
+    /// Get all hangs
+    pub fn hangs(&self) -> &[HangRecord] {
+        &self.hangs
+    }
+
+    /// Get all interesting inputs
+    pub fn interesting(&self) -> &[InterestingInput] {
+        &self.interesting
+    }
+
+    /// Get crash count
+    pub fn crash_count(&self) -> usize {
+        self.crashes.len()
+    }
+
+    /// Get hang count
+    pub fn hang_count(&self) -> usize {
+        self.hangs.len()
+    }
+
+    /// Get interesting count
+    pub fn interesting_count(&self) -> usize {
+        self.interesting.len()
+    }
+
+    /// Create a crash record
+    pub fn create_crash_record(
+        input: FuzzInput,
+        crash_type: CrashType,
+        error_message: String,
+        stack_trace: Option<String>,
+        iteration: u64,
+    ) -> CrashRecord {
+        CrashRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            input,
+            crash_type,
+            error_message,
+            stack_trace,
+            iteration,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
+    /// Create a hang record
+    pub fn create_hang_record(input: FuzzInput, timeout_ms: u64, iteration: u64) -> HangRecord {
+        HangRecord {
+            id: uuid::Uuid::new_v4().to_string(),
+            input,
+            timeout_ms,
+            iteration,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+
+    /// Create an interesting input record
+    pub fn create_interesting_record(
+        input: FuzzInput,
+        reason: InterestingReason,
+        coverage_hash: u64,
+        iteration: u64,
+    ) -> InterestingInput {
+        InterestingInput {
+            id: uuid::Uuid::new_v4().to_string(),
+            input,
+            reason,
+            coverage_hash,
+            iteration,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_seeds() {
+        let mut corpus = CorpusManager::new();
+        corpus.initialize().unwrap();
+
+        assert!(corpus.seed_count() > 0);
+    }
+
+    #[test]
+    fn round_robin_selection() {
+        let mut corpus = CorpusManager::new();
+        corpus.initialize().unwrap();
+
+        let seed_count = corpus.seed_count();
+        let mut methods = std::collections::HashSet::new();
+
+        // Get more inputs than seeds to ensure round-robin
+        for _ in 0..(seed_count * 2) {
+            let input = corpus.next_input();
+            methods.insert(input.method.clone());
+        }
+
+        // Should have seen multiple different methods
+        assert!(methods.len() > 1);
+    }
+
+    #[test]
+    fn crash_recording() {
+        let mut corpus = CorpusManager::new();
+        corpus.initialize().unwrap();
+
+        let crash = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::Panic,
+            "test panic".to_string(),
+            None,
+            1,
+        );
+
+        corpus.record_crash(crash).unwrap();
+        assert_eq!(corpus.crash_count(), 1);
+    }
+
+    #[test]
+    fn interesting_deduplication() {
+        let mut corpus = CorpusManager::new();
+        corpus.initialize().unwrap();
+
+        let record1 = CorpusManager::create_interesting_record(
+            FuzzInput::ping(),
+            InterestingReason::NewCoverage,
+            12345,
+            1,
+        );
+
+        let record2 = CorpusManager::create_interesting_record(
+            FuzzInput::tools_list(),
+            InterestingReason::NewCoverage,
+            12345, // Same hash
+            2,
+        );
+
+        corpus.record_interesting(record1).unwrap();
+        corpus.record_interesting(record2).unwrap();
+
+        // Should only have one (deduplicated by hash)
+        assert_eq!(corpus.interesting_count(), 1);
+    }
+}
