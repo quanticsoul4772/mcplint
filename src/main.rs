@@ -19,6 +19,7 @@ mod transport;
 mod validator;
 
 use cli::commands;
+use fuzzer::FuzzProfile;
 
 /// MCPLint - Security testing for MCP servers
 #[derive(Parser)]
@@ -130,12 +131,20 @@ enum Commands {
         iterations: u64,
 
         /// Number of parallel workers
-        #[arg(short, long, default_value = "4")]
+        #[arg(short = 'W', long, default_value = "4")]
         workers: usize,
 
         /// Focus on specific tools
         #[arg(long)]
         tools: Option<Vec<String>>,
+
+        /// Fuzzing profile (quick, standard, intensive, ci)
+        #[arg(short, long, default_value = "standard")]
+        profile: FuzzProfile,
+
+        /// Random seed for reproducibility
+        #[arg(long)]
+        seed: Option<u64>,
     },
 
     /// Generate a configuration file
@@ -258,9 +267,12 @@ async fn main() -> Result<()> {
             iterations,
             workers,
             tools,
+            profile,
+            seed,
         } => {
             commands::fuzz::run(
-                &server, &args, duration, corpus, iterations, workers, tools, cli.format,
+                &server, &args, duration, corpus, iterations, workers, tools, profile, seed,
+                cli.format,
             )
             .await?;
         }
