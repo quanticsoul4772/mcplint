@@ -3,9 +3,12 @@
 //! This module implements the M2 milestone: Security Scanner
 //! It scans MCP servers for security vulnerabilities using pattern-based detection.
 
+mod checks;
 mod context;
 mod engine;
 mod finding;
+mod helpers;
+mod results;
 pub mod rules;
 
 pub use context::{ScanConfig, ScanProfile};

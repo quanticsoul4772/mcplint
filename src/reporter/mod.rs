@@ -16,6 +16,7 @@ pub mod junit;
 pub mod sarif;
 
 pub use gitlab::generate_gitlab;
+#[allow(unused_imports)] // Public API for programmatic HTML generation
 pub use html::generate_html;
 pub use junit::generate_junit;
 

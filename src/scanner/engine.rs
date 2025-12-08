@@ -13,7 +13,10 @@ use crate::transport::{connect_with_type, TransportConfig, TransportType};
 
 use super::context::{ScanConfig, ScanProfile, ServerContext};
 use super::finding::{Evidence, Finding, FindingLocation, Reference, Severity};
-use super::rules::{SchemaPoisoningDetector, ToolInjectionDetector, UnicodeHiddenDetector};
+use super::rules::{
+    OAuthAbuseDetector, SchemaPoisoningDetector, ToolInjectionDetector, ToolShadowingDetector,
+    UnicodeHiddenDetector,
+};
 
 /// Results from a security scan
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -790,6 +793,39 @@ impl ScanEngine {
             }
         }
 
+        // MCP-SEC-041: Cross-Server Tool Shadowing
+        if self.should_run("MCP-SEC-041", "protocol") {
+            results.total_checks += 1;
+            let detector = ToolShadowingDetector::new();
+            // Pass server name to help identify legitimate tool sources
+            let server_name = Some(ctx.server_name.as_str());
+            let findings = detector.check_tools(&ctx.tools, server_name);
+            for finding in findings {
+                results.add_finding(finding);
+            }
+        }
+
+        // MCP-SEC-042: Rug Pull Detection
+        // Note: Full rug pull detection requires baseline comparison.
+        // Here we perform basic checks for suspicious tool definition patterns
+        // that might indicate preparation for a rug pull attack.
+        if self.should_run("MCP-SEC-042", "protocol") {
+            results.total_checks += 1;
+            for finding in self.check_rug_pull_indicators(ctx) {
+                results.add_finding(finding);
+            }
+        }
+
+        // MCP-SEC-043: OAuth Scope Abuse
+        if self.should_run("MCP-SEC-043", "auth") {
+            results.total_checks += 1;
+            let detector = OAuthAbuseDetector::new();
+            let findings = detector.check_tools(&ctx.tools);
+            for finding in findings {
+                results.add_finding(finding);
+            }
+        }
+
         // MCP-SEC-044: Unicode Hidden Instructions
         if self.should_run("MCP-SEC-044", "injection") {
             results.total_checks += 1;
@@ -809,6 +845,132 @@ impl ScanEngine {
                 results.add_finding(finding);
             }
         }
+    }
+
+    /// Check for indicators that a server might be preparing for a rug pull attack
+    fn check_rug_pull_indicators(&self, ctx: &ServerContext) -> Vec<Finding> {
+        let mut findings = Vec::new();
+
+        // Check for suspicious patterns that might indicate rug pull preparation:
+        // 1. Tools with very short or generic descriptions (easy to change later)
+        // 2. Tools with update/modify capabilities on their own definitions
+        // 3. Remote code loading patterns
+
+        for tool in &ctx.tools {
+            let desc = tool.description.as_deref().unwrap_or("");
+            let desc_lower = desc.to_lowercase();
+            let name_lower = tool.name.to_lowercase();
+
+            // Check for suspiciously short descriptions
+            if desc.len() < 10 && !ctx.tools.is_empty() {
+                findings.push(
+                    Finding::new(
+                        "MCP-SEC-042",
+                        Severity::Low,
+                        "Minimal Tool Description",
+                        format!(
+                            "Tool '{}' has a very short description ({}chars). \
+                             Minimal descriptions make it harder to detect changes in tool behavior.",
+                            tool.name,
+                            desc.len()
+                        ),
+                    )
+                    .with_location(FindingLocation::tool(&tool.name))
+                    .with_evidence(Evidence::observation(
+                        "Short description length",
+                        format!("Description: \"{}\"", desc),
+                    ))
+                    .with_remediation(
+                        "Provide detailed, specific descriptions for all tools. \
+                         This helps users and security scanners detect behavioral changes.",
+                    )
+                    .with_cwe("494"),
+                );
+            }
+
+            // Check for dynamic/remote code patterns
+            let dynamic_patterns = [
+                "eval",
+                "exec",
+                "remote",
+                "download",
+                "fetch_code",
+                "load_plugin",
+                "dynamic",
+                "runtime",
+                "inject",
+            ];
+
+            for pattern in &dynamic_patterns {
+                if name_lower.contains(pattern) || desc_lower.contains(pattern) {
+                    findings.push(
+                        Finding::new(
+                            "MCP-SEC-042",
+                            Severity::Medium,
+                            "Dynamic Code Loading Capability",
+                            format!(
+                                "Tool '{}' appears to support dynamic code loading ('{}' pattern). \
+                                 This could enable rug pull attacks by loading malicious code after trust is established.",
+                                tool.name, pattern
+                            ),
+                        )
+                        .with_location(FindingLocation::tool(&tool.name))
+                        .with_evidence(Evidence::observation(
+                            format!("Pattern detected: {}", pattern),
+                            "Dynamic code loading capability",
+                        ))
+                        .with_remediation(
+                            "Avoid dynamic code loading from remote sources. \
+                             If necessary, implement code signing and integrity verification.",
+                        )
+                        .with_cwe("494")
+                        .with_reference(Reference::mcp_advisory("MCP-Security-Advisory-2025-04")),
+                    );
+                    break;
+                }
+            }
+
+            // Check for self-modification capabilities
+            let self_mod_patterns = [
+                "update_tool",
+                "modify_tool",
+                "change_schema",
+                "alter_definition",
+                "reconfigure",
+                "self_update",
+            ];
+
+            for pattern in &self_mod_patterns {
+                if name_lower.contains(pattern) || desc_lower.contains(pattern) {
+                    findings.push(
+                        Finding::new(
+                            "MCP-SEC-042",
+                            Severity::High,
+                            "Self-Modification Capability",
+                            format!(
+                                "Tool '{}' appears to support self-modification ('{}' pattern). \
+                                 This is a high-risk capability that could enable rug pull attacks.",
+                                tool.name, pattern
+                            ),
+                        )
+                        .with_location(FindingLocation::tool(&tool.name))
+                        .with_evidence(Evidence::observation(
+                            format!("Self-modification pattern: {}", pattern),
+                            "Tool can modify its own definition",
+                        ))
+                        .with_remediation(
+                            "Remove self-modification capabilities. Tool definitions should be static \
+                             and only changeable through controlled deployment processes.",
+                        )
+                        .with_cwe("494")
+                        .with_reference(Reference::mcp_advisory("MCP-Security-Advisory-2025-04")),
+                    );
+                    break;
+                }
+            }
+        }
+
+        findings
     }
 }
 
