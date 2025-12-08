@@ -176,7 +176,11 @@ pub struct Evidence {
 }
 
 impl Evidence {
-    pub fn new(kind: EvidenceKind, data: impl Into<String>, description: impl Into<String>) -> Self {
+    pub fn new(
+        kind: EvidenceKind,
+        data: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
         Self {
             kind,
             data: data.into(),
