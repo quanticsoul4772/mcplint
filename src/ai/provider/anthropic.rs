@@ -143,7 +143,10 @@ impl AnthropicProvider {
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_default();
             let _ = sender
-                .send(StreamChunk::error(format!("HTTP {}: {}", status, error_text)))
+                .send(StreamChunk::error(format!(
+                    "HTTP {}: {}",
+                    status, error_text
+                )))
                 .await;
             return Err(AiProviderError::ApiError {
                 provider: "Anthropic".to_string(),
@@ -233,11 +236,10 @@ impl AnthropicProvider {
         // Try to extract JSON from the response
         let json_str = extract_json(response_text)?;
 
-        let parsed: ParsedExplanation = serde_json::from_str(&json_str).map_err(|e| {
-            AiProviderError::ParseError {
+        let parsed: ParsedExplanation =
+            serde_json::from_str(&json_str).map_err(|e| AiProviderError::ParseError {
                 message: format!("Failed to parse AI response: {}", e),
-            }
-        })?;
+            })?;
 
         // Convert to our response type
         let explanation = VulnerabilityExplanation {
@@ -392,8 +394,11 @@ impl AiProvider for AnthropicProvider {
             "",
         );
 
-        let prompt =
-            PromptBuilder::build_followup_prompt(&finding, &explanation.explanation.summary, question);
+        let prompt = PromptBuilder::build_followup_prompt(
+            &finding,
+            &explanation.explanation.summary,
+            question,
+        );
 
         let messages = vec![Message {
             role: "user".to_string(),
@@ -442,7 +447,10 @@ impl AiProvider for AnthropicProvider {
 fn extract_json(text: &str) -> Result<String> {
     // Try to find JSON in code blocks
     if let Some(start) = text.find("```json") {
-        if let Some(end) = text[start..].find("```\n").or_else(|| text[start..].rfind("```")) {
+        if let Some(end) = text[start..]
+            .find("```\n")
+            .or_else(|| text[start..].rfind("```"))
+        {
             let json_start = start + 7; // Skip "```json"
             let json_end = start + end;
             if json_start < json_end {

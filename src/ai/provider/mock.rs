@@ -215,10 +215,12 @@ impl AiProvider for MockProvider {
             }
         }
 
-        let _ = sender.send(StreamChunk::TokenUpdate {
-            input: 100,
-            output: 400,
-        }).await;
+        let _ = sender
+            .send(StreamChunk::TokenUpdate {
+                input: 100,
+                output: 400,
+            })
+            .await;
         let _ = sender.send(StreamChunk::Done).await;
 
         Ok(response)
@@ -305,16 +307,17 @@ mod tests {
     #[tokio::test]
     async fn mock_provider_can_fail() {
         let provider = MockProvider::new();
-        provider
-            .set_should_fail(true, "Simulated API error")
-            .await;
+        provider.set_should_fail(true, "Simulated API error").await;
 
         let finding = sample_finding();
         let context = ExplanationContext::default();
 
         let result = provider.explain_finding(&finding, &context).await;
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Simulated API error"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Simulated API error"));
     }
 
     #[tokio::test]

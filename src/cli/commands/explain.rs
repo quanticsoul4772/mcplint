@@ -187,10 +187,7 @@ pub async fn run_scan(
                 explanations.push(explanation);
             }
             Err(e) => {
-                println!(
-                    "    {}",
-                    format!("Failed to explain: {}", e).red()
-                );
+                println!("    {}", format!("Failed to explain: {}", e).red());
             }
         }
     }
@@ -240,7 +237,10 @@ fn build_ai_config(
 ) -> Result<AiConfig> {
     // Start with config file or defaults
     let mut config = AiConfig::load_or_default(None);
-    debug!("Loaded base config: provider={}, model={}", config.provider, config.model);
+    debug!(
+        "Loaded base config: provider={}, model={}",
+        config.provider, config.model
+    );
 
     // Apply CLI overrides
     let provider_type: AiProviderType = provider.into();
@@ -283,8 +283,10 @@ fn build_ai_config(
         }
     }
 
-    debug!("Final config: provider={}, model={}, timeout={}s",
-           config.provider, config.model, config.timeout_secs);
+    debug!(
+        "Final config: provider={}, model={}, timeout={}s",
+        config.provider, config.model, config.timeout_secs
+    );
 
     Ok(config)
 }
@@ -460,7 +462,9 @@ async fn run_interactive_mode(
     println!("{}", "═".repeat(80).magenta());
     println!(
         "{}",
-        "Interactive Mode - Ask follow-up questions about the findings".magenta().bold()
+        "Interactive Mode - Ask follow-up questions about the findings"
+            .magenta()
+            .bold()
     );
     println!("{}", "─".repeat(80));
     println!();
@@ -477,7 +481,10 @@ async fn run_interactive_mode(
     }
     println!();
     println!("{}", "Commands:".cyan());
-    println!("  {} - Select finding to ask about (e.g., '1')", "number".yellow());
+    println!(
+        "  {} - Select finding to ask about (e.g., '1')",
+        "number".yellow()
+    );
     println!("  {} - Quit interactive mode", "q/quit/exit".yellow());
     println!();
 
@@ -519,7 +526,10 @@ async fn run_interactive_mode(
             println!();
             println!("{}", "Interactive Mode Help:".cyan().bold());
             println!("  {} - Select a finding by number", "1, 2, 3...".yellow());
-            println!("  {} - After selecting, type your question", "any text".yellow());
+            println!(
+                "  {} - After selecting, type your question",
+                "any text".yellow()
+            );
             println!("  {} - List available findings", "list".yellow());
             println!("  {} - Clear current finding selection", "clear".yellow());
             println!("  {} - Exit interactive mode", "q/quit/exit".yellow());
@@ -532,7 +542,10 @@ async fn run_interactive_mode(
             println!();
             println!("{}", "Available findings:".cyan());
             for (idx, exp) in explanations.iter().enumerate() {
-                let marker = if current_explanation.map(|e| e.finding_id == exp.finding_id).unwrap_or(false) {
+                let marker = if current_explanation
+                    .map(|e| e.finding_id == exp.finding_id)
+                    .unwrap_or(false)
+                {
                     "→".green()
                 } else {
                     " ".normal()
@@ -562,12 +575,17 @@ async fn run_interactive_mode(
                 current_explanation = Some(&explanations[num - 1]);
                 println!(
                     "{}",
-                    format!("Selected: {} - {}",
+                    format!(
+                        "Selected: {} - {}",
                         explanations[num - 1].rule_id,
                         truncate_str(&explanations[num - 1].explanation.summary, 60)
-                    ).green()
+                    )
+                    .green()
                 );
-                println!("{}", "Now you can ask questions about this finding.".bright_black());
+                println!(
+                    "{}",
+                    "Now you can ask questions about this finding.".bright_black()
+                );
                 continue;
             } else {
                 println!(
@@ -593,16 +611,14 @@ async fn run_interactive_mode(
                     println!();
                 }
                 Err(e) => {
-                    println!(
-                        "{}",
-                        format!("Error getting response: {}", e).red()
-                    );
+                    println!("{}", format!("Error getting response: {}", e).red());
                 }
             }
         } else {
             println!(
                 "{}",
-                "Please select a finding first (enter a number 1-N), or type 'help' for commands.".yellow()
+                "Please select a finding first (enter a number 1-N), or type 'help' for commands."
+                    .yellow()
             );
         }
     }

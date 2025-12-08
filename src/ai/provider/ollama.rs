@@ -104,11 +104,14 @@ impl OllamaProvider {
         // Try to extract JSON from the response
         let json_str = extract_json(response_text)?;
 
-        let parsed: ParsedExplanation = serde_json::from_str(&json_str).map_err(|e| {
-            AiProviderError::ParseError {
-                message: format!("Failed to parse AI response: {}. Raw: {}", e, &json_str[..json_str.len().min(200)]),
-            }
-        })?;
+        let parsed: ParsedExplanation =
+            serde_json::from_str(&json_str).map_err(|e| AiProviderError::ParseError {
+                message: format!(
+                    "Failed to parse AI response: {}. Raw: {}",
+                    e,
+                    &json_str[..json_str.len().min(200)]
+                ),
+            })?;
 
         let explanation = VulnerabilityExplanation {
             summary: parsed.explanation.summary,
@@ -162,8 +165,8 @@ impl OllamaProvider {
             }
         });
 
-        let metadata = ExplanationMetadata::new("ollama", &self.model)
-            .with_response_time(response_time_ms);
+        let metadata =
+            ExplanationMetadata::new("ollama", &self.model).with_response_time(response_time_ms);
 
         let mut response = ExplanationResponse::new(&finding.id, &finding.rule_id)
             .with_explanation(explanation)
@@ -218,8 +221,11 @@ impl AiProvider for OllamaProvider {
             "",
         );
 
-        let prompt =
-            PromptBuilder::build_followup_prompt(&finding, &explanation.explanation.summary, question);
+        let prompt = PromptBuilder::build_followup_prompt(
+            &finding,
+            &explanation.explanation.summary,
+            question,
+        );
 
         let response = self.make_request(&prompt, Some(SYSTEM_PROMPT)).await?;
 
