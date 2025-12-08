@@ -6,6 +6,7 @@
 mod context;
 mod engine;
 mod finding;
+pub mod rules;
 
 pub use context::{ScanConfig, ScanProfile};
 // Re-exports for public API - used by external consumers and tests

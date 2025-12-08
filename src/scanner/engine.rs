@@ -13,6 +13,7 @@ use crate::transport::{connect_with_type, TransportConfig, TransportType};
 
 use super::context::{ScanConfig, ScanProfile, ServerContext};
 use super::finding::{Evidence, Finding, FindingLocation, Reference, Severity};
+use super::rules::{SchemaPoisoningDetector, ToolInjectionDetector, UnicodeHiddenDetector};
 
 /// Results from a security scan
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -150,6 +151,9 @@ impl ScanEngine {
         self.run_protocol_checks(&ctx, &mut results);
         self.run_data_checks(&ctx, &mut results);
         self.run_dos_checks(&ctx, &mut results);
+
+        // Run M6 advanced security checks
+        self.run_advanced_security_checks(&ctx, &mut results);
 
         // Cleanup
         let _ = client.close().await;
@@ -772,6 +776,39 @@ impl ScanEngine {
 
         // Then check config filters
         self.config.should_run_rule(rule_id, category)
+    }
+
+    /// M6 Advanced Security Checks (SEC-040 to SEC-045)
+    fn run_advanced_security_checks(&self, ctx: &ServerContext, results: &mut ScanResults) {
+        // MCP-SEC-040: Enhanced Tool Description Injection
+        if self.should_run("MCP-SEC-040", "injection") {
+            results.total_checks += 1;
+            let detector = ToolInjectionDetector::new();
+            let findings = detector.check_tools(&ctx.tools);
+            for finding in findings {
+                results.add_finding(finding);
+            }
+        }
+
+        // MCP-SEC-044: Unicode Hidden Instructions
+        if self.should_run("MCP-SEC-044", "injection") {
+            results.total_checks += 1;
+            let detector = UnicodeHiddenDetector::new();
+            let findings = detector.check_tools(&ctx.tools);
+            for finding in findings {
+                results.add_finding(finding);
+            }
+        }
+
+        // MCP-SEC-045: Schema Poisoning
+        if self.should_run("MCP-SEC-045", "injection") {
+            results.total_checks += 1;
+            let detector = SchemaPoisoningDetector::new();
+            let findings = detector.check_tools(&ctx.tools);
+            for finding in findings {
+                results.add_finding(finding);
+            }
+        }
     }
 }
 

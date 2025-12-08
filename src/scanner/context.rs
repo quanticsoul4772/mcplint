@@ -244,6 +244,9 @@ impl ScanProfile {
                 "MCP-TRANS-001",
                 "MCP-PROTO-001",
                 "MCP-DATA-001",
+                // M6 Advanced rules
+                "MCP-SEC-040", // Tool Description Injection
+                "MCP-SEC-044", // Unicode Hidden Instructions
             ],
             ScanProfile::Full | ScanProfile::Enterprise => vec![
                 "MCP-INJ-001",
@@ -262,6 +265,13 @@ impl ScanProfile {
                 "MCP-DATA-002",
                 "MCP-DOS-001",
                 "MCP-DOS-002",
+                // M6 Advanced rules
+                "MCP-SEC-040", // Tool Description Injection
+                "MCP-SEC-041", // Cross-Server Tool Shadowing
+                "MCP-SEC-042", // Rug Pull Detection
+                "MCP-SEC-043", // OAuth Scope Abuse
+                "MCP-SEC-044", // Unicode Hidden Instructions
+                "MCP-SEC-045", // Schema Poisoning
             ],
         }
     }
