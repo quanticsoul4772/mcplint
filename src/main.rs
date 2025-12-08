@@ -9,6 +9,7 @@ use colored::Colorize;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 // Declare modules (shared with lib.rs)
+mod ai;
 mod cache;
 mod cli;
 mod client;
@@ -21,7 +22,9 @@ mod transport;
 mod validator;
 
 use cli::commands;
+use cli::commands::explain::{CliAiProvider, CliAudienceLevel};
 use fuzzer::FuzzProfile;
+use scanner::Severity;
 
 /// MCPLint - Security testing for MCP servers
 #[derive(Parser)]
@@ -108,6 +111,18 @@ enum Commands {
         /// Timeout for server operations (seconds)
         #[arg(short, long, default_value = "60")]
         timeout: u64,
+
+        /// Generate AI-powered explanations for findings
+        #[arg(long)]
+        explain: bool,
+
+        /// AI provider for explanations (ollama, anthropic, openai)
+        #[arg(long, default_value = "ollama")]
+        ai_provider: CliAiProvider,
+
+        /// AI model for explanations
+        #[arg(long)]
+        ai_model: Option<String>,
     },
 
     /// Fuzz MCP server with generated inputs
@@ -182,6 +197,49 @@ enum Commands {
     Cache {
         #[command(subcommand)]
         action: CacheAction,
+    },
+
+    /// Get AI-powered explanations for security findings
+    Explain {
+        /// Path to MCP server executable or command
+        #[arg(required = true)]
+        server: String,
+
+        /// Arguments to pass to the server
+        #[arg(last = true)]
+        args: Vec<String>,
+
+        /// AI provider to use
+        #[arg(short = 'P', long, default_value = "ollama")]
+        provider: CliAiProvider,
+
+        /// AI model to use (defaults to provider's default)
+        #[arg(short, long)]
+        model: Option<String>,
+
+        /// Audience level for explanations
+        #[arg(short, long, default_value = "intermediate")]
+        audience: CliAudienceLevel,
+
+        /// Minimum severity to explain (critical, high, medium, low, info)
+        #[arg(short, long)]
+        severity: Option<Severity>,
+
+        /// Maximum number of findings to explain
+        #[arg(short = 'n', long)]
+        max_findings: Option<usize>,
+
+        /// Disable response caching
+        #[arg(long)]
+        no_cache: bool,
+
+        /// Interactive mode (ask follow-up questions)
+        #[arg(short, long)]
+        interactive: bool,
+
+        /// Timeout for server operations (seconds)
+        #[arg(short, long, default_value = "120")]
+        timeout: u64,
     },
 }
 
@@ -322,9 +380,21 @@ async fn main() -> Result<()> {
             include,
             exclude,
             timeout,
+            explain,
+            ai_provider,
+            ai_model,
         } => {
             commands::scan::run(
-                &server, &args, profile, include, exclude, timeout, cli.format,
+                &server,
+                &args,
+                profile,
+                include,
+                exclude,
+                timeout,
+                cli.format,
+                explain,
+                ai_provider,
+                ai_model,
             )
             .await?;
         }
@@ -374,6 +444,33 @@ async fn main() -> Result<()> {
                 commands::cache::run_keys(category, json).await?;
             }
         },
+        Commands::Explain {
+            server,
+            args,
+            provider,
+            model,
+            audience,
+            severity,
+            max_findings,
+            no_cache,
+            interactive,
+            timeout,
+        } => {
+            commands::explain::run_scan(
+                &server,
+                &args,
+                provider,
+                model,
+                audience,
+                severity,
+                max_findings,
+                cli.format,
+                no_cache,
+                interactive,
+                timeout,
+            )
+            .await?;
+        }
     }
 
     Ok(())

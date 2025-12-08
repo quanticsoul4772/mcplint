@@ -1,10 +1,12 @@
 //! MCPLint - MCP Server Testing, Fuzzing, and Security Scanning Platform
 //!
 //! A comprehensive security and quality assurance library for Model Context Protocol servers.
-//! Provides protocol validation, security scanning, and coverage-guided fuzzing.
+//! Provides protocol validation, security scanning, coverage-guided fuzzing, and AI-assisted
+//! vulnerability explanation.
 //!
 //! # Modules
 //!
+//! - `ai` - AI-powered vulnerability explanation engine
 //! - `cache` - Multi-backend caching system with rug-pull detection
 //! - `protocol` - MCP protocol definitions and JSON-RPC handling
 //! - `scanner` - Security vulnerability scanning engine
@@ -15,19 +17,21 @@
 //!
 //! ```rust,ignore
 //! use mcplint::cache::{CacheConfig, CacheManager};
+//! use mcplint::ai::{AiConfig, ExplainEngine};
 //!
 //! // Create a memory-only cache
 //! let cache = CacheManager::memory();
 //!
-//! // Cache some data
-//! cache.set_schema("server-id", &tools).await?;
+//! // Create an AI explanation engine
+//! let config = AiConfig::default();
+//! let engine = ExplainEngine::new(config)?;
 //!
-//! // Retrieve cached data
-//! if let Some(tools) = cache.get_schema("server-id").await? {
-//!     println!("Cache hit!");
-//! }
+//! // Explain a finding
+//! let explanation = engine.explain(&finding).await?;
+//! println!("{}", explanation.explanation.summary);
 //! ```
 
+pub mod ai;
 pub mod cache;
 pub mod client;
 pub mod fuzzer;
@@ -39,6 +43,7 @@ pub mod transport;
 pub mod validator;
 
 // Re-export commonly used types
+pub use ai::{AiConfig, ExplainEngine, ExplanationResponse};
 pub use cache::{CacheConfig, CacheManager};
 pub use scanner::{ScanEngine, ScanResults};
 pub use validator::ValidationEngine;

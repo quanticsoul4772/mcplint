@@ -53,6 +53,38 @@ max_iterations = 0
 # Severity threshold: info, warning, error, critical
 min_severity = "warning"
 
+# AI-Assisted Vulnerability Explanation settings
+[ai]
+# AI provider: anthropic, openai, ollama
+provider = "ollama"
+
+# Model to use (provider-specific)
+# anthropic: claude-sonnet-4-20250514, claude-3-opus-20240229
+# openai: gpt-4o, gpt-4-turbo
+# ollama: llama3.2, codellama, mistral
+model = "llama3.2"
+
+# Ollama base URL (for local provider)
+ollama_url = "http://localhost:11434"
+
+# Maximum tokens for response
+max_tokens = 4096
+
+# Temperature for generation (0.0 - 1.0, lower = more focused)
+temperature = 0.3
+
+# Cache AI responses (TTL in seconds, 0 = no cache)
+cache_ttl = 604800  # 7 days
+
+# Rate limiting (requests per minute)
+rate_limit_rpm = 50
+
+# Rate limiting (tokens per minute)
+rate_limit_tpm = 100000
+
+# Target audience level: beginner, intermediate, expert
+audience = "intermediate"
+
 [output]
 # Enable colored output
 color = true
