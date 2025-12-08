@@ -197,6 +197,93 @@ impl RuleRegistry {
                 severity: "low".to_string(),
                 references: vec!["CWE-770".to_string()],
             },
+            // Advanced security rules (M6)
+            Rule {
+                id: "MCP-SEC-040".to_string(),
+                name: "Tool Description Injection".to_string(),
+                description: "Tool descriptions contain suspicious patterns that could manipulate AI behavior. \
+                     Hidden instructions like 'ignore previous instructions' or encoded directives in tool \
+                     descriptions may trick AI assistants into performing unintended actions."
+                    .to_string(),
+                category: "injection".to_string(),
+                severity: "critical".to_string(),
+                references: vec![
+                    "CWE-94".to_string(),
+                    "OWASP-LLM-PI".to_string(),
+                    "MCP-Security-Advisory-2025-02".to_string(),
+                ],
+            },
+            Rule {
+                id: "MCP-SEC-041".to_string(),
+                name: "Cross-Server Tool Shadowing".to_string(),
+                description: "Server registers tools with names that shadow commonly-used tools from other servers. \
+                     Tool shadowing can intercept calls intended for legitimate tools, enabling data theft or \
+                     manipulation of AI assistant behavior."
+                    .to_string(),
+                category: "protocol".to_string(),
+                severity: "high".to_string(),
+                references: vec![
+                    "CWE-706".to_string(),
+                    "MCP-Security-Advisory-2025-03".to_string(),
+                ],
+            },
+            Rule {
+                id: "MCP-SEC-042".to_string(),
+                name: "Rug Pull Detection".to_string(),
+                description: "Server tool definitions have changed significantly since baseline scan. \
+                     Changes to tool names, descriptions, or schemas after initial trust establishment \
+                     may indicate a supply-chain attack where a previously trusted server becomes malicious."
+                    .to_string(),
+                category: "protocol".to_string(),
+                severity: "critical".to_string(),
+                references: vec![
+                    "CWE-494".to_string(),
+                    "MCP-Security-Advisory-2025-04".to_string(),
+                ],
+            },
+            Rule {
+                id: "MCP-SEC-043".to_string(),
+                name: "OAuth Scope Abuse".to_string(),
+                description: "Server requests OAuth scopes that exceed its stated functionality. \
+                     Excessive permission requests may indicate malicious intent or poor security hygiene. \
+                     Tools should request minimum necessary scopes."
+                    .to_string(),
+                category: "auth".to_string(),
+                severity: "high".to_string(),
+                references: vec![
+                    "CWE-250".to_string(),
+                    "CWE-269".to_string(),
+                    "OAuth-Best-Practice".to_string(),
+                ],
+            },
+            Rule {
+                id: "MCP-SEC-044".to_string(),
+                name: "Unicode Hidden Instructions".to_string(),
+                description: "Tool descriptions or responses contain hidden Unicode characters. \
+                     Zero-width characters, RTL overrides, or homoglyphs may hide malicious instructions \
+                     that are invisible to users but processed by AI assistants."
+                    .to_string(),
+                category: "injection".to_string(),
+                severity: "high".to_string(),
+                references: vec![
+                    "CWE-116".to_string(),
+                    "Unicode-Security-TR36".to_string(),
+                ],
+            },
+            Rule {
+                id: "MCP-SEC-045".to_string(),
+                name: "Full-Schema Poisoning".to_string(),
+                description: "Tool input schema contains suspicious default values or enum constraints. \
+                     Malicious schemas may include default values that execute commands, or restrict \
+                     valid inputs to dangerous values disguised as safe options."
+                    .to_string(),
+                category: "injection".to_string(),
+                severity: "high".to_string(),
+                references: vec![
+                    "CWE-1321".to_string(),
+                    "JSON-Schema-Security".to_string(),
+                ],
+            },
         ];
 
         Self { rules }
@@ -220,7 +307,7 @@ impl RuleRegistry {
 
     #[allow(dead_code)]
     pub fn categories(&self) -> Vec<&str> {
-        vec!["injection", "auth", "transport", "protocol", "data", "dos"]
+        vec!["injection", "auth", "transport", "protocol", "data", "dos", "security"]
     }
 }
 
@@ -248,5 +335,38 @@ mod tests {
         let rule = registry.get_rule("MCP-INJ-001");
         assert!(rule.is_some());
         assert_eq!(rule.unwrap().name, "Command Injection via Tool Arguments");
+    }
+
+    #[test]
+    fn m6_security_rules_exist() {
+        let registry = RuleRegistry::new();
+
+        // SEC-040: Tool Description Injection
+        let rule = registry.get_rule("MCP-SEC-040");
+        assert!(rule.is_some());
+        assert_eq!(rule.unwrap().severity, "critical");
+
+        // SEC-041: Cross-Server Tool Shadowing
+        let rule = registry.get_rule("MCP-SEC-041");
+        assert!(rule.is_some());
+        assert_eq!(rule.unwrap().category, "protocol");
+
+        // SEC-042: Rug Pull Detection
+        let rule = registry.get_rule("MCP-SEC-042");
+        assert!(rule.is_some());
+        assert_eq!(rule.unwrap().severity, "critical");
+
+        // SEC-043: OAuth Scope Abuse
+        let rule = registry.get_rule("MCP-SEC-043");
+        assert!(rule.is_some());
+        assert_eq!(rule.unwrap().category, "auth");
+
+        // SEC-044: Unicode Hidden Instructions
+        let rule = registry.get_rule("MCP-SEC-044");
+        assert!(rule.is_some());
+
+        // SEC-045: Full-Schema Poisoning
+        let rule = registry.get_rule("MCP-SEC-045");
+        assert!(rule.is_some());
     }
 }

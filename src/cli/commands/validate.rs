@@ -27,7 +27,6 @@ pub async fn run(
     }
     println!();
 
-    // TODO: Implement actual validation
     let validator = ProtocolValidator::new(server, args, timeout);
     let results = validator.validate().await?;
 
@@ -40,6 +39,10 @@ pub async fn run(
         }
         OutputFormat::Sarif => {
             results.print_sarif()?;
+        }
+        OutputFormat::Junit | OutputFormat::Gitlab => {
+            // Validation results use JSON as fallback for unsupported formats
+            results.print_json()?;
         }
     }
 

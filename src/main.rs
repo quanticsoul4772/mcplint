@@ -10,6 +10,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 // Declare modules (shared with lib.rs)
 mod ai;
+mod baseline;
 mod cache;
 mod cli;
 mod client;
@@ -58,11 +59,13 @@ struct Cli {
 }
 
 #[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
-enum OutputFormat {
+pub enum OutputFormat {
     #[default]
     Text,
     Json,
     Sarif,
+    Junit,
+    Gitlab,
 }
 
 #[derive(Subcommand)]
@@ -123,6 +126,26 @@ enum Commands {
         /// AI model for explanations
         #[arg(long)]
         ai_model: Option<String>,
+
+        /// Path to baseline file for comparison
+        #[arg(long)]
+        baseline: Option<std::path::PathBuf>,
+
+        /// Save scan results as new baseline
+        #[arg(long)]
+        save_baseline: Option<std::path::PathBuf>,
+
+        /// Update existing baseline with current findings
+        #[arg(long)]
+        update_baseline: bool,
+
+        /// Show only diff summary (requires --baseline)
+        #[arg(long)]
+        diff_only: bool,
+
+        /// Fail only on specified severities (e.g., critical,high)
+        #[arg(long, value_delimiter = ',')]
+        fail_on: Option<Vec<Severity>>,
     },
 
     /// Fuzz MCP server with generated inputs
@@ -240,6 +263,33 @@ enum Commands {
         /// Timeout for server operations (seconds)
         #[arg(short, long, default_value = "120")]
         timeout: u64,
+    },
+
+    /// Watch files and rescan on changes
+    Watch {
+        /// Path to MCP server executable or command
+        #[arg(required = true)]
+        server: String,
+
+        /// Arguments to pass to the server
+        #[arg(last = true)]
+        args: Vec<String>,
+
+        /// Paths to watch for changes
+        #[arg(short, long, default_value = ".")]
+        watch: Vec<std::path::PathBuf>,
+
+        /// Security scan profile
+        #[arg(short, long, default_value = "quick")]
+        profile: ScanProfile,
+
+        /// Debounce delay in milliseconds
+        #[arg(short, long, default_value = "500")]
+        debounce: u64,
+
+        /// Clear screen before each scan
+        #[arg(short, long)]
+        clear: bool,
     },
 }
 
@@ -383,6 +433,11 @@ async fn main() -> Result<()> {
             explain,
             ai_provider,
             ai_model,
+            baseline,
+            save_baseline,
+            update_baseline,
+            diff_only,
+            fail_on,
         } => {
             commands::scan::run(
                 &server,
@@ -395,6 +450,11 @@ async fn main() -> Result<()> {
                 explain,
                 ai_provider,
                 ai_model,
+                baseline,
+                save_baseline,
+                update_baseline,
+                diff_only,
+                fail_on,
             )
             .await?;
         }
@@ -470,6 +530,22 @@ async fn main() -> Result<()> {
                 timeout,
             )
             .await?;
+        }
+        Commands::Watch {
+            server,
+            args,
+            watch,
+            profile,
+            debounce,
+            clear,
+        } => {
+            let scan_profile = match profile {
+                ScanProfile::Quick => scanner::ScanProfile::Quick,
+                ScanProfile::Standard => scanner::ScanProfile::Standard,
+                ScanProfile::Full => scanner::ScanProfile::Full,
+                ScanProfile::Enterprise => scanner::ScanProfile::Enterprise,
+            };
+            commands::watch::run(&server, &args, watch, scan_profile, debounce, clear).await?;
         }
     }
 

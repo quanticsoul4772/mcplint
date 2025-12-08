@@ -7,6 +7,7 @@
 //! # Modules
 //!
 //! - `ai` - AI-powered vulnerability explanation engine
+//! - `baseline` - Baseline/diff mode for incremental vulnerability detection
 //! - `cache` - Multi-backend caching system with rug-pull detection
 //! - `protocol` - MCP protocol definitions and JSON-RPC handling
 //! - `scanner` - Security vulnerability scanning engine
@@ -32,6 +33,7 @@
 //! ```
 
 pub mod ai;
+pub mod baseline;
 pub mod cache;
 pub mod client;
 pub mod fuzzer;
@@ -44,6 +46,7 @@ pub mod validator;
 
 // Re-export commonly used types
 pub use ai::{AiConfig, ExplainEngine, ExplanationResponse};
+pub use baseline::{Baseline, DiffEngine, DiffResult};
 pub use cache::{CacheConfig, CacheManager};
 pub use scanner::{ScanEngine, ScanResults};
 pub use validator::ValidationEngine;

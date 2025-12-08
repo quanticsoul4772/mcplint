@@ -68,6 +68,12 @@ directories = "5"
 # Home directory detection (for cache path)
 dirs = "5"
 
+# Hashing for baseline fingerprints
+sha2 = "0.10"
+
+# File watching for watch mode
+notify = "6.0"
+
 # Binary serialization support
 serde_bytes = "0.11"
 

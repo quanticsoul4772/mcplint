@@ -1,15 +1,18 @@
 //! Scan command - Security vulnerability scanning
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
 use colored::Colorize;
 use tracing::{debug, info};
 
-use crate::ai::{AiConfig, AiProviderType, ExplainEngine, ExplanationContext};
+use crate::ai::{ExplainEngine, ExplanationContext};
+use crate::baseline::{Baseline, DiffEngine};
 use crate::cache::{CacheConfig, CacheManager};
-use crate::cli::commands::explain::CliAiProvider;
-use crate::scanner::{ScanConfig, ScanEngine, ScanProfile};
+use crate::cli::commands::explain::{build_ai_config, CliAiProvider};
+use crate::reporter::{generate_gitlab, generate_junit};
+use crate::scanner::{ScanConfig, ScanEngine, ScanProfile, Severity};
 use crate::{OutputFormat, ScanProfile as CliScanProfile};
 
 #[allow(clippy::too_many_arguments)]
@@ -24,6 +27,11 @@ pub async fn run(
     explain: bool,
     ai_provider: CliAiProvider,
     ai_model: Option<String>,
+    baseline_path: Option<PathBuf>,
+    save_baseline: Option<PathBuf>,
+    update_baseline: bool,
+    diff_only: bool,
+    fail_on: Option<Vec<Severity>>,
 ) -> Result<()> {
     info!("Scanning MCP server: {}", server);
     debug!(
@@ -50,6 +58,9 @@ pub async fn run(
         println!("{}", "Starting security scan...".cyan());
         println!("  Server: {}", server.yellow());
         println!("  Profile: {}", profile_name.green());
+        if let Some(ref path) = baseline_path {
+            println!("  Baseline: {}", path.display().to_string().yellow());
+        }
         if explain {
             println!("  AI Explanations: {}", "Enabled".green());
         }
@@ -73,10 +84,49 @@ pub async fn run(
     let engine = ScanEngine::new(config);
     let results = engine.scan(server, args, None).await?;
 
-    // Output results
+    // Load baseline if provided
+    let baseline = if let Some(ref path) = baseline_path {
+        match Baseline::load(path) {
+            Ok(b) => Some(b),
+            Err(e) => {
+                eprintln!(
+                    "{}",
+                    format!("Warning: Failed to load baseline: {}", e).yellow()
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Compute diff if baseline exists
+    let diff_result = baseline.as_ref().map(|b| DiffEngine::diff(b, &results));
+
+    // Handle diff-only mode
+    if diff_only {
+        if let Some(ref diff) = diff_result {
+            print_diff_summary(diff, format)?;
+
+            // Exit based on new findings
+            if diff.has_new_critical_or_high() {
+                std::process::exit(5); // New findings vs baseline
+            }
+            return Ok(());
+        } else {
+            eprintln!("{}", "Error: --diff-only requires --baseline".red());
+            std::process::exit(2);
+        }
+    }
+
+    // Output results based on format
     match format {
         OutputFormat::Text => {
-            results.print_text();
+            if let Some(ref diff) = diff_result {
+                print_diff_text(&results, diff);
+            } else {
+                results.print_text();
+            }
         }
         OutputFormat::Json => {
             results.print_json()?;
@@ -84,121 +134,305 @@ pub async fn run(
         OutputFormat::Sarif => {
             results.print_sarif()?;
         }
+        OutputFormat::Junit => {
+            println!("{}", generate_junit(&results));
+        }
+        OutputFormat::Gitlab => {
+            println!("{}", generate_gitlab(&results));
+        }
+    }
+
+    // Save baseline if requested
+    if let Some(ref path) = save_baseline {
+        let new_baseline = Baseline::from_results(&results);
+        new_baseline.save(path)?;
+        if matches!(format, OutputFormat::Text) {
+            println!();
+            println!(
+                "{}",
+                format!("Baseline saved to: {}", path.display()).green()
+            );
+        }
+    }
+
+    // Update baseline if requested (with existing baseline)
+    if update_baseline {
+        if let Some(ref path) = baseline_path {
+            let updated_baseline = Baseline::from_results(&results);
+            updated_baseline.save(path)?;
+            if matches!(format, OutputFormat::Text) {
+                println!();
+                println!(
+                    "{}",
+                    format!("Baseline updated: {}", path.display()).green()
+                );
+            }
+        } else {
+            eprintln!("{}", "Warning: --update-baseline requires --baseline".yellow());
+        }
     }
 
     // Generate AI explanations if requested
     if explain && !results.findings.is_empty() {
-        println!();
-        println!("{}", "Generating AI explanations...".cyan());
-        println!();
+        generate_ai_explanations(&results, ai_provider, ai_model, server).await?;
+    }
 
-        // Build AI configuration
-        let provider_type: AiProviderType = ai_provider.into();
-        let mut ai_config = AiConfig::builder().provider(provider_type);
+    // Determine exit code
+    let exit_code = determine_exit_code(&results, &diff_result, &fail_on);
+    if exit_code != 0 {
+        std::process::exit(exit_code);
+    }
 
-        if let Some(model) = ai_model {
-            ai_config = ai_config.model(&model);
-        }
+    Ok(())
+}
 
-        // Set API key from environment
-        match provider_type {
-            AiProviderType::Anthropic => {
-                if let Ok(key) = std::env::var("ANTHROPIC_API_KEY") {
-                    ai_config = ai_config.api_key(&key);
-                }
-            }
-            AiProviderType::OpenAI => {
-                if let Ok(key) = std::env::var("OPENAI_API_KEY") {
-                    ai_config = ai_config.api_key(&key);
-                }
-            }
-            AiProviderType::Ollama => {
-                if let Ok(url) = std::env::var("OLLAMA_HOST") {
-                    ai_config = ai_config.base_url(&url);
-                }
-            }
-        }
-
-        let ai_config = ai_config.build();
-
-        // Create explain engine
-        let mut explain_engine = match ExplainEngine::new(ai_config) {
-            Ok(engine) => engine,
-            Err(e) => {
-                println!("{}", format!("Failed to initialize AI engine: {}", e).red());
-                if results.has_critical_or_high() {
-                    std::process::exit(1);
-                }
-                return Ok(());
-            }
-        };
-
-        // Add cache support with default config
-        if let Ok(cache) = CacheManager::new(CacheConfig::default()).await {
-            explain_engine = explain_engine.with_cache(Arc::new(cache));
-        }
-
-        // Set up explanation context
-        let context = ExplanationContext::new(server);
-        let explain_engine = explain_engine.with_default_context(context);
-
-        // Explain findings (limit to 5 for brevity in scan output)
-        let findings: Vec<_> = results.findings.iter().take(5).collect();
-
-        for finding in &findings {
-            println!("  {} {}", "▶".cyan(), finding.rule_id.yellow());
-
-            match explain_engine.explain(finding).await {
-                Ok(explanation) => {
-                    println!("    {}", "Summary:".green());
-                    for line in explanation.explanation.summary.lines() {
-                        println!("      {}", line);
-                    }
-
-                    if !explanation.remediation.immediate_actions.is_empty() {
-                        println!("    {}", "Quick Fix:".green());
-                        if let Some(action) = explanation.remediation.immediate_actions.first() {
-                            println!("      • {}", action);
-                        }
-                    }
-                    println!();
-                }
-                Err(e) => {
-                    println!("    {}", format!("Failed to explain: {}", e).red());
-                    println!();
-                }
-            }
-        }
-
-        if results.findings.len() > 5 {
+/// Print diff summary in various formats
+fn print_diff_summary(
+    diff: &crate::baseline::DiffResult,
+    format: OutputFormat,
+) -> Result<()> {
+    match format {
+        OutputFormat::Text => {
+            println!("{}", "Baseline Comparison Summary".cyan().bold());
+            println!("{}", "=".repeat(40));
+            println!();
+            println!("  Baseline findings:  {}", diff.summary.total_baseline);
+            println!("  Current findings:   {}", diff.summary.total_current);
+            println!();
             println!(
-                "  {}",
-                format!(
-                    "... and {} more findings. Use 'mcplint explain' for full explanations.",
-                    results.findings.len() - 5
-                )
-                .bright_black()
+                "  {} New findings",
+                if diff.summary.new_count > 0 {
+                    format!("❌ {}", diff.summary.new_count).red().to_string()
+                } else {
+                    format!("✓ {}", diff.summary.new_count).green().to_string()
+                }
+            );
+            println!(
+                "  {} Fixed findings",
+                format!("✅ {}", diff.summary.fixed_count).green()
+            );
+            println!("  ➖ {} Unchanged findings", diff.summary.unchanged_count);
+            println!();
+
+            if diff.summary.new_critical > 0 || diff.summary.new_high > 0 {
+                println!(
+                    "  {}",
+                    format!(
+                        "⚠️  {} critical, {} high severity NEW findings",
+                        diff.summary.new_critical, diff.summary.new_high
+                    )
+                    .red()
+                    .bold()
+                );
+            }
+        }
+        OutputFormat::Json => {
+            println!("{}", serde_json::to_string_pretty(&diff.summary)?);
+        }
+        _ => {
+            // Other formats not supported for diff-only
+            println!("{}", serde_json::to_string_pretty(&diff.summary)?);
+        }
+    }
+    Ok(())
+}
+
+/// Print text results with diff information
+fn print_diff_text(results: &crate::scanner::ScanResults, diff: &crate::baseline::DiffResult) {
+    println!("{}", "Security Scan Results (with Baseline)".cyan().bold());
+    println!("{}", "=".repeat(60));
+    println!();
+
+    println!("  Server: {}", results.server.yellow());
+    println!("  Profile: {}", results.profile.green());
+    println!("  Duration: {}ms", results.duration_ms);
+    println!();
+
+    // Summary
+    println!("{}", "Baseline Comparison:".cyan());
+    println!(
+        "  {} new | {} fixed | {} unchanged",
+        if diff.new_count() > 0 {
+            diff.new_count().to_string().red().to_string()
+        } else {
+            diff.new_count().to_string().green().to_string()
+        },
+        diff.fixed_count().to_string().green(),
+        diff.unchanged_count.to_string().bright_black()
+    );
+    println!();
+
+    // New findings
+    if !diff.new_findings.is_empty() {
+        println!("{}", "New Findings:".red().bold());
+        for finding in &diff.new_findings {
+            println!(
+                "  [{}] {} ({})",
+                finding.severity.colored_display(),
+                finding.title,
+                finding.rule_id.dimmed()
+            );
+            println!("    {}", finding.description);
+            println!();
+        }
+    }
+
+    // Fixed findings
+    if !diff.fixed_findings.is_empty() {
+        println!("{}", "Fixed Findings:".green().bold());
+        for finding in &diff.fixed_findings {
+            println!(
+                "  [✓] {} ({})",
+                finding.rule_id.green(),
+                finding.location_fingerprint.dimmed()
             );
         }
+        println!();
+    }
 
-        // Print stats
-        let stats = explain_engine.stats().await;
+    println!("{}", "─".repeat(60));
+    println!(
+        "Summary: {} critical, {} high, {} medium, {} low, {} info",
+        results.summary.critical.to_string().red(),
+        results.summary.high.to_string().red(),
+        results.summary.medium.to_string().yellow(),
+        results.summary.low.to_string().blue(),
+        results.summary.info.to_string().dimmed()
+    );
+}
+
+/// Generate AI explanations for findings
+async fn generate_ai_explanations(
+    results: &crate::scanner::ScanResults,
+    ai_provider: CliAiProvider,
+    ai_model: Option<String>,
+    server: &str,
+) -> Result<()> {
+    println!();
+    println!("{}", "Generating AI explanations...".cyan());
+    println!();
+
+    // Build AI configuration using shared function
+    let ai_config = match build_ai_config(ai_provider, ai_model, 120) {
+        Ok(config) => config,
+        Err(e) => {
+            println!("{}", format!("Failed to build AI config: {}", e).red());
+            return Ok(());
+        }
+    };
+
+    // Create explain engine
+    let mut explain_engine = match ExplainEngine::new(ai_config) {
+        Ok(engine) => engine,
+        Err(e) => {
+            println!("{}", format!("Failed to initialize AI engine: {}", e).red());
+            return Ok(());
+        }
+    };
+
+    // Add cache support with default config
+    if let Ok(cache) = CacheManager::new(CacheConfig::default()).await {
+        explain_engine = explain_engine.with_cache(Arc::new(cache));
+    }
+
+    // Set up explanation context
+    let context = ExplanationContext::new(server);
+    let explain_engine = explain_engine.with_default_context(context);
+
+    // Explain findings (limit to 5 for brevity in scan output)
+    let findings: Vec<_> = results.findings.iter().take(5).collect();
+
+    for finding in &findings {
+        println!("  {} {}", "▶".cyan(), finding.rule_id.yellow());
+
+        match explain_engine.explain(finding).await {
+            Ok(explanation) => {
+                println!("    {}", "Summary:".green());
+                for line in explanation.explanation.summary.lines() {
+                    println!("      {}", line);
+                }
+
+                if !explanation.remediation.immediate_actions.is_empty() {
+                    println!("    {}", "Quick Fix:".green());
+                    if let Some(action) = explanation.remediation.immediate_actions.first() {
+                        println!("      • {}", action);
+                    }
+                }
+                println!();
+            }
+            Err(e) => {
+                println!("    {}", format!("Failed to explain: {}", e).red());
+                println!();
+            }
+        }
+    }
+
+    if results.findings.len() > 5 {
         println!(
-            "{}",
+            "  {}",
             format!(
-                "AI Stats: {} explanations | {:.0}% cache hit | {} API calls",
-                stats.total_explanations,
-                stats.cache_hit_rate(),
-                stats.api_calls
+                "... and {} more findings. Use 'mcplint explain' for full explanations.",
+                results.findings.len() - 5
             )
             .bright_black()
         );
     }
 
-    // Return error code if critical/high findings
-    if results.has_critical_or_high() {
-        std::process::exit(1);
-    }
+    // Print stats
+    let stats = explain_engine.stats().await;
+    println!(
+        "{}",
+        format!(
+            "AI Stats: {} explanations | {:.0}% cache hit | {} API calls",
+            stats.total_explanations,
+            stats.cache_hit_rate(),
+            stats.api_calls
+        )
+        .bright_black()
+    );
 
     Ok(())
+}
+
+/// Determine exit code based on results and options
+fn determine_exit_code(
+    results: &crate::scanner::ScanResults,
+    diff_result: &Option<crate::baseline::DiffResult>,
+    fail_on: &Option<Vec<Severity>>,
+) -> i32 {
+    // In baseline mode, only fail on new findings
+    if let Some(ref diff) = diff_result {
+        if let Some(ref severities) = fail_on {
+            // Check if any new findings match the specified severities
+            for finding in &diff.new_findings {
+                if severities.contains(&finding.severity) {
+                    return 5; // New findings vs baseline
+                }
+            }
+            return 0;
+        } else {
+            // Default: fail on new critical/high
+            if diff.has_new_critical_or_high() {
+                return 5;
+            }
+            return 0;
+        }
+    }
+
+    // Without baseline, use standard logic
+    if let Some(ref severities) = fail_on {
+        for finding in &results.findings {
+            if severities.contains(&finding.severity) {
+                return 1;
+            }
+        }
+        return 0;
+    }
+
+    // Default behavior
+    if results.has_critical_or_high() {
+        1
+    } else {
+        0
+    }
 }

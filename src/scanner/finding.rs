@@ -2,6 +2,7 @@
 //!
 //! Defines the structures for representing security findings from scans.
 
+use colored::{ColoredString, Colorize};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -44,6 +45,17 @@ impl Severity {
             Severity::Critical | Severity::High => "error",
             Severity::Medium => "warning",
             Severity::Low | Severity::Info => "note",
+        }
+    }
+
+    /// Return a colorized display string for terminal output
+    pub fn colored_display(&self) -> ColoredString {
+        match self {
+            Severity::Critical => "CRITICAL".red().bold(),
+            Severity::High => "HIGH".red(),
+            Severity::Medium => "MEDIUM".yellow(),
+            Severity::Low => "LOW".blue(),
+            Severity::Info => "INFO".dimmed(),
         }
     }
 }

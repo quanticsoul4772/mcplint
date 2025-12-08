@@ -8,8 +8,9 @@ mod engine;
 mod finding;
 
 pub use context::{ScanConfig, ScanProfile};
-pub use engine::{ScanEngine, ScanResults};
 // Re-exports for public API - used by external consumers and tests
+#[allow(unused_imports)]
+pub use engine::{ScanEngine, ScanResults, ScanSummary};
 #[allow(unused_imports)]
 pub use finding::{Evidence, EvidenceKind, Finding, FindingLocation, ReferenceKind, Severity};
 
@@ -43,17 +44,9 @@ impl ScanResults {
             println!();
 
             for finding in &self.findings {
-                let severity = match finding.severity {
-                    Severity::Critical => "CRITICAL".red().bold(),
-                    Severity::High => "HIGH".red(),
-                    Severity::Medium => "MEDIUM".yellow(),
-                    Severity::Low => "LOW".blue(),
-                    Severity::Info => "INFO".dimmed(),
-                };
-
                 println!(
                     "  [{}] {} ({})",
-                    severity,
+                    finding.severity.colored_display(),
                     finding.title,
                     finding.rule_id.dimmed()
                 );

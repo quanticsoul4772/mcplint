@@ -1,6 +1,9 @@
 //! Scan Context - Server information collected for security checks
 //!
 //! Provides the context needed by security rules to perform their checks.
+//!
+//! Many helper methods are marked as public API for external consumers
+//! and plugin authors, even if not used internally.
 
 use crate::protocol::mcp::{Prompt, Resource, ServerCapabilities, Tool};
 

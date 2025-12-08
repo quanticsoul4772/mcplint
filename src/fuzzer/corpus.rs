@@ -213,9 +213,96 @@ impl CorpusManager {
     }
 
     /// Load corpus from disk
-    fn load_from_disk(&mut self, _path: &Path) -> Result<()> {
-        // TODO: Implement corpus loading from disk
-        // For now, just use default seeds
+    fn load_from_disk(&mut self, path: &Path) -> Result<()> {
+        // Load seeds from seeds directory
+        let seeds_dir = path.join("seeds");
+        if seeds_dir.exists() {
+            let loaded_seeds = Self::load_inputs_from_dir(&seeds_dir)?;
+            self.seeds.extend(loaded_seeds);
+        }
+
+        // Load crashes (for analysis, not re-execution)
+        let crashes_dir = path.join("crashes");
+        if crashes_dir.exists() {
+            for entry in fs::read_dir(&crashes_dir)? {
+                let entry = entry?;
+                let file_path = entry.path();
+                if file_path.extension().is_some_and(|e| e == "json") {
+                    if let Ok(content) = fs::read_to_string(&file_path) {
+                        if let Ok(record) = serde_json::from_str::<CrashRecord>(&content) {
+                            self.crashes.push(record);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Load hangs
+        let hangs_dir = path.join("hangs");
+        if hangs_dir.exists() {
+            for entry in fs::read_dir(&hangs_dir)? {
+                let entry = entry?;
+                let file_path = entry.path();
+                if file_path.extension().is_some_and(|e| e == "json") {
+                    if let Ok(content) = fs::read_to_string(&file_path) {
+                        if let Ok(record) = serde_json::from_str::<HangRecord>(&content) {
+                            self.hangs.push(record);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Load interesting inputs (add to fuzzing corpus)
+        let interesting_dir = path.join("interesting");
+        if interesting_dir.exists() {
+            for entry in fs::read_dir(&interesting_dir)? {
+                let entry = entry?;
+                let file_path = entry.path();
+                if file_path.extension().is_some_and(|e| e == "json") {
+                    if let Ok(content) = fs::read_to_string(&file_path) {
+                        if let Ok(record) = serde_json::from_str::<InterestingInput>(&content) {
+                            self.seen_hashes.insert(record.coverage_hash);
+                            self.interesting.push(record);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Load FuzzInput files from a directory
+    fn load_inputs_from_dir(dir: &Path) -> Result<Vec<FuzzInput>> {
+        let mut inputs = Vec::new();
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let file_path = entry.path();
+            if file_path.extension().is_some_and(|e| e == "json") {
+                if let Ok(content) = fs::read_to_string(&file_path) {
+                    if let Ok(input) = serde_json::from_str::<FuzzInput>(&content) {
+                        inputs.push(input);
+                    }
+                }
+            }
+        }
+        Ok(inputs)
+    }
+
+    /// Save all seeds to disk
+    pub fn save_seeds(&self) -> Result<()> {
+        if let Some(base) = &self.base_path {
+            let seeds_dir = base.join("seeds");
+            fs::create_dir_all(&seeds_dir)?;
+
+            for (i, seed) in self.seeds.iter().enumerate() {
+                let filename = format!("seed_{:04}.json", i);
+                let filepath = seeds_dir.join(filename);
+                let json = serde_json::to_string_pretty(seed)?;
+                fs::write(filepath, json)?;
+            }
+        }
         Ok(())
     }
 
