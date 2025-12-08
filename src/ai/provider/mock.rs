@@ -367,7 +367,7 @@ mod tests {
     async fn mock_provider_streaming() {
         use super::super::super::streaming::stream_channel;
 
-        let provider = MockProvider::new();
+        let _provider = MockProvider::new();
         let finding = sample_finding();
         let context = ExplanationContext::default();
 

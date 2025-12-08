@@ -111,7 +111,12 @@ pub async fn run(args: FuzzArgs) -> Result<()> {
     info!("Fuzzing MCP server: {}", server);
     debug!(
         "Duration: {}s, Corpus: {:?}, Iterations: {}, Workers: {}, Tools: {:?}, Profile: {:?}",
-        options.duration, options.corpus, options.iterations, options.workers, options.tools, options.profile
+        options.duration,
+        options.corpus,
+        options.iterations,
+        options.workers,
+        options.tools,
+        options.profile
     );
 
     println!("{}", "Starting fuzzing session...".cyan());

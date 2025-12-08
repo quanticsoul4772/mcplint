@@ -41,7 +41,7 @@ impl Severity {
     }
 
     /// Parse a severity string (case-insensitive)
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "info" => Some(Severity::Info),
             "low" => Some(Severity::Low),
@@ -74,7 +74,7 @@ impl Severity {
     /// Return a colorized display from a severity string
     /// Useful for displaying severity from string-based sources like Rule.severity
     pub fn colored_from_str(s: &str) -> ColoredString {
-        Self::from_str(s)
+        Self::parse(s)
             .map(|sev| sev.colored_display())
             .unwrap_or_else(|| s.normal())
     }
