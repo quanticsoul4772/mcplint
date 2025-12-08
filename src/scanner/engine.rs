@@ -223,32 +223,31 @@ impl ScanEngine {
                 .unwrap_or_default();
 
             for pattern in &shell_patterns {
-                if name_lower.contains(pattern) || desc_lower.contains(pattern) {
-                    // Check if input schema has string parameters (potential injection points)
-                    if has_string_parameters(&tool.input_schema) {
-                        return Some(
-                            Finding::new(
-                                "MCP-INJ-001",
-                                Severity::Critical,
-                                "Potential Command Injection",
-                                format!(
-                                    "Tool '{}' appears to execute shell commands and accepts string parameters. \
-                                     User-controlled input may be passed to system commands without sanitization.",
-                                    tool.name
-                                ),
-                            )
-                            .with_location(FindingLocation::tool(&tool.name))
-                            .with_evidence(Evidence::observation(
-                                format!("Tool name/description contains '{}' pattern", pattern),
-                                "Indicates shell command execution capability",
-                            ))
-                            .with_remediation(
-                                "Implement strict input validation and use parameterized commands. \
-                                 Avoid passing user input directly to shell interpreters.",
-                            )
-                            .with_cwe("78"),
-                        );
-                    }
+                if (name_lower.contains(pattern) || desc_lower.contains(pattern))
+                    && has_string_parameters(&tool.input_schema)
+                {
+                    return Some(
+                        Finding::new(
+                            "MCP-INJ-001",
+                            Severity::Critical,
+                            "Potential Command Injection",
+                            format!(
+                                "Tool '{}' appears to execute shell commands and accepts string parameters. \
+                                 User-controlled input may be passed to system commands without sanitization.",
+                                tool.name
+                            ),
+                        )
+                        .with_location(FindingLocation::tool(&tool.name))
+                        .with_evidence(Evidence::observation(
+                            format!("Tool name/description contains '{}' pattern", pattern),
+                            "Indicates shell command execution capability",
+                        ))
+                        .with_remediation(
+                            "Implement strict input validation and use parameterized commands. \
+                             Avoid passing user input directly to shell interpreters.",
+                        )
+                        .with_cwe("78"),
+                    );
                 }
             }
         }
@@ -371,35 +370,30 @@ impl ScanEngine {
             let name_lower = tool.name.to_lowercase();
 
             for pattern in &url_patterns {
-                if name_lower.contains(pattern) {
-                    if has_url_parameters(&tool.input_schema) {
-                        return Some(
-                            Finding::new(
-                                "MCP-INJ-004",
-                                Severity::High,
-                                "Potential SSRF Vulnerability",
-                                format!(
-                                    "Tool '{}' accepts URL parameters that may allow Server-Side Request Forgery. \
-                                     Attackers could use this to access internal services or cloud metadata.",
-                                    tool.name
-                                ),
-                            )
-                            .with_location(FindingLocation::tool(&tool.name))
-                            .with_evidence(Evidence::observation(
-                                format!(
-                                    "Tool '{}' accepts URL/URI parameters",
-                                    tool.name
-                                ),
-                                "Potential for server-side requests with user-controlled URLs",
-                            ))
-                            .with_remediation(
-                                "Implement URL allowlisting. Block access to internal IP ranges \
-                                 (10.x.x.x, 172.16-31.x.x, 192.168.x.x) and cloud metadata endpoints. \
-                                 Validate URL schemes (allow only http/https).",
-                            )
-                            .with_cwe("918"),
-                        );
-                    }
+                if name_lower.contains(pattern) && has_url_parameters(&tool.input_schema) {
+                    return Some(
+                        Finding::new(
+                            "MCP-INJ-004",
+                            Severity::High,
+                            "Potential SSRF Vulnerability",
+                            format!(
+                                "Tool '{}' accepts URL parameters that may allow Server-Side Request Forgery. \
+                                 Attackers could use this to access internal services or cloud metadata.",
+                                tool.name
+                            ),
+                        )
+                        .with_location(FindingLocation::tool(&tool.name))
+                        .with_evidence(Evidence::observation(
+                            format!("Tool '{}' accepts URL/URI parameters", tool.name),
+                            "Potential for server-side requests with user-controlled URLs",
+                        ))
+                        .with_remediation(
+                            "Implement URL allowlisting. Block access to internal IP ranges \
+                             (10.x.x.x, 172.16-31.x.x, 192.168.x.x) and cloud metadata endpoints. \
+                             Validate URL schemes (allow only http/https).",
+                        )
+                        .with_cwe("918"),
+                    );
                 }
             }
         }

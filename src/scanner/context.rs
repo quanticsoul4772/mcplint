@@ -8,12 +8,16 @@ use crate::protocol::mcp::{Prompt, Resource, ServerCapabilities, Tool};
 #[derive(Debug, Clone)]
 pub struct ServerContext {
     /// Server name
+    #[allow(dead_code)]
     pub server_name: String,
     /// Server version
+    #[allow(dead_code)]
     pub server_version: String,
     /// Negotiated protocol version
+    #[allow(dead_code)]
     pub protocol_version: String,
     /// Server capabilities
+    #[allow(dead_code)]
     pub capabilities: ServerCapabilities,
     /// Transport type used
     pub transport_type: String,
@@ -78,21 +82,25 @@ impl ServerContext {
     }
 
     /// Check if the target appears to use HTTPS
+    #[allow(dead_code)]
     pub fn uses_https(&self) -> bool {
         self.target.starts_with("https://")
     }
 
     /// Check if the server has any tools
+    #[allow(dead_code)]
     pub fn has_tools(&self) -> bool {
         !self.tools.is_empty()
     }
 
     /// Check if the server has any resources
+    #[allow(dead_code)]
     pub fn has_resources(&self) -> bool {
         !self.resources.is_empty()
     }
 
     /// Check if the server has any prompts
+    #[allow(dead_code)]
     pub fn has_prompts(&self) -> bool {
         !self.prompts.is_empty()
     }
@@ -114,6 +122,7 @@ pub struct ScanConfig {
     /// Specific rules to exclude
     pub exclude_rules: Vec<String>,
     /// Run checks in parallel where possible
+    #[allow(dead_code)]
     pub parallel_checks: bool,
 }
 
