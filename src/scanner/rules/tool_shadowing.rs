@@ -586,11 +586,13 @@ impl ToolShadowingDetector {
 
         let mut matrix = vec![vec![0; b_len + 1]; a_len + 1];
 
-        for i in 0..=a_len {
-            matrix[i][0] = i;
+        // Initialize first column
+        for (i, row) in matrix.iter_mut().enumerate() {
+            row[0] = i;
         }
-        for j in 0..=b_len {
-            matrix[0][j] = j;
+        // Initialize first row
+        for (j, val) in matrix[0].iter_mut().enumerate() {
+            *val = j;
         }
 
         for i in 1..=a_len {

@@ -5,8 +5,8 @@
 
 #![allow(dead_code)] // Prepared for future migration
 
-use super::finding::{Finding, Severity};
 use super::context::ScanProfile;
+use super::finding::{Finding, Severity};
 
 /// Results from a security scan
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
