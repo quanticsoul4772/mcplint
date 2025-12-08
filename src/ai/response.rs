@@ -132,13 +132,17 @@ impl Likelihood {
             Likelihood::High => "high",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for Likelihood {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "low" => Some(Likelihood::Low),
-            "medium" => Some(Likelihood::Medium),
-            "high" => Some(Likelihood::High),
-            _ => None,
+            "low" => Ok(Likelihood::Low),
+            "medium" => Ok(Likelihood::Medium),
+            "high" => Ok(Likelihood::High),
+            _ => Err(()),
         }
     }
 }
@@ -468,8 +472,8 @@ mod tests {
 
     #[test]
     fn likelihood_parsing() {
-        assert_eq!(Likelihood::from_str("high"), Some(Likelihood::High));
-        assert_eq!(Likelihood::from_str("LOW"), Some(Likelihood::Low));
-        assert_eq!(Likelihood::from_str("invalid"), None);
+        assert_eq!("high".parse::<Likelihood>(), Ok(Likelihood::High));
+        assert_eq!("LOW".parse::<Likelihood>(), Ok(Likelihood::Low));
+        assert!("invalid".parse::<Likelihood>().is_err());
     }
 }

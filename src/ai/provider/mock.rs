@@ -208,7 +208,7 @@ impl AiProvider for MockProvider {
         let words: Vec<&str> = summary.split_whitespace().collect();
 
         for word in words {
-            let _ = sender.send(StreamChunk::text(&format!("{} ", word))).await;
+            let _ = sender.send(StreamChunk::text(format!("{} ", word))).await;
             // Small delay to simulate streaming
             if self.delay_ms > 0 {
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
