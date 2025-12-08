@@ -161,6 +161,18 @@ impl ScanConfig {
         self
     }
 
+    #[allow(dead_code)]
+    pub fn with_include_rules(mut self, rules: Vec<String>) -> Self {
+        self.include_rules = rules;
+        self
+    }
+
+    #[allow(dead_code)]
+    pub fn with_exclude_rules(mut self, rules: Vec<String>) -> Self {
+        self.exclude_rules = rules;
+        self
+    }
+
     /// Check if a rule should be executed based on configuration
     pub fn should_run_rule(&self, rule_id: &str, category: &str) -> bool {
         // Check explicit exclusions first
