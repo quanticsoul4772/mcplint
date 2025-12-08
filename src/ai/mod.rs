@@ -27,16 +27,23 @@ pub mod rate_limit;
 pub mod response;
 pub mod streaming;
 
-// Re-exports for convenience
+// Re-exports for convenience - these are public API exports used by external consumers
+#[allow(unused_imports)]
 pub use config::{AiConfig, AiProvider as AiProviderType, AudienceLevel, ExplanationContext};
+#[allow(unused_imports)]
 pub use engine::{EngineStats, ExplainEngine};
+#[allow(unused_imports)]
 pub use prompt::PromptBuilder;
+#[allow(unused_imports)]
 pub use provider::{AiProvider, MockProvider};
+#[allow(unused_imports)]
 pub use rate_limit::RateLimiter;
+#[allow(unused_imports)]
 pub use response::{
     CodeExample, EducationalContext, ExplanationMetadata, ExplanationResponse, Likelihood,
     RemediationGuide, ResourceLink, VulnerabilityExplanation, WeaknessInfo,
 };
+#[allow(unused_imports)]
 pub use streaming::{
     stream_channel, ChunkReceiver, ChunkSender, CollectCallback, PrintCallback, StreamAccumulator,
     StreamCallback, StreamChunk,

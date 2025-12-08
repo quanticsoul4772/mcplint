@@ -9,6 +9,8 @@ mod finding;
 
 pub use context::{ScanConfig, ScanProfile};
 pub use engine::{ScanEngine, ScanResults};
+// Re-exports for public API - used by external consumers and tests
+#[allow(unused_imports)]
 pub use finding::{Evidence, EvidenceKind, Finding, FindingLocation, ReferenceKind, Severity};
 
 use anyhow::Result;
