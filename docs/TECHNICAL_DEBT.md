@@ -17,7 +17,7 @@ The mcplint codebase has accumulated several categories of technical debt throug
 | Function Complexity | 4 functions | 🟢 Low | Medium | ✅ Completed (Phase 1) |
 | Dead Code / Unused Annotations | 39 | 🟡 Medium | Low | ✅ Audited (Phase 2) |
 | Large Files | 5 files >500 LOC | 🟡 Medium | High | ✅ Modular structure created (Phase 3) |
-| TODO/FIXME Comments | 2 | 🔴 High | Low | Pending |
+| TODO/FIXME Comments | 2 | 🔴 High | Low | ✅ Resolved (Phase 4) |
 | Code Duplication | 3 areas | 🟡 Medium | Medium | ✅ Partially fixed (Phase 1) |
 | Type Conversion Overhead | 2 areas | 🟢 Low | Low | ✅ Fixed (Phase 1) |
 | Error Handling Inconsistency | Multiple | 🟡 Medium | Medium | Pending |
@@ -40,6 +40,12 @@ The mcplint codebase has accumulated several categories of technical debt throug
 - Created `src/scanner/helpers.rs` - Schema analysis helper functions
 - Created `src/scanner/checks/` module structure for future check migration
 - All 284 tests pass
+
+**Phase 4 - TODO/FIXME resolution (December 8, 2025):**
+- Verified `validate.rs` - Full implementation exists with `ProtocolValidator`
+- Verified `corpus.rs` - Corpus persistence implemented (`load_from_disk`, `save_seeds`)
+- Both items marked as TODO in original analysis are now complete
+- No remaining TODO/FIXME comments in source code
 
 ---
 
@@ -136,32 +142,28 @@ pub async fn run(args: ScanArgs) -> Result<()>
 
 ---
 
-## Category 3: Incomplete Implementations (TODO/FIXME)
+## Category 3: Incomplete Implementations (TODO/FIXME) ✅ RESOLVED
 
-### Problem
+### Original Problem
 
-2 TODO comments indicate incomplete functionality:
+2 TODO comments indicated incomplete functionality at the time of initial analysis.
 
-```rust
-// src/cli/commands/validate.rs:
-// TODO: Implement actual validation
+### Resolution (Phase 4 - December 8, 2025)
 
-// src/fuzzer/corpus.rs:
-// TODO: Implement corpus loading from disk
-```
+Both items have been fully implemented:
 
-### Analysis
+1. **validate.rs**: ✅ Complete implementation exists
+   - `ProtocolValidator` struct performs actual protocol compliance checking
+   - Connects to server, validates initialization, capabilities, and protocol messages
+   - Multiple output formats supported (text, json, sarif)
 
-1. **validate.rs**: The validate command exists but may be a stub
-2. **corpus.rs**: Corpus persistence not implemented (important for fuzzer resume)
+2. **corpus.rs**: ✅ Complete implementation exists
+   - `load_from_disk()` - Loads seeds, crashes, hangs, and interesting inputs
+   - `save_seeds()` - Persists seed corpus to disk
+   - `record_crash()`, `record_hang()`, `record_interesting()` - Full persistence
+   - Directory structure: `seeds/`, `crashes/`, `hangs/`, `interesting/`
 
-### Remediation
-
-1. **validate.rs**: Audit and either implement or document as "planned feature"
-2. **corpus.rs**: Implement corpus save/load for fuzzer resume capability
-
-**Effort:** 8-16 hours
-**Priority:** 🔴 High - These represent missing promised functionality
+**Status:** ✅ Resolved - No TODO/FIXME comments remain in source code
 
 ---
 
@@ -414,8 +416,12 @@ proptest! {
 - [x] Extract results types to `src/scanner/results.rs`
 - [x] Extract helpers to `src/scanner/helpers.rs`
 
-### Phase 4: Remaining Work (Future)
-- [ ] Fix TODO comments in validate.rs and corpus.rs
+### Phase 4: TODO/FIXME Resolution ✅ COMPLETED
+- [x] Verify TODO in validate.rs - Already implemented (ProtocolValidator)
+- [x] Verify TODO in corpus.rs - Already implemented (load_from_disk, save_seeds)
+- [x] Confirm no remaining TODO/FIXME comments in source
+
+### Phase 5: Remaining Work (Future)
 - [ ] Implement consistent error types with `thiserror`
 - [ ] Add missing integration tests
 - [ ] Complete scanner check migration to modular structure
@@ -428,13 +434,13 @@ proptest! {
 |--------|--------|-------|--------|
 | `#[allow(dead_code)]` count | 39 | 39 (audited, appropriate) | N/A |
 | `#[allow(clippy::too_many_arguments)]` count | 4 | 0 | 0 ✅ |
-| TODO/FIXME count | 2 | 2 | 0 |
+| TODO/FIXME count | 2 | 0 | 0 ✅ |
 | Files >500 LOC | 5 | 5 (modular structure prepared) | 2 |
 | Test coverage (estimated) | 65% | 65% | 80% |
 | Clippy warnings | 3 | 0 | 0 ✅ |
 
 ---
 
-*Document Version: 1.1*
+*Document Version: 1.2*
 *Last Updated: December 8, 2025*
 *Author: Claude Code Analysis Agent*
