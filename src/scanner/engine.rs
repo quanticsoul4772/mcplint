@@ -8,7 +8,6 @@ use anyhow::{Context, Result};
 use regex::Regex;
 
 use crate::client::McpClient;
-use crate::protocol::mcp::Tool;
 use crate::protocol::Implementation;
 use crate::transport::{connect_with_type, TransportConfig, TransportType};
 
@@ -121,7 +120,7 @@ impl ScanEngine {
             &init_result.protocol_version,
             init_result.capabilities.clone(),
         )
-        .with_transport(transport.as_str())
+        .with_transport(transport.to_string())
         .with_target(target);
 
         // Collect tools, resources, prompts

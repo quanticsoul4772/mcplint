@@ -7,12 +7,9 @@ mod context;
 mod engine;
 mod finding;
 
-pub use context::{ScanConfig, ScanProfile, ServerContext};
-pub use engine::{ScanEngine, ScanResults, ScanSummary};
-pub use finding::{
-    Evidence, EvidenceKind, Finding, FindingLocation, FindingMetadata, Reference, ReferenceKind,
-    Severity,
-};
+pub use context::{ScanConfig, ScanProfile};
+pub use engine::{ScanEngine, ScanResults};
+pub use finding::{Finding, Severity};
 
 use anyhow::Result;
 use colored::Colorize;
