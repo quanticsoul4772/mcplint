@@ -118,7 +118,10 @@ impl OllamaProvider {
             technical_details: parsed.explanation.technical_details,
             attack_scenario: parsed.explanation.attack_scenario,
             impact: parsed.explanation.impact,
-            likelihood: Likelihood::from_str(&parsed.explanation.likelihood)
+            likelihood: parsed
+                .explanation
+                .likelihood
+                .parse()
                 .unwrap_or(Likelihood::Medium),
         };
 

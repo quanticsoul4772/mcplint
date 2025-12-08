@@ -110,10 +110,10 @@ fn test_audience_levels() {
 
 #[test]
 fn test_likelihood_parsing() {
-    assert_eq!(Likelihood::from_str("high"), Some(Likelihood::High));
-    assert_eq!(Likelihood::from_str("medium"), Some(Likelihood::Medium));
-    assert_eq!(Likelihood::from_str("low"), Some(Likelihood::Low));
-    assert_eq!(Likelihood::from_str("invalid"), None);
+    assert_eq!("high".parse::<Likelihood>(), Ok(Likelihood::High));
+    assert_eq!("medium".parse::<Likelihood>(), Ok(Likelihood::Medium));
+    assert_eq!("low".parse::<Likelihood>(), Ok(Likelihood::Low));
+    assert!("invalid".parse::<Likelihood>().is_err());
 }
 
 #[test]
@@ -186,28 +186,25 @@ fn test_config_validation() {
 #[test]
 fn test_provider_from_string() {
     assert_eq!(
-        AiProviderType::from_str("anthropic"),
-        Some(AiProviderType::Anthropic)
+        "anthropic".parse::<AiProviderType>(),
+        Ok(AiProviderType::Anthropic)
     );
     assert_eq!(
-        AiProviderType::from_str("claude"),
-        Some(AiProviderType::Anthropic)
+        "claude".parse::<AiProviderType>(),
+        Ok(AiProviderType::Anthropic)
     );
     assert_eq!(
-        AiProviderType::from_str("openai"),
-        Some(AiProviderType::OpenAI)
+        "openai".parse::<AiProviderType>(),
+        Ok(AiProviderType::OpenAI)
+    );
+    assert_eq!("gpt".parse::<AiProviderType>(), Ok(AiProviderType::OpenAI));
+    assert_eq!(
+        "ollama".parse::<AiProviderType>(),
+        Ok(AiProviderType::Ollama)
     );
     assert_eq!(
-        AiProviderType::from_str("gpt"),
-        Some(AiProviderType::OpenAI)
+        "local".parse::<AiProviderType>(),
+        Ok(AiProviderType::Ollama)
     );
-    assert_eq!(
-        AiProviderType::from_str("ollama"),
-        Some(AiProviderType::Ollama)
-    );
-    assert_eq!(
-        AiProviderType::from_str("local"),
-        Some(AiProviderType::Ollama)
-    );
-    assert_eq!(AiProviderType::from_str("invalid"), None);
+    assert!("invalid".parse::<AiProviderType>().is_err());
 }

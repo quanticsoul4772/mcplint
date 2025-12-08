@@ -28,15 +28,6 @@ impl AiProvider {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "anthropic" | "claude" => Some(AiProvider::Anthropic),
-            "openai" | "gpt" => Some(AiProvider::OpenAI),
-            "ollama" | "local" => Some(AiProvider::Ollama),
-            _ => None,
-        }
-    }
-
     pub fn default_model(&self) -> &'static str {
         match self {
             AiProvider::Anthropic => "claude-sonnet-4-20250514",
@@ -57,6 +48,19 @@ impl AiProvider {
 impl std::fmt::Display for AiProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.as_str())
+    }
+}
+
+impl std::str::FromStr for AiProvider {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "anthropic" | "claude" => Ok(AiProvider::Anthropic),
+            "openai" | "gpt" => Ok(AiProvider::OpenAI),
+            "ollama" | "local" => Ok(AiProvider::Ollama),
+            _ => Err(()),
+        }
     }
 }
 
@@ -82,15 +86,6 @@ impl AudienceLevel {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "beginner" | "novice" => Some(AudienceLevel::Beginner),
-            "intermediate" | "medium" => Some(AudienceLevel::Intermediate),
-            "expert" | "advanced" => Some(AudienceLevel::Expert),
-            _ => None,
-        }
-    }
-
     pub fn description(&self) -> &'static str {
         match self {
             AudienceLevel::Beginner => "someone new to security concepts",
@@ -103,6 +98,19 @@ impl AudienceLevel {
 impl std::fmt::Display for AudienceLevel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.as_str())
+    }
+}
+
+impl std::str::FromStr for AudienceLevel {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "beginner" | "novice" => Ok(AudienceLevel::Beginner),
+            "intermediate" | "medium" => Ok(AudienceLevel::Intermediate),
+            "expert" | "advanced" => Ok(AudienceLevel::Expert),
+            _ => Err(()),
+        }
     }
 }
 
@@ -463,7 +471,7 @@ impl AiConfig {
 
         // Parse provider
         if let Some(provider_str) = ai_section.get("provider").and_then(|v| v.as_str()) {
-            if let Some(provider) = AiProvider::from_str(provider_str) {
+            if let Ok(provider) = provider_str.parse::<AiProvider>() {
                 config.provider = provider;
                 // Update default model for provider
                 config.model = provider.default_model().to_string();
@@ -603,26 +611,20 @@ mod tests {
 
     #[test]
     fn provider_parsing() {
-        assert_eq!(
-            AiProvider::from_str("anthropic"),
-            Some(AiProvider::Anthropic)
-        );
-        assert_eq!(AiProvider::from_str("OPENAI"), Some(AiProvider::OpenAI));
-        assert_eq!(AiProvider::from_str("local"), Some(AiProvider::Ollama));
-        assert_eq!(AiProvider::from_str("invalid"), None);
+        assert_eq!("anthropic".parse::<AiProvider>(), Ok(AiProvider::Anthropic));
+        assert_eq!("OPENAI".parse::<AiProvider>(), Ok(AiProvider::OpenAI));
+        assert_eq!("local".parse::<AiProvider>(), Ok(AiProvider::Ollama));
+        assert!("invalid".parse::<AiProvider>().is_err());
     }
 
     #[test]
     fn audience_parsing() {
         assert_eq!(
-            AudienceLevel::from_str("beginner"),
-            Some(AudienceLevel::Beginner)
+            "beginner".parse::<AudienceLevel>(),
+            Ok(AudienceLevel::Beginner)
         );
-        assert_eq!(
-            AudienceLevel::from_str("EXPERT"),
-            Some(AudienceLevel::Expert)
-        );
-        assert_eq!(AudienceLevel::from_str("invalid"), None);
+        assert_eq!("EXPERT".parse::<AudienceLevel>(), Ok(AudienceLevel::Expert));
+        assert!("invalid".parse::<AudienceLevel>().is_err());
     }
 
     #[test]
