@@ -12,6 +12,7 @@ use crate::cli::commands::explain::CliAiProvider;
 use crate::scanner::{ScanConfig, ScanEngine, ScanProfile};
 use crate::{OutputFormat, ScanProfile as CliScanProfile};
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     server: &str,
     args: &[String],

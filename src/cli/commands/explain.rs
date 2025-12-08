@@ -62,13 +62,14 @@ impl From<CliAudienceLevel> for AudienceLevel {
 }
 
 /// Run explain on a specific finding ID from previous scan results
+#[allow(dead_code)]
 pub async fn run_finding(
     finding_id: &str,
-    provider: CliAiProvider,
-    model: Option<String>,
-    audience: CliAudienceLevel,
-    format: OutputFormat,
-    no_cache: bool,
+    _provider: CliAiProvider,
+    _model: Option<String>,
+    _audience: CliAudienceLevel,
+    _format: OutputFormat,
+    _no_cache: bool,
 ) -> Result<()> {
     info!("Explaining finding: {}", finding_id);
 
@@ -87,6 +88,7 @@ pub async fn run_finding(
 }
 
 /// Run explain after scanning a server
+#[allow(clippy::too_many_arguments)]
 pub async fn run_scan(
     server: &str,
     args: &[String],
@@ -246,7 +248,7 @@ fn build_ai_config(
     let provider_type: AiProviderType = provider.into();
 
     // CLI provider always overrides config file
-    config.provider = provider_type.clone();
+    config.provider = provider_type;
 
     // CLI model overrides config file, or use provider default
     if let Some(m) = model {
