@@ -115,7 +115,10 @@ mod tests {
 
         let fp1 = FindingFingerprint::from_finding(&finding1);
         let fp2 = FindingFingerprint::from_finding(&finding2);
-        assert_ne!(fp1, fp2, "Different findings should have different fingerprints");
+        assert_ne!(
+            fp1, fp2,
+            "Different findings should have different fingerprints"
+        );
     }
 
     #[test]

@@ -83,10 +83,8 @@ impl Baseline {
 
     /// Save baseline to a JSON file
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), BaselineError> {
-        let content =
-            serde_json::to_string_pretty(self).map_err(|e| BaselineError::SerializeError {
-                source: e,
-            })?;
+        let content = serde_json::to_string_pretty(self)
+            .map_err(|e| BaselineError::SerializeError { source: e })?;
 
         fs::write(path.as_ref(), content).map_err(|e| BaselineError::IoError {
             path: path.as_ref().display().to_string(),
@@ -201,8 +199,13 @@ mod tests {
             .with_location(FindingLocation::tool("tool1")),
         );
         results.add_finding(
-            Finding::new("MCP-AUTH-001", Severity::High, "High Finding", "Description")
-                .with_location(FindingLocation::tool("tool2")),
+            Finding::new(
+                "MCP-AUTH-001",
+                Severity::High,
+                "High Finding",
+                "Description",
+            )
+            .with_location(FindingLocation::tool("tool2")),
         );
 
         results
