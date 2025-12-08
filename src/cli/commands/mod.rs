@@ -8,3 +8,4 @@ pub mod init;
 pub mod rules;
 pub mod scan;
 pub mod validate;
+pub mod watch;

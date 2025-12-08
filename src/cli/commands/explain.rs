@@ -211,6 +211,10 @@ pub async fn run_scan(
             );
             print_explanations_json(&explanations)?;
         }
+        OutputFormat::Junit | OutputFormat::Gitlab => {
+            // Explanation results use JSON as fallback for unsupported formats
+            print_explanations_json(&explanations)?;
+        }
     }
 
     // Print stats
@@ -232,7 +236,7 @@ pub async fn run_scan(
 /// 2. Config file (.mcplint.toml, mcplint.toml, ~/.config/mcplint/config.toml)
 /// 3. Environment variables
 /// 4. Defaults (lowest priority)
-fn build_ai_config(
+pub fn build_ai_config(
     provider: CliAiProvider,
     model: Option<String>,
     timeout: u64,

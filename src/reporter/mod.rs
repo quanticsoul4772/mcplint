@@ -4,10 +4,17 @@
 //! - Text (human-readable console output)
 //! - JSON (machine-readable)
 //! - SARIF (GitHub/GitLab CI integration)
+//! - JUnit XML (Jenkins, CircleCI, Azure DevOps)
+//! - GitLab Code Quality (GitLab MR integration)
 
 #![allow(dead_code)] // Generic reporter types for future use
 
+pub mod gitlab;
+pub mod junit;
 pub mod sarif;
+
+pub use gitlab::generate_gitlab;
+pub use junit::generate_junit;
 
 use serde::Serialize;
 
