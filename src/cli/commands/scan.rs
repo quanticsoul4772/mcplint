@@ -168,7 +168,10 @@ pub async fn run(
                 );
             }
         } else {
-            eprintln!("{}", "Warning: --update-baseline requires --baseline".yellow());
+            eprintln!(
+                "{}",
+                "Warning: --update-baseline requires --baseline".yellow()
+            );
         }
     }
 
@@ -187,10 +190,7 @@ pub async fn run(
 }
 
 /// Print diff summary in various formats
-fn print_diff_summary(
-    diff: &crate::baseline::DiffResult,
-    format: OutputFormat,
-) -> Result<()> {
+fn print_diff_summary(diff: &crate::baseline::DiffResult, format: OutputFormat) -> Result<()> {
     match format {
         OutputFormat::Text => {
             println!("{}", "Baseline Comparison Summary".cyan().bold());

@@ -189,8 +189,7 @@ mod tests {
 
     #[test]
     fn ai_config_enabled() {
-        let config = AiExplainConfig::enabled(CliAiProvider::Anthropic)
-            .with_model("claude-3-opus");
+        let config = AiExplainConfig::enabled(CliAiProvider::Anthropic).with_model("claude-3-opus");
 
         assert!(config.enabled);
         assert!(config.model.is_some());

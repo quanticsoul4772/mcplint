@@ -307,7 +307,15 @@ impl RuleRegistry {
 
     #[allow(dead_code)]
     pub fn categories(&self) -> Vec<&str> {
-        vec!["injection", "auth", "transport", "protocol", "data", "dos", "security"]
+        vec![
+            "injection",
+            "auth",
+            "transport",
+            "protocol",
+            "data",
+            "dos",
+            "security",
+        ]
     }
 }
 

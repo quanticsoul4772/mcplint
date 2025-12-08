@@ -38,10 +38,7 @@ pub fn generate_gitlab(results: &ScanResults) -> String {
         .iter()
         .map(|f| {
             GitLabIssue {
-                description: format!(
-                    "[{}] {}: {}",
-                    f.rule_id, f.title, f.description
-                ),
+                description: format!("[{}] {}: {}", f.rule_id, f.title, f.description),
                 check_name: f.rule_id.clone(),
                 fingerprint: FindingFingerprint::from_finding(f),
                 severity: map_severity(f.severity).to_string(),

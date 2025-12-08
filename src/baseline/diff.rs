@@ -56,12 +56,12 @@ impl DiffEngine {
             .collect();
 
         // Compute severity counts for new findings
-        let (new_critical, new_high) = new_findings.iter().fold((0, 0), |(crit, high), f| {
-            match f.severity {
-                Severity::Critical => (crit + 1, high),
-                Severity::High => (crit, high + 1),
-                _ => (crit, high),
-            }
+        let (new_critical, new_high) = new_findings.iter().fold((0, 0), |(crit, high), f| match f
+            .severity
+        {
+            Severity::Critical => (crit + 1, high),
+            Severity::High => (crit, high + 1),
+            _ => (crit, high),
         });
 
         DiffResult {
@@ -221,9 +221,8 @@ mod tests {
 
     #[test]
     fn diff_counts_critical_high() {
-        let finding_crit =
-            Finding::new("MCP-INJ-001", Severity::Critical, "Critical", "Desc")
-                .with_location(FindingLocation::tool("tool_crit"));
+        let finding_crit = Finding::new("MCP-INJ-001", Severity::Critical, "Critical", "Desc")
+            .with_location(FindingLocation::tool("tool_crit"));
         let finding_high = Finding::new("MCP-INJ-002", Severity::High, "High", "Desc")
             .with_location(FindingLocation::tool("tool_high"));
         let finding_med = Finding::new("MCP-INJ-003", Severity::Medium, "Medium", "Desc")
@@ -232,8 +231,11 @@ mod tests {
         let baseline_results = create_results(vec![]);
         let baseline = Baseline::from_results(&baseline_results);
 
-        let current =
-            create_results(vec![finding_crit.clone(), finding_high.clone(), finding_med.clone()]);
+        let current = create_results(vec![
+            finding_crit.clone(),
+            finding_high.clone(),
+            finding_med.clone(),
+        ]);
 
         let diff = DiffEngine::diff(&baseline, &current);
 

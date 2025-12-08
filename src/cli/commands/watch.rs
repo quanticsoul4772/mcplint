@@ -173,9 +173,7 @@ async fn run_scan(
     println!("{}", "Running security scan...".cyan());
     println!("{}", "─".repeat(60));
 
-    let config = ScanConfig::default()
-        .with_profile(profile)
-        .with_timeout(30);
+    let config = ScanConfig::default().with_profile(profile).with_timeout(30);
 
     let engine = ScanEngine::new(config);
     let results = engine.scan(server, args, None).await?;
