@@ -1,66 +1,88 @@
 //! Security Scanner - Vulnerability detection for MCP servers
+//!
+//! This module implements the M2 milestone: Security Scanner
+//! It scans MCP servers for security vulnerabilities using pattern-based detection.
 
-#![allow(dead_code)] // Scanner types reserved for future implementation
+mod context;
+mod engine;
+mod finding;
+
+pub use context::{ScanConfig, ScanProfile, ServerContext};
+pub use engine::{ScanEngine, ScanResults, ScanSummary};
+pub use finding::{
+    Evidence, EvidenceKind, Finding, FindingLocation, FindingMetadata, Reference, ReferenceKind,
+    Severity,
+};
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use colored::Colorize;
 
-use crate::ScanProfile;
+use crate::ScanProfile as CliScanProfile;
 
-/// Security scan findings
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScanFindings {
-    pub server: String,
-    pub profile: String,
-    pub total_checks: usize,
-    pub vulnerabilities: Vec<Vulnerability>,
-    pub summary: ScanSummary,
+/// Legacy type aliases for backward compatibility
+pub type ScanFindings = ScanResults;
+pub type Vulnerability = Finding;
+
+/// Security scanner for MCP servers (simplified interface)
+pub struct SecurityScanner {
+    engine: ScanEngine,
+    target: String,
+    args: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Vulnerability {
-    pub id: String,
-    pub rule_id: String,
-    pub severity: Severity,
-    pub title: String,
-    pub description: String,
-    pub location: Option<String>,
-    pub evidence: Option<String>,
-    pub remediation: Option<String>,
-    pub references: Vec<String>,
+impl SecurityScanner {
+    pub fn new(server: &str, args: &[String], profile: CliScanProfile, timeout: u64) -> Self {
+        let scan_profile = match profile {
+            CliScanProfile::Quick => ScanProfile::Quick,
+            CliScanProfile::Standard => ScanProfile::Standard,
+            CliScanProfile::Full => ScanProfile::Full,
+            CliScanProfile::Enterprise => ScanProfile::Enterprise,
+        };
+
+        let config = ScanConfig::default()
+            .with_profile(scan_profile)
+            .with_timeout(timeout);
+
+        Self {
+            engine: ScanEngine::new(config),
+            target: server.to_string(),
+            args: args.to_vec(),
+        }
+    }
+
+    pub async fn scan(&self) -> Result<ScanResults> {
+        self.engine.scan(&self.target, &self.args, None).await
+    }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Severity {
-    Info,
-    Low,
-    Medium,
-    High,
-    Critical,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ScanSummary {
-    pub critical: usize,
-    pub high: usize,
-    pub medium: usize,
-    pub low: usize,
-    pub info: usize,
-}
-
-impl ScanFindings {
+impl ScanResults {
     pub fn print_text(&self) {
-        use colored::Colorize;
-
         println!("{}", "Security Scan Results".cyan().bold());
-        println!("{}", "=".repeat(50));
+        println!("{}", "=".repeat(60));
         println!();
 
-        if self.vulnerabilities.is_empty() {
-            println!("{}", "No vulnerabilities found ✓".green());
+        println!("  Server: {}", self.server.yellow());
+        println!("  Profile: {}", self.profile.green());
+        println!("  Checks: {}", self.total_checks);
+        println!("  Duration: {}ms", self.duration_ms);
+        println!();
+
+        if self.findings.is_empty() {
+            println!("{}", "  No vulnerabilities found ✓".green().bold());
         } else {
-            for vuln in &self.vulnerabilities {
-                let severity = match vuln.severity {
+            println!(
+                "  {} {} found:",
+                self.findings.len(),
+                if self.findings.len() == 1 {
+                    "vulnerability"
+                } else {
+                    "vulnerabilities"
+                }
+            );
+            println!();
+
+            for finding in &self.findings {
+                let severity = match finding.severity {
                     Severity::Critical => "CRITICAL".red().bold(),
                     Severity::High => "HIGH".red(),
                     Severity::Medium => "MEDIUM".yellow(),
@@ -68,23 +90,55 @@ impl ScanFindings {
                     Severity::Info => "INFO".dimmed(),
                 };
 
-                println!("[{}] {} ({})", severity, vuln.title, vuln.rule_id.dimmed());
-                println!("  {}", vuln.description);
-                if let Some(ref remediation) = vuln.remediation {
-                    println!("  Fix: {}", remediation.green());
+                println!(
+                    "  [{}] {} ({})",
+                    severity,
+                    finding.title,
+                    finding.rule_id.dimmed()
+                );
+                println!("    {}", finding.description);
+
+                if !finding.location.component.is_empty() {
+                    println!(
+                        "    Location: {}: {}",
+                        finding.location.component.cyan(),
+                        finding.location.identifier
+                    );
                 }
+
+                if !finding.remediation.is_empty() {
+                    println!("    Fix: {}", finding.remediation.green());
+                }
+
+                if !finding.references.is_empty() {
+                    let refs: Vec<String> = finding.references.iter().map(|r| r.id.clone()).collect();
+                    println!("    References: {}", refs.join(", ").dimmed());
+                }
+
                 println!();
             }
         }
 
-        println!();
+        println!("{}", "─".repeat(60));
         println!(
-            "Summary: {} critical, {} high, {} medium, {} low",
+            "Summary: {} critical, {} high, {} medium, {} low, {} info",
             self.summary.critical.to_string().red(),
             self.summary.high.to_string().red(),
             self.summary.medium.to_string().yellow(),
-            self.summary.low.to_string().blue()
+            self.summary.low.to_string().blue(),
+            self.summary.info.to_string().dimmed()
         );
+
+        if self.has_critical_or_high() {
+            println!(
+                "\n{}",
+                "Server has critical/high severity vulnerabilities!".red().bold()
+            );
+        } else if self.total_findings() > 0 {
+            println!("\n{}", "Server has security issues to address.".yellow());
+        } else {
+            println!("\n{}", "No security issues detected.".green().bold());
+        }
     }
 
     pub fn print_json(&self) -> Result<()> {
@@ -93,53 +147,79 @@ impl ScanFindings {
     }
 
     pub fn print_sarif(&self) -> Result<()> {
-        // TODO: Implement SARIF output
-        println!("SARIF output not yet implemented");
+        let sarif = to_sarif_report(self);
+        println!("{}", serde_json::to_string_pretty(&sarif)?);
         Ok(())
     }
 }
 
-/// Security scanner for MCP servers
-pub struct SecurityScanner {
-    server: String,
-    args: Vec<String>,
-    profile: ScanProfile,
-    timeout: u64,
-}
+/// Convert scan results to SARIF format for CI/CD integration
+fn to_sarif_report(results: &ScanResults) -> serde_json::Value {
+    use std::collections::HashSet;
 
-impl SecurityScanner {
-    pub fn new(server: &str, args: &[String], profile: ScanProfile, timeout: u64) -> Self {
-        Self {
-            server: server.to_string(),
-            args: args.to_vec(),
-            profile,
-            timeout,
+    // Collect unique rules
+    let mut seen_rules: HashSet<String> = HashSet::new();
+    let mut rules = Vec::new();
+
+    for finding in &results.findings {
+        if !seen_rules.contains(&finding.rule_id) {
+            seen_rules.insert(finding.rule_id.clone());
+            rules.push(serde_json::json!({
+                "id": finding.rule_id,
+                "name": finding.title,
+                "shortDescription": {
+                    "text": finding.title
+                },
+                "fullDescription": {
+                    "text": finding.description
+                },
+                "defaultConfiguration": {
+                    "level": finding.severity.to_sarif_level()
+                },
+                "helpUri": finding.references.first().and_then(|r| r.url.clone())
+            }));
         }
     }
 
-    pub async fn scan(&self) -> Result<ScanFindings> {
-        // TODO: Implement actual security scanning
-        // For now, return placeholder results
-
-        let profile_name = match self.profile {
-            ScanProfile::Quick => "quick",
-            ScanProfile::Standard => "standard",
-            ScanProfile::Full => "full",
-            ScanProfile::Enterprise => "enterprise",
-        };
-
-        Ok(ScanFindings {
-            server: self.server.clone(),
-            profile: profile_name.to_string(),
-            total_checks: 42,
-            vulnerabilities: vec![],
-            summary: ScanSummary {
-                critical: 0,
-                high: 0,
-                medium: 0,
-                low: 0,
-                info: 0,
-            },
+    // Convert findings to SARIF results
+    let sarif_results: Vec<serde_json::Value> = results
+        .findings
+        .iter()
+        .map(|f| {
+            serde_json::json!({
+                "ruleId": f.rule_id,
+                "level": f.severity.to_sarif_level(),
+                "message": {
+                    "text": format!("{}: {}", f.title, f.description)
+                },
+                "locations": [{
+                    "physicalLocation": {
+                        "artifactLocation": {
+                            "uri": results.server.clone()
+                        }
+                    },
+                    "logicalLocations": [{
+                        "name": f.location.identifier.clone(),
+                        "kind": f.location.component.clone()
+                    }]
+                }]
+            })
         })
-    }
+        .collect();
+
+    serde_json::json!({
+        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [{
+            "tool": {
+                "driver": {
+                    "name": "mcplint",
+                    "version": env!("CARGO_PKG_VERSION"),
+                    "informationUri": "https://github.com/quanticsoul4772/mcplint",
+                    "rules": rules
+                }
+            },
+            "results": sarif_results
+        }]
+    })
 }
