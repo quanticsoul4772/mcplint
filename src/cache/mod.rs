@@ -41,8 +41,8 @@ pub use key::{CacheCategory, CacheKey};
 pub use memory::MemoryCache;
 #[cfg(feature = "redis")]
 pub use redis::RedisCache;
-pub use stats::{CacheStats, CategoryStats};
 pub use rug_pull::{detect_rug_pull, RugPullDetection, RugPullSeverity, ToolHashRecord};
+pub use stats::{CacheStats, CategoryStats};
 
 use anyhow::Result;
 use serde::{de::DeserializeOwned, Serialize};

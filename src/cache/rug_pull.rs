@@ -258,16 +258,7 @@ fn assess_severity(
 
     // Check for suspicious tool names in added tools
     let suspicious_names = [
-        "exec",
-        "shell",
-        "system",
-        "eval",
-        "run",
-        "execute",
-        "command",
-        "admin",
-        "sudo",
-        "root",
+        "exec", "shell", "system", "eval", "run", "execute", "command", "admin", "sudo", "root",
     ];
 
     for tool_name in added {
@@ -306,11 +297,7 @@ fn assess_severity(
 }
 
 /// Generate a human-readable summary
-fn generate_summary(
-    added: &[String],
-    removed: &[String],
-    modified: &[ToolModification],
-) -> String {
+fn generate_summary(added: &[String], removed: &[String], modified: &[ToolModification]) -> String {
     let mut parts = Vec::new();
 
     if !added.is_empty() {
