@@ -15,53 +15,137 @@ use crate::reporter::{generate_gitlab, generate_junit};
 use crate::scanner::{ScanConfig, ScanEngine, ScanProfile, Severity};
 use crate::{OutputFormat, ScanProfile as CliScanProfile};
 
-#[allow(clippy::too_many_arguments)]
-pub async fn run(
-    server: &str,
-    args: &[String],
-    profile: CliScanProfile,
-    include: Option<Vec<String>>,
-    exclude: Option<Vec<String>>,
-    timeout: u64,
-    format: OutputFormat,
-    explain: bool,
-    ai_provider: CliAiProvider,
-    ai_model: Option<String>,
-    baseline_path: Option<PathBuf>,
-    save_baseline: Option<PathBuf>,
-    update_baseline: bool,
-    diff_only: bool,
-    fail_on: Option<Vec<Severity>>,
-) -> Result<()> {
+/// Arguments for the scan command
+pub struct ScanArgs {
+    /// Server executable path
+    pub server: String,
+    /// Arguments to pass to the server
+    pub args: Vec<String>,
+    /// Scan options
+    pub options: ScanOptions,
+    /// Output options
+    pub output: OutputOptions,
+    /// Baseline options
+    pub baseline: BaselineOptions,
+    /// AI explanation options
+    pub ai: AiOptions,
+}
+
+/// Scan configuration options
+pub struct ScanOptions {
+    /// Scan profile
+    pub profile: CliScanProfile,
+    /// Categories to include
+    pub include: Option<Vec<String>>,
+    /// Categories to exclude
+    pub exclude: Option<Vec<String>>,
+    /// Timeout in seconds
+    pub timeout: u64,
+}
+
+/// Output configuration options
+pub struct OutputOptions {
+    /// Output format
+    pub format: OutputFormat,
+    /// Severities to fail on
+    pub fail_on: Option<Vec<Severity>>,
+}
+
+/// Baseline comparison options
+pub struct BaselineOptions {
+    /// Path to baseline file for comparison
+    pub baseline_path: Option<PathBuf>,
+    /// Path to save new baseline
+    pub save_baseline: Option<PathBuf>,
+    /// Whether to update existing baseline
+    pub update_baseline: bool,
+    /// Show only diff summary
+    pub diff_only: bool,
+}
+
+/// AI explanation options
+pub struct AiOptions {
+    /// Whether to generate AI explanations
+    pub explain: bool,
+    /// AI provider
+    pub provider: CliAiProvider,
+    /// AI model
+    pub model: Option<String>,
+}
+
+impl ScanArgs {
+    /// Create ScanArgs from individual parameters (for CLI compatibility)
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        server: String,
+        args: Vec<String>,
+        profile: CliScanProfile,
+        include: Option<Vec<String>>,
+        exclude: Option<Vec<String>>,
+        timeout: u64,
+        format: OutputFormat,
+        explain: bool,
+        ai_provider: CliAiProvider,
+        ai_model: Option<String>,
+        baseline_path: Option<PathBuf>,
+        save_baseline: Option<PathBuf>,
+        update_baseline: bool,
+        diff_only: bool,
+        fail_on: Option<Vec<Severity>>,
+    ) -> Self {
+        Self {
+            server,
+            args,
+            options: ScanOptions {
+                profile,
+                include,
+                exclude,
+                timeout,
+            },
+            output: OutputOptions { format, fail_on },
+            baseline: BaselineOptions {
+                baseline_path,
+                save_baseline,
+                update_baseline,
+                diff_only,
+            },
+            ai: AiOptions {
+                explain,
+                provider: ai_provider,
+                model: ai_model,
+            },
+        }
+    }
+}
+
+/// Run the scan command with the given arguments
+pub async fn run(args: ScanArgs) -> Result<()> {
+    let ScanArgs {
+        server,
+        args: server_args,
+        options,
+        output,
+        baseline,
+        ai,
+    } = args;
     info!("Scanning MCP server: {}", server);
     debug!(
         "Profile: {:?}, Include: {:?}, Exclude: {:?}, Timeout: {}s, Explain: {}",
-        profile, include, exclude, timeout, explain
+        options.profile, options.include, options.exclude, options.timeout, ai.explain
     );
 
-    let profile_name = match profile {
-        CliScanProfile::Quick => "Quick",
-        CliScanProfile::Standard => "Standard",
-        CliScanProfile::Full => "Full",
-        CliScanProfile::Enterprise => "Enterprise",
-    };
-
-    let scan_profile = match profile {
-        CliScanProfile::Quick => ScanProfile::Quick,
-        CliScanProfile::Standard => ScanProfile::Standard,
-        CliScanProfile::Full => ScanProfile::Full,
-        CliScanProfile::Enterprise => ScanProfile::Enterprise,
-    };
+    let profile_name = options.profile.as_str();
+    let scan_profile: ScanProfile = options.profile.into();
 
     // Only show banner for text output
-    if matches!(format, OutputFormat::Text) {
+    if matches!(output.format, OutputFormat::Text) {
         println!("{}", "Starting security scan...".cyan());
         println!("  Server: {}", server.yellow());
         println!("  Profile: {}", profile_name.green());
-        if let Some(ref path) = baseline_path {
+        if let Some(ref path) = baseline.baseline_path {
             println!("  Baseline: {}", path.display().to_string().yellow());
         }
-        if explain {
+        if ai.explain {
             println!("  AI Explanations: {}", "Enabled".green());
         }
         println!();
@@ -70,22 +154,22 @@ pub async fn run(
     // Build scan configuration
     let mut config = ScanConfig::default()
         .with_profile(scan_profile)
-        .with_timeout(timeout);
+        .with_timeout(options.timeout);
 
-    if let Some(inc) = include {
+    if let Some(inc) = options.include {
         config = config.with_include_categories(inc);
     }
 
-    if let Some(exc) = exclude {
+    if let Some(exc) = options.exclude {
         config = config.with_exclude_categories(exc);
     }
 
     // Create engine and run scan
     let engine = ScanEngine::new(config);
-    let results = engine.scan(server, args, None).await?;
+    let results = engine.scan(&server, &server_args, None).await?;
 
     // Load baseline if provided
-    let baseline = if let Some(ref path) = baseline_path {
+    let loaded_baseline = if let Some(ref path) = baseline.baseline_path {
         match Baseline::load(path) {
             Ok(b) => Some(b),
             Err(e) => {
@@ -101,12 +185,14 @@ pub async fn run(
     };
 
     // Compute diff if baseline exists
-    let diff_result = baseline.as_ref().map(|b| DiffEngine::diff(b, &results));
+    let diff_result = loaded_baseline
+        .as_ref()
+        .map(|b| DiffEngine::diff(b, &results));
 
     // Handle diff-only mode
-    if diff_only {
+    if baseline.diff_only {
         if let Some(ref diff) = diff_result {
-            print_diff_summary(diff, format)?;
+            print_diff_summary(diff, output.format)?;
 
             // Exit based on new findings
             if diff.has_new_critical_or_high() {
@@ -120,7 +206,7 @@ pub async fn run(
     }
 
     // Output results based on format
-    match format {
+    match output.format {
         OutputFormat::Text => {
             if let Some(ref diff) = diff_result {
                 print_diff_text(&results, diff);
@@ -143,10 +229,10 @@ pub async fn run(
     }
 
     // Save baseline if requested
-    if let Some(ref path) = save_baseline {
+    if let Some(ref path) = baseline.save_baseline {
         let new_baseline = Baseline::from_results(&results);
         new_baseline.save(path)?;
-        if matches!(format, OutputFormat::Text) {
+        if matches!(output.format, OutputFormat::Text) {
             println!();
             println!(
                 "{}",
@@ -156,11 +242,11 @@ pub async fn run(
     }
 
     // Update baseline if requested (with existing baseline)
-    if update_baseline {
-        if let Some(ref path) = baseline_path {
+    if baseline.update_baseline {
+        if let Some(ref path) = baseline.baseline_path {
             let updated_baseline = Baseline::from_results(&results);
             updated_baseline.save(path)?;
-            if matches!(format, OutputFormat::Text) {
+            if matches!(output.format, OutputFormat::Text) {
                 println!();
                 println!(
                     "{}",
@@ -176,12 +262,12 @@ pub async fn run(
     }
 
     // Generate AI explanations if requested
-    if explain && !results.findings.is_empty() {
-        generate_ai_explanations(&results, ai_provider, ai_model, server).await?;
+    if ai.explain && !results.findings.is_empty() {
+        generate_ai_explanations(&results, ai.provider, ai.model, &server).await?;
     }
 
     // Determine exit code
-    let exit_code = determine_exit_code(&results, &diff_result, &fail_on);
+    let exit_code = determine_exit_code(&results, &diff_result, &output.fail_on);
     if exit_code != 0 {
         std::process::exit(exit_code);
     }
