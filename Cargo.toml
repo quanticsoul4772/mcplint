@@ -86,6 +86,10 @@ default = []
 fuzz = []
 redis = ["dep:redis"]
 
+[lib]
+name = "mcplint"
+path = "src/lib.rs"
+
 [[bin]]
 name = "mcplint"
 path = "src/main.rs"

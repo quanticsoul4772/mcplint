@@ -8,6 +8,7 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+// Declare modules (shared with lib.rs)
 mod cache;
 mod cli;
 mod client;
@@ -176,6 +177,73 @@ enum Commands {
         #[arg(short, long)]
         extended: bool,
     },
+
+    /// Manage cache storage
+    Cache {
+        #[command(subcommand)]
+        action: CacheAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum CacheAction {
+    /// Show cache statistics
+    Stats {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Clear cache entries
+    Clear {
+        /// Clear only specific category (schemas, scan_results, validation, corpus, tool_hashes)
+        #[arg(short, long)]
+        category: Option<String>,
+
+        /// Skip confirmation prompt
+        #[arg(long)]
+        force: bool,
+    },
+
+    /// Remove expired cache entries
+    Prune {
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+
+    /// Export cache to file
+    Export {
+        /// Output file path
+        #[arg(short, long, default_value = "mcplint-cache.json")]
+        output: std::path::PathBuf,
+
+        /// Export only specific category
+        #[arg(short, long)]
+        category: Option<String>,
+    },
+
+    /// Import cache from file
+    Import {
+        /// Input file path
+        #[arg(short, long)]
+        input: std::path::PathBuf,
+
+        /// Merge with existing cache (skip existing keys)
+        #[arg(long)]
+        merge: bool,
+    },
+
+    /// List cache keys
+    Keys {
+        /// Filter by category
+        #[arg(short, long)]
+        category: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
@@ -286,6 +354,26 @@ async fn main() -> Result<()> {
         Commands::Doctor { extended } => {
             commands::doctor::run(extended).await?;
         }
+        Commands::Cache { action } => match action {
+            CacheAction::Stats { json } => {
+                commands::cache::run_stats(json).await?;
+            }
+            CacheAction::Clear { category, force } => {
+                commands::cache::run_clear(category, force).await?;
+            }
+            CacheAction::Prune { json } => {
+                commands::cache::run_prune(json).await?;
+            }
+            CacheAction::Export { output, category } => {
+                commands::cache::run_export(output, category).await?;
+            }
+            CacheAction::Import { input, merge } => {
+                commands::cache::run_import(input, merge).await?;
+            }
+            CacheAction::Keys { category, json } => {
+                commands::cache::run_keys(category, json).await?;
+            }
+        },
     }
 
     Ok(())

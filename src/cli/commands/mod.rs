@@ -1,5 +1,6 @@
 //! Command implementations
 
+pub mod cache;
 pub mod doctor;
 pub mod fuzz;
 pub mod init;
