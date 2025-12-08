@@ -14,43 +14,6 @@ pub use finding::{Finding, Severity};
 use anyhow::Result;
 use colored::Colorize;
 
-use crate::ScanProfile as CliScanProfile;
-
-/// Legacy type aliases for backward compatibility
-pub type ScanFindings = ScanResults;
-pub type Vulnerability = Finding;
-
-/// Security scanner for MCP servers (simplified interface)
-pub struct SecurityScanner {
-    engine: ScanEngine,
-    target: String,
-    args: Vec<String>,
-}
-
-impl SecurityScanner {
-    pub fn new(server: &str, args: &[String], profile: CliScanProfile, timeout: u64) -> Self {
-        let scan_profile = match profile {
-            CliScanProfile::Quick => ScanProfile::Quick,
-            CliScanProfile::Standard => ScanProfile::Standard,
-            CliScanProfile::Full => ScanProfile::Full,
-            CliScanProfile::Enterprise => ScanProfile::Enterprise,
-        };
-
-        let config = ScanConfig::default()
-            .with_profile(scan_profile)
-            .with_timeout(timeout);
-
-        Self {
-            engine: ScanEngine::new(config),
-            target: server.to_string(),
-            args: args.to_vec(),
-        }
-    }
-
-    pub async fn scan(&self) -> Result<ScanResults> {
-        self.engine.scan(&self.target, &self.args, None).await
-    }
-}
 
 impl ScanResults {
     pub fn print_text(&self) {
@@ -174,7 +137,7 @@ fn to_sarif_report(results: &ScanResults) -> serde_json::Value {
                     "text": finding.description
                 },
                 "defaultConfiguration": {
-                    "level": finding.severity.to_sarif_level()
+                    "level": finding.severity.sarif_level()
                 },
                 "helpUri": finding.references.first().and_then(|r| r.url.clone())
             }));
@@ -188,7 +151,7 @@ fn to_sarif_report(results: &ScanResults) -> serde_json::Value {
         .map(|f| {
             serde_json::json!({
                 "ruleId": f.rule_id,
-                "level": f.severity.to_sarif_level(),
+                "level": f.severity.sarif_level(),
                 "message": {
                     "text": format!("{}: {}", f.title, f.description)
                 },

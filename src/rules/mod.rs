@@ -213,10 +213,12 @@ impl RuleRegistry {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_rule(&self, id: &str) -> Option<&Rule> {
         self.rules.iter().find(|r| r.id == id)
     }
 
+    #[allow(dead_code)]
     pub fn categories(&self) -> Vec<&str> {
         vec!["injection", "auth", "transport", "protocol", "data", "dos"]
     }

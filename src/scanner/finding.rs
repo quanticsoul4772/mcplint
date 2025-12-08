@@ -27,7 +27,7 @@ impl Severity {
         }
     }
 
-    pub fn to_sarif_level(&self) -> &'static str {
+    pub fn sarif_level(self) -> &'static str {
         match self {
             Severity::Critical | Severity::High => "error",
             Severity::Medium => "warning",
@@ -134,6 +134,7 @@ impl FindingLocation {
         }
     }
 
+    #[allow(dead_code)]
     pub fn resource(uri: impl Into<String>) -> Self {
         Self {
             component: "resource".to_string(),
@@ -188,10 +189,12 @@ impl Evidence {
         }
     }
 
+    #[allow(dead_code)]
     pub fn request(data: impl Into<String>, description: impl Into<String>) -> Self {
         Self::new(EvidenceKind::Request, data, description)
     }
 
+    #[allow(dead_code)]
     pub fn response(data: impl Into<String>, description: impl Into<String>) -> Self {
         Self::new(EvidenceKind::Response, data, description)
     }
@@ -240,6 +243,7 @@ impl Reference {
         }
     }
 
+    #[allow(dead_code)]
     pub fn cve(id: impl Into<String>) -> Self {
         let id_str = id.into();
         Self {
@@ -257,6 +261,7 @@ impl Reference {
         }
     }
 
+    #[allow(dead_code)]
     pub fn documentation(id: impl Into<String>, url: impl Into<String>) -> Self {
         Self {
             kind: ReferenceKind::Documentation,
