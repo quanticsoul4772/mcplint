@@ -8,6 +8,7 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
+mod cache;
 mod cli;
 mod client;
 mod fuzzer;
