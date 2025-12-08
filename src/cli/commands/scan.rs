@@ -4,13 +4,13 @@ use anyhow::Result;
 use colored::Colorize;
 use tracing::{debug, info};
 
-use crate::scanner::SecurityScanner;
-use crate::{OutputFormat, ScanProfile};
+use crate::scanner::{ScanConfig, ScanEngine, ScanProfile};
+use crate::{OutputFormat, ScanProfile as CliScanProfile};
 
 pub async fn run(
     server: &str,
     args: &[String],
-    profile: ScanProfile,
+    profile: CliScanProfile,
     include: Option<Vec<String>>,
     exclude: Option<Vec<String>>,
     timeout: u64,
@@ -23,31 +23,60 @@ pub async fn run(
     );
 
     let profile_name = match profile {
-        ScanProfile::Quick => "Quick",
-        ScanProfile::Standard => "Standard",
-        ScanProfile::Full => "Full",
-        ScanProfile::Enterprise => "Enterprise",
+        CliScanProfile::Quick => "Quick",
+        CliScanProfile::Standard => "Standard",
+        CliScanProfile::Full => "Full",
+        CliScanProfile::Enterprise => "Enterprise",
     };
 
-    println!("{}", "Starting security scan...".cyan());
-    println!("  Server: {}", server.yellow());
-    println!("  Profile: {}", profile_name.green());
-    println!();
+    let scan_profile = match profile {
+        CliScanProfile::Quick => ScanProfile::Quick,
+        CliScanProfile::Standard => ScanProfile::Standard,
+        CliScanProfile::Full => ScanProfile::Full,
+        CliScanProfile::Enterprise => ScanProfile::Enterprise,
+    };
 
-    // TODO: Implement actual scanning
-    let scanner = SecurityScanner::new(server, args, profile, timeout);
-    let findings = scanner.scan().await?;
+    // Only show banner for text output
+    if matches!(format, OutputFormat::Text) {
+        println!("{}", "Starting security scan...".cyan());
+        println!("  Server: {}", server.yellow());
+        println!("  Profile: {}", profile_name.green());
+        println!();
+    }
 
+    // Build scan configuration
+    let mut config = ScanConfig::default()
+        .with_profile(scan_profile)
+        .with_timeout(timeout);
+
+    if let Some(inc) = include {
+        config = config.with_include_categories(inc);
+    }
+
+    if let Some(exc) = exclude {
+        config = config.with_exclude_categories(exc);
+    }
+
+    // Create engine and run scan
+    let engine = ScanEngine::new(config);
+    let results = engine.scan(server, args, None).await?;
+
+    // Output results
     match format {
         OutputFormat::Text => {
-            findings.print_text();
+            results.print_text();
         }
         OutputFormat::Json => {
-            findings.print_json()?;
+            results.print_json()?;
         }
         OutputFormat::Sarif => {
-            findings.print_sarif()?;
+            results.print_sarif()?;
         }
+    }
+
+    // Return error code if critical/high findings
+    if results.has_critical_or_high() {
+        std::process::exit(1);
     }
 
     Ok(())
