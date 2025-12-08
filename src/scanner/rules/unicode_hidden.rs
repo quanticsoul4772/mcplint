@@ -12,7 +12,8 @@ pub struct UnicodeHiddenDetector;
 /// Information about a detected suspicious character
 #[derive(Debug, Clone)]
 pub struct SuspiciousChar {
-    /// The character
+    /// The character (stored for detailed analysis/display)
+    #[allow(dead_code)] // Used in Debug derive and reserved for detailed reporting
     pub char: char,
     /// Unicode code point
     pub codepoint: u32,

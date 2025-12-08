@@ -423,6 +423,11 @@ impl CorpusManager {
         self.interesting.len()
     }
 
+    /// Get total corpus size (seeds + interesting inputs)
+    pub fn corpus_size(&self) -> usize {
+        self.seeds.len() + self.interesting.len()
+    }
+
     /// Create a crash record
     pub fn create_crash_record(
         input: FuzzInput,
