@@ -6,7 +6,7 @@
 use rand::Rng;
 use serde_json::{json, Value};
 
-use super::dictionary::{Dictionary, TokenCategory};
+use super::dictionary::Dictionary;
 
 /// JSON-RPC protocol mutation operations
 pub struct JsonRpcMutator;
@@ -89,7 +89,7 @@ impl JsonRpcMutator {
                 format!(
                     "method_{}",
                     (0..10)
-                        .map(|_| (rng.gen_range(b'a'..=b'z') as char))
+                        .map(|_| rng.gen_range(b'a'..=b'z') as char)
                         .collect::<String>()
                 )
             }

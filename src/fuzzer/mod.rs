@@ -27,6 +27,10 @@
 //! }
 //! ```
 
+// Allow dead_code for library functions that are part of the public API
+// but not yet used by the CLI
+#![allow(dead_code)]
+
 pub mod config;
 pub mod corpus;
 pub mod coverage;
@@ -36,10 +40,15 @@ pub mod mutation;
 pub mod session;
 
 pub use config::{FuzzConfig, FuzzProfile};
+// Re-exports for external API - allow unused since they're library exports
+#[allow(unused_imports)]
 pub use corpus::{CorpusManager, CrashRecord, CrashType, HangRecord, InterestingReason};
 pub use coverage::CoverageStats;
+#[allow(unused_imports)]
 pub use detection::{CrashAnalysis, CrashDetector, FuzzResponse};
+#[allow(unused_imports)]
 pub use input::FuzzInput;
+#[allow(unused_imports)]
 pub use mutation::MutationEngine;
 pub use session::FuzzSession;
 
