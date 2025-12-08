@@ -95,6 +95,7 @@ impl CoverageTracker {
     }
 
     /// Hash JSON structure (types and keys, not values)
+    #[allow(clippy::only_used_in_recursion)]
     fn hash_json_structure(&self, value: &Value, hasher: &mut impl Hasher) {
         match value {
             Value::Null => "null".hash(hasher),

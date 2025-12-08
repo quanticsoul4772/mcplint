@@ -247,16 +247,14 @@ pub async fn run_keys(category: Option<String>, json_output: bool) -> Result<()>
 
     if json_output {
         println!("{}", serde_json::to_string_pretty(&keys)?);
+    } else if keys.is_empty() {
+        println!("{} No cache entries found", "ℹ".blue());
     } else {
-        if keys.is_empty() {
-            println!("{} No cache entries found", "ℹ".blue());
-        } else {
-            println!("{} Cache entries:", "📦".cyan());
-            for key in &keys {
-                println!("  {} {}", "•".dimmed(), key);
-            }
-            println!("\nTotal: {} entries", keys.len());
+        println!("{} Cache entries:", "📦".cyan());
+        for key in &keys {
+            println!("  {} {}", "•".dimmed(), key);
         }
+        println!("\nTotal: {} entries", keys.len());
     }
 
     Ok(())

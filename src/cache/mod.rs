@@ -23,6 +23,10 @@
 //! }
 //! ```
 
+// Allow dead_code for library functions that are part of the public API
+// but not yet used by the CLI
+#![allow(dead_code)]
+
 pub mod backend;
 pub mod entry;
 pub mod filesystem;
@@ -41,7 +45,10 @@ pub use key::{CacheCategory, CacheKey};
 pub use memory::MemoryCache;
 #[cfg(feature = "redis")]
 pub use redis::RedisCache;
+// Re-exports for external API - allow unused since they're library exports
+#[allow(unused_imports)]
 pub use rug_pull::{detect_rug_pull, RugPullDetection, RugPullSeverity, ToolHashRecord};
+#[allow(unused_imports)]
 pub use stats::{CacheStats, CategoryStats};
 
 use anyhow::Result;

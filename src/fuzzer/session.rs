@@ -4,7 +4,6 @@
 //! execution, crash detection, and coverage tracking.
 
 use anyhow::{Context, Result};
-use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::time::{Duration, Instant};
 
@@ -17,11 +16,11 @@ use super::corpus::{
     CorpusManager, CrashRecord, CrashType, HangRecord, InterestingInput, InterestingReason,
 };
 use super::coverage::CoverageTracker;
-use super::detection::{CrashAnalysis, CrashDetector, FuzzResponse, FuzzResponseResult};
+use super::detection::{CrashAnalysis, CrashDetector, FuzzResponse};
 use super::input::FuzzInput;
 use super::mutation::strategy::MutationStrategy;
 use super::mutation::MutationEngine;
-use super::{CoverageStats, FuzzCrash, FuzzResults};
+use super::{FuzzCrash, FuzzResults};
 
 /// A fuzzing session managing the fuzzing loop
 pub struct FuzzSession {
@@ -133,7 +132,7 @@ impl FuzzSession {
             progress.set_position(self.iterations);
 
             // Update progress message
-            if self.iterations % 10 == 0 {
+            if self.iterations.is_multiple_of(10) {
                 let stats = self.coverage.stats();
                 progress.set_message(format!(
                     "paths: {}, crashes: {}, coverage: {:.1}%",
@@ -414,17 +413,13 @@ impl FuzzSession {
         };
 
         // Duration limit
-        if self.config.duration_secs > 0 {
-            if start.elapsed().as_secs() >= self.config.duration_secs {
-                return true;
-            }
+        if self.config.duration_secs > 0 && start.elapsed().as_secs() >= self.config.duration_secs {
+            return true;
         }
 
         // Iteration limit
-        if self.config.max_iterations > 0 {
-            if self.iterations >= self.config.max_iterations {
-                return true;
-            }
+        if self.config.max_iterations > 0 && self.iterations >= self.config.max_iterations {
+            return true;
         }
 
         false

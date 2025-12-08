@@ -6,7 +6,7 @@
 use rand::Rng;
 use serde_json::{json, Value};
 
-use super::dictionary::{Dictionary, TokenCategory};
+use super::dictionary::Dictionary;
 use crate::fuzzer::input::FuzzInput;
 
 /// MCP protocol-specific mutation operations
@@ -58,7 +58,7 @@ impl McpMutator {
                 format!(
                     "tool_{}",
                     (0..8)
-                        .map(|_| (rng.gen_range(b'a'..=b'z') as char))
+                        .map(|_| rng.gen_range(b'a'..=b'z') as char)
                         .collect::<String>()
                 )
             }

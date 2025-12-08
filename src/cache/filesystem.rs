@@ -6,7 +6,6 @@
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use chrono::Utc;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -21,6 +20,7 @@ pub struct FilesystemCache {
     /// Base directory for cache storage
     base_path: PathBuf,
     /// Cache configuration
+    #[allow(dead_code)]
     config: CacheConfig,
     /// Atomic statistics
     stats: AtomicCacheStats,
@@ -240,7 +240,7 @@ impl Cache for FilesystemCache {
         stats.total_size_bytes = 0;
         stats.expired_entries = 0;
 
-        for (_, cat_stats) in &stats.by_category {
+        for cat_stats in stats.by_category.values() {
             stats.total_entries += cat_stats.entries;
             stats.total_size_bytes += cat_stats.size_bytes;
             stats.expired_entries += cat_stats.expired;
@@ -282,10 +282,8 @@ impl Cache for FilesystemCache {
             let files = self.list_category_files(*category).await?;
             for path in files {
                 if let Ok(Some(entry)) = self.read_entry(&path).await {
-                    if entry.is_expired() {
-                        if fs::remove_file(&path).await.is_ok() {
-                            pruned += 1;
-                        }
+                    if entry.is_expired() && fs::remove_file(&path).await.is_ok() {
+                        pruned += 1;
                     }
                 }
             }
