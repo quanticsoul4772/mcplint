@@ -9,7 +9,7 @@ mod finding;
 
 pub use context::{ScanConfig, ScanProfile};
 pub use engine::{ScanEngine, ScanResults};
-pub use finding::{Finding, Severity};
+pub use finding::Severity;
 
 use anyhow::Result;
 use colored::Colorize;

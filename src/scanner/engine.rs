@@ -277,31 +277,31 @@ impl ScanEngine {
                 .unwrap_or_default();
 
             for pattern in &db_patterns {
-                if name_lower.contains(pattern) || desc_lower.contains(pattern) {
-                    if has_string_parameters(&tool.input_schema) {
-                        return Some(
-                            Finding::new(
-                                "MCP-INJ-002",
-                                Severity::Critical,
-                                "Potential SQL Injection",
-                                format!(
-                                    "Tool '{}' appears to execute database queries and accepts string parameters. \
-                                     SQL injection may be possible if input is not properly sanitized.",
-                                    tool.name
-                                ),
-                            )
-                            .with_location(FindingLocation::tool(&tool.name))
-                            .with_evidence(Evidence::observation(
-                                format!("Tool name/description contains '{}' pattern", pattern),
-                                "Indicates database query capability",
-                            ))
-                            .with_remediation(
-                                "Use parameterized queries or prepared statements. \
-                                 Never concatenate user input into SQL strings.",
-                            )
-                            .with_cwe("89"),
-                        );
-                    }
+                if (name_lower.contains(pattern) || desc_lower.contains(pattern))
+                    && has_string_parameters(&tool.input_schema)
+                {
+                    return Some(
+                        Finding::new(
+                            "MCP-INJ-002",
+                            Severity::Critical,
+                            "Potential SQL Injection",
+                            format!(
+                                "Tool '{}' appears to execute database queries and accepts string parameters. \
+                                 SQL injection may be possible if input is not properly sanitized.",
+                                tool.name
+                            ),
+                        )
+                        .with_location(FindingLocation::tool(&tool.name))
+                        .with_evidence(Evidence::observation(
+                            format!("Tool name/description contains '{}' pattern", pattern),
+                            "Indicates database query capability",
+                        ))
+                        .with_remediation(
+                            "Use parameterized queries or prepared statements. \
+                             Never concatenate user input into SQL strings.",
+                        )
+                        .with_cwe("89"),
+                    );
                 }
             }
         }
@@ -327,35 +327,32 @@ impl ScanEngine {
             let name_lower = tool.name.to_lowercase();
 
             for pattern in &file_patterns {
-                if name_lower.contains(pattern) {
-                    // Check for path-like parameters
-                    if has_path_parameters(&tool.input_schema) {
-                        return Some(
-                            Finding::new(
-                                "MCP-INJ-003",
-                                Severity::High,
-                                "Potential Path Traversal",
-                                format!(
-                                    "Tool '{}' performs file operations with user-controlled paths. \
-                                     Path traversal attacks (../) may allow access to unauthorized files.",
-                                    tool.name
-                                ),
-                            )
-                            .with_location(FindingLocation::tool(&tool.name))
-                            .with_evidence(Evidence::observation(
-                                format!(
-                                    "Tool '{}' has file-related name and accepts path parameters",
-                                    tool.name
-                                ),
-                                "File operation with user-controlled path",
-                            ))
-                            .with_remediation(
-                                "Validate and sanitize file paths. Use allowlists for permitted directories. \
-                                 Resolve paths and verify they remain within allowed boundaries.",
-                            )
-                            .with_cwe("22"),
-                        );
-                    }
+                if name_lower.contains(pattern) && has_path_parameters(&tool.input_schema) {
+                    return Some(
+                        Finding::new(
+                            "MCP-INJ-003",
+                            Severity::High,
+                            "Potential Path Traversal",
+                            format!(
+                                "Tool '{}' performs file operations with user-controlled paths. \
+                                 Path traversal attacks (../) may allow access to unauthorized files.",
+                                tool.name
+                            ),
+                        )
+                        .with_location(FindingLocation::tool(&tool.name))
+                        .with_evidence(Evidence::observation(
+                            format!(
+                                "Tool '{}' has file-related name and accepts path parameters",
+                                tool.name
+                            ),
+                            "File operation with user-controlled path",
+                        ))
+                        .with_remediation(
+                            "Validate and sanitize file paths. Use allowlists for permitted directories. \
+                             Resolve paths and verify they remain within allowed boundaries.",
+                        )
+                        .with_cwe("22"),
+                    );
                 }
             }
         }
