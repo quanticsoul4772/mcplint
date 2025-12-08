@@ -14,7 +14,6 @@ pub use finding::{Finding, Severity};
 use anyhow::Result;
 use colored::Colorize;
 
-
 impl ScanResults {
     pub fn print_text(&self) {
         println!("{}", "Security Scan Results".cyan().bold());
