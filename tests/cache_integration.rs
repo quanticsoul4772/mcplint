@@ -10,8 +10,7 @@
 use std::time::Duration;
 
 use mcplint::cache::{
-    CacheCategory, CacheConfig, CacheEntry, CacheKey, CacheManager,
-    detect_rug_pull, ToolHashRecord,
+    detect_rug_pull, CacheCategory, CacheConfig, CacheEntry, CacheKey, CacheManager, ToolHashRecord,
 };
 use mcplint::protocol::mcp::Tool;
 use serde_json::json;
@@ -32,7 +31,10 @@ async fn test_memory_cache_full_workflow() {
     assert!(cache.is_enabled());
 
     // Test schema caching
-    let tools = vec![make_tool("read_file", "Read a file"), make_tool("write_file", "Write a file")];
+    let tools = vec![
+        make_tool("read_file", "Read a file"),
+        make_tool("write_file", "Write a file"),
+    ];
 
     cache.set_schema("server-abc123", &tools).await.unwrap();
 
@@ -100,7 +102,8 @@ async fn test_filesystem_cache_persistence() {
     {
         let cache = CacheManager::new(config).await.unwrap();
 
-        let retrieved: Option<serde_json::Value> = cache.get_schema("persistent-test").await.unwrap();
+        let retrieved: Option<serde_json::Value> =
+            cache.get_schema("persistent-test").await.unwrap();
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap()["test"], "value");
     }
@@ -123,7 +126,10 @@ async fn test_cache_key_categories() {
     // Store entries
     cache.set(&schema_key, &"schema_data").await.unwrap();
     cache.set(&scan_key, &"scan_data").await.unwrap();
-    cache.set(&validation_key, &"validation_data").await.unwrap();
+    cache
+        .set(&validation_key, &"validation_data")
+        .await
+        .unwrap();
     cache.set(&corpus_key, &"corpus_data").await.unwrap();
     cache.set(&tool_hash_key, &"tool_hash_data").await.unwrap();
 
@@ -308,9 +314,18 @@ async fn test_cache_list_keys() {
     let cache = CacheManager::memory();
 
     // Store entries in different categories
-    cache.set(&CacheKey::schema("server1"), &"schema1").await.unwrap();
-    cache.set(&CacheKey::schema("server2"), &"schema2").await.unwrap();
-    cache.set(&CacheKey::validation("server1", "v1"), &"val1").await.unwrap();
+    cache
+        .set(&CacheKey::schema("server1"), &"schema1")
+        .await
+        .unwrap();
+    cache
+        .set(&CacheKey::schema("server2"), &"schema2")
+        .await
+        .unwrap();
+    cache
+        .set(&CacheKey::validation("server1", "v1"), &"val1")
+        .await
+        .unwrap();
 
     // List all keys
     let all_keys = cache.keys(None).await.unwrap();

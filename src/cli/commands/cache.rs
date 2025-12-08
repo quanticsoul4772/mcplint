@@ -36,8 +36,7 @@ pub async fn run_clear(category: Option<String>, force: bool) -> Result<()> {
     // Parse category if provided
     let cat = match &category {
         Some(s) => Some(
-            CacheCategory::from_str(s)
-                .ok_or_else(|| anyhow::anyhow!("Unknown category: {}", s))?,
+            CacheCategory::from_str(s).ok_or_else(|| anyhow::anyhow!("Unknown category: {}", s))?,
         ),
         None => None,
     };
@@ -57,10 +56,7 @@ pub async fn run_clear(category: Option<String>, force: bool) -> Result<()> {
         .await
         .context("Failed to initialize cache")?;
 
-    let cleared = cache
-        .clear(cat)
-        .await
-        .context("Failed to clear cache")?;
+    let cleared = cache.clear(cat).await.context("Failed to clear cache")?;
 
     match &category {
         Some(c) => println!(
@@ -69,7 +65,11 @@ pub async fn run_clear(category: Option<String>, force: bool) -> Result<()> {
             cleared,
             c
         ),
-        None => println!("{} Cleared {} entries from all categories", "✓".green(), cleared),
+        None => println!(
+            "{} Cleared {} entries from all categories",
+            "✓".green(),
+            cleared
+        ),
     }
 
     Ok(())
@@ -107,8 +107,7 @@ pub async fn run_export(output: PathBuf, category: Option<String>) -> Result<()>
     // Parse category if provided
     let cat = match &category {
         Some(s) => Some(
-            CacheCategory::from_str(s)
-                .ok_or_else(|| anyhow::anyhow!("Unknown category: {}", s))?,
+            CacheCategory::from_str(s).ok_or_else(|| anyhow::anyhow!("Unknown category: {}", s))?,
         ),
         None => None,
     };
@@ -234,8 +233,7 @@ pub async fn run_keys(category: Option<String>, json_output: bool) -> Result<()>
     // Parse category if provided
     let cat = match &category {
         Some(s) => Some(
-            CacheCategory::from_str(s)
-                .ok_or_else(|| anyhow::anyhow!("Unknown category: {}", s))?,
+            CacheCategory::from_str(s).ok_or_else(|| anyhow::anyhow!("Unknown category: {}", s))?,
         ),
         None => None,
     };
@@ -271,11 +269,7 @@ fn print_stats(stats: &CacheStats) {
 
     // Overall stats
     println!("\n{}", "Overall".bold());
-    println!(
-        "  {} Total entries:  {}",
-        "•".dimmed(),
-        stats.total_entries
-    );
+    println!("  {} Total entries:  {}", "•".dimmed(), stats.total_entries);
     println!(
         "  {} Total size:     {}",
         "•".dimmed(),
