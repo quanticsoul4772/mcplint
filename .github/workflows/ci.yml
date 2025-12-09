@@ -51,6 +51,10 @@ jobs:
             sleep 2
           done
           ollama pull llama3.2
+          # Warm up the model by loading it into memory
+          echo "Warming up llama3.2 model..."
+          curl -s http://localhost:11434/api/generate -d '{"model": "llama3.2", "prompt": "Hi", "stream": false}' > /dev/null 2>&1 || echo "Warm-up request sent"
+          echo "Model warm-up complete"
 
       - name: Install Ollama (macOS)
         if: runner.os == 'macOS'
@@ -67,6 +71,10 @@ jobs:
             sleep 2
           done
           ollama pull llama3.2
+          # Warm up the model by loading it into memory
+          echo "Warming up llama3.2 model..."
+          curl -s http://localhost:11434/api/generate -d '{"model": "llama3.2", "prompt": "Hi", "stream": false}' > /dev/null 2>&1 || echo "Warm-up request sent"
+          echo "Model warm-up complete"
 
       - name: Install Ollama (Windows)
         if: runner.os == 'Windows'
@@ -115,6 +123,16 @@ jobs:
 
           # Pull the model
           .\ollama.exe pull llama3.2
+
+          # Warm up the model by loading it into memory
+          Write-Host "Warming up llama3.2 model..."
+          try {
+            $body = '{"model": "llama3.2", "prompt": "Hi", "stream": false}'
+            Invoke-WebRequest -Uri "http://localhost:11434/api/generate" -Method POST -Body $body -ContentType "application/json" -TimeoutSec 120 -ErrorAction SilentlyContinue | Out-Null
+            Write-Host "Model warm-up complete"
+          } catch {
+            Write-Host "Warm-up request sent (may still be loading)"
+          }
         shell: pwsh
 
       - name: Check formatting
