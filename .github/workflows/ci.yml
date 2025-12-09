@@ -55,10 +55,11 @@ jobs:
       - name: Install Ollama (Windows)
         if: runner.os == 'Windows'
         run: |
-          Invoke-WebRequest -Uri "https://ollama.com/download/ollama-windows-amd64.exe" -OutFile "ollama.exe"
-          Start-Process -FilePath ".\ollama.exe" -ArgumentList "serve" -NoNewWindow
-          Start-Sleep -Seconds 5
-          .\ollama.exe pull llama3.2
+          Invoke-WebRequest -Uri "https://github.com/ollama/ollama/releases/download/v0.13.1/ollama-windows-amd64.zip" -OutFile "ollama.zip"
+          Expand-Archive -Path "ollama.zip" -DestinationPath "ollama"
+          Start-Process -FilePath ".\ollama\ollama.exe" -ArgumentList "serve" -NoNewWindow
+          Start-Sleep -Seconds 10
+          .\ollama\ollama.exe pull llama3.2
         shell: pwsh
 
       - name: Check formatting
