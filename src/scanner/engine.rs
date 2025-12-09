@@ -1278,7 +1278,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool("exec_command", None, make_string_schema()));
+        ctx.tools
+            .push(make_tool("exec_command", None, make_string_schema()));
 
         let finding = engine.check_command_injection(&ctx);
         assert!(finding.is_some());
@@ -1291,7 +1292,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool("get_data", None, make_string_schema()));
+        ctx.tools
+            .push(make_tool("get_data", None, make_string_schema()));
 
         let finding = engine.check_command_injection(&ctx);
         assert!(finding.is_none());
@@ -1303,7 +1305,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool("execute_query", None, make_string_schema()));
+        ctx.tools
+            .push(make_tool("execute_query", None, make_string_schema()));
 
         let finding = engine.check_sql_injection(&ctx);
         assert!(finding.is_some());
@@ -1316,7 +1319,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool("read_file", None, make_path_schema()));
+        ctx.tools
+            .push(make_tool("read_file", None, make_path_schema()));
 
         let finding = engine.check_path_traversal(&ctx);
         assert!(finding.is_some());
@@ -1429,7 +1433,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool("get_user_profile", None, make_empty_schema()));
+        ctx.tools
+            .push(make_tool("get_user_profile", None, make_empty_schema()));
 
         let finding = engine.check_sensitive_data_exposure(&ctx);
         assert!(finding.is_some());
@@ -1442,7 +1447,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool("download_all", None, make_empty_schema()));
+        ctx.tools
+            .push(make_tool("download_all", None, make_empty_schema()));
 
         let finding = engine.check_resource_consumption(&ctx);
         assert!(finding.is_some());
@@ -1455,7 +1461,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool("download_all", None, make_limit_schema()));
+        ctx.tools
+            .push(make_tool("download_all", None, make_limit_schema()));
 
         let finding = engine.check_resource_consumption(&ctx);
         assert!(finding.is_none());
@@ -1467,10 +1474,13 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool("tool", Some("Hi"), make_empty_schema()));
+        ctx.tools
+            .push(make_tool("tool", Some("Hi"), make_empty_schema()));
 
         let findings = engine.check_rug_pull_indicators(&ctx);
-        assert!(findings.iter().any(|f| f.title == "Minimal Tool Description"));
+        assert!(findings
+            .iter()
+            .any(|f| f.title == "Minimal Tool Description"));
     }
 
     #[test]
@@ -1486,7 +1496,9 @@ mod tests {
         ));
 
         let findings = engine.check_rug_pull_indicators(&ctx);
-        assert!(findings.iter().any(|f| f.title == "Dynamic Code Loading Capability"));
+        assert!(findings
+            .iter()
+            .any(|f| f.title == "Dynamic Code Loading Capability"));
     }
 
     #[test]
@@ -1502,8 +1514,7 @@ mod tests {
 
     #[test]
     fn engine_should_run_with_exclude() {
-        let config = ScanConfig::default()
-            .with_exclude_rules(vec!["MCP-INJ-001".to_string()]);
+        let config = ScanConfig::default().with_exclude_rules(vec!["MCP-INJ-001".to_string()]);
         let engine = ScanEngine::new(config);
 
         assert!(!engine.should_run("MCP-INJ-001", "injection"));

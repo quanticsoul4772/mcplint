@@ -575,11 +575,26 @@ mod tests {
 
     fn create_test_results(findings: Vec<Finding>) -> ScanResults {
         let summary = ScanSummary {
-            critical: findings.iter().filter(|f| f.severity == Severity::Critical).count(),
-            high: findings.iter().filter(|f| f.severity == Severity::High).count(),
-            medium: findings.iter().filter(|f| f.severity == Severity::Medium).count(),
-            low: findings.iter().filter(|f| f.severity == Severity::Low).count(),
-            info: findings.iter().filter(|f| f.severity == Severity::Info).count(),
+            critical: findings
+                .iter()
+                .filter(|f| f.severity == Severity::Critical)
+                .count(),
+            high: findings
+                .iter()
+                .filter(|f| f.severity == Severity::High)
+                .count(),
+            medium: findings
+                .iter()
+                .filter(|f| f.severity == Severity::Medium)
+                .count(),
+            low: findings
+                .iter()
+                .filter(|f| f.severity == Severity::Low)
+                .count(),
+            info: findings
+                .iter()
+                .filter(|f| f.severity == Severity::Info)
+                .count(),
         };
         ScanResults {
             server: "test".to_string(),

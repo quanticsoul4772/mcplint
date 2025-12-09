@@ -364,7 +364,10 @@ mod tests {
         let limits = ResourceLimits::default();
         let config = FuzzConfig::default().with_resource_limits(limits);
         // Just verify it doesn't panic - resource limits are optional
-        assert!(config.resource_limits.max_memory.is_some() || config.resource_limits.max_memory.is_none());
+        assert!(
+            config.resource_limits.max_memory.is_some()
+                || config.resource_limits.max_memory.is_none()
+        );
     }
 
     #[test]
@@ -376,7 +379,10 @@ mod tests {
     #[test]
     fn with_max_time() {
         let config = FuzzConfig::default().with_max_time(Duration::from_secs(3600));
-        assert_eq!(config.resource_limits.max_time, Some(Duration::from_secs(3600)));
+        assert_eq!(
+            config.resource_limits.max_time,
+            Some(Duration::from_secs(3600))
+        );
     }
 
     #[test]
@@ -429,10 +435,22 @@ mod tests {
         assert_eq!(FuzzProfile::from_str("quick"), Some(FuzzProfile::Quick));
         assert_eq!(FuzzProfile::from_str("QUICK"), Some(FuzzProfile::Quick));
         assert_eq!(FuzzProfile::from_str("Quick"), Some(FuzzProfile::Quick));
-        assert_eq!(FuzzProfile::from_str("standard"), Some(FuzzProfile::Standard));
-        assert_eq!(FuzzProfile::from_str("STANDARD"), Some(FuzzProfile::Standard));
-        assert_eq!(FuzzProfile::from_str("intensive"), Some(FuzzProfile::Intensive));
-        assert_eq!(FuzzProfile::from_str("INTENSIVE"), Some(FuzzProfile::Intensive));
+        assert_eq!(
+            FuzzProfile::from_str("standard"),
+            Some(FuzzProfile::Standard)
+        );
+        assert_eq!(
+            FuzzProfile::from_str("STANDARD"),
+            Some(FuzzProfile::Standard)
+        );
+        assert_eq!(
+            FuzzProfile::from_str("intensive"),
+            Some(FuzzProfile::Intensive)
+        );
+        assert_eq!(
+            FuzzProfile::from_str("INTENSIVE"),
+            Some(FuzzProfile::Intensive)
+        );
         assert_eq!(FuzzProfile::from_str("ci"), Some(FuzzProfile::CI));
         assert_eq!(FuzzProfile::from_str("CI"), Some(FuzzProfile::CI));
     }
@@ -491,9 +509,7 @@ mod tests {
 
     #[test]
     fn config_clone() {
-        let config = FuzzConfig::default()
-            .with_workers(4)
-            .with_seed(123);
+        let config = FuzzConfig::default().with_workers(4).with_seed(123);
         let cloned = config.clone();
         assert_eq!(cloned.workers, 4);
         assert_eq!(cloned.seed, Some(123));

@@ -145,11 +145,7 @@ impl Transport for MockTransport {
         Ok(None)
     }
 
-    async fn request(
-        &mut self,
-        method: &str,
-        params: Option<Value>,
-    ) -> Result<JsonRpcResponse> {
+    async fn request(&mut self, method: &str, params: Option<Value>) -> Result<JsonRpcResponse> {
         // Generate request ID
         let mut counter = self.request_counter.lock().await;
         *counter += 1;
@@ -292,10 +288,8 @@ mod tests {
     async fn mock_transport_queues_responses() {
         let mut transport = MockTransport::new();
 
-        let response = MockTransport::success_response(
-            RequestId::Number(1),
-            json!({"status": "ok"}),
-        );
+        let response =
+            MockTransport::success_response(RequestId::Number(1), json!({"status": "ok"}));
         transport.queue_response(response).await;
 
         let result = transport.request("test_method", None).await.unwrap();
@@ -315,12 +309,17 @@ mod tests {
     #[tokio::test]
     async fn mock_transport_tracks_sent_messages() {
         let mut transport = MockTransport::new();
-        transport.queue_response(MockTransport::success_response(
-            RequestId::Number(1),
-            json!({}),
-        )).await;
+        transport
+            .queue_response(MockTransport::success_response(
+                RequestId::Number(1),
+                json!({}),
+            ))
+            .await;
 
-        transport.request("test_method", Some(json!({"key": "value"}))).await.unwrap();
+        transport
+            .request("test_method", Some(json!({"key": "value"})))
+            .await
+            .unwrap();
 
         let messages = transport.get_sent_messages().await;
         assert_eq!(messages.len(), 1);
@@ -330,7 +329,10 @@ mod tests {
     async fn mock_transport_tracks_notifications() {
         let mut transport = MockTransport::new();
 
-        transport.notify("notifications/test", Some(json!({"data": 123}))).await.unwrap();
+        transport
+            .notify("notifications/test", Some(json!({"data": 123})))
+            .await
+            .unwrap();
 
         let notifications = transport.get_sent_notifications().await;
         assert_eq!(notifications.len(), 1);
@@ -356,11 +358,13 @@ mod tests {
     async fn mock_transport_multiple_responses() {
         let mut transport = MockTransport::new();
 
-        transport.queue_responses(vec![
-            MockTransport::success_response(RequestId::Number(1), json!({"n": 1})),
-            MockTransport::success_response(RequestId::Number(2), json!({"n": 2})),
-            MockTransport::success_response(RequestId::Number(3), json!({"n": 3})),
-        ]).await;
+        transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!({"n": 1})),
+                MockTransport::success_response(RequestId::Number(2), json!({"n": 2})),
+                MockTransport::success_response(RequestId::Number(3), json!({"n": 3})),
+            ])
+            .await;
 
         let r1 = transport.request("m1", None).await.unwrap();
         let r2 = transport.request("m2", None).await.unwrap();
@@ -375,11 +379,13 @@ mod tests {
     async fn mock_transport_error_response() {
         let mut transport = MockTransport::new();
 
-        transport.queue_response(MockTransport::error_response(
-            RequestId::Number(1),
-            -32601,
-            "Method not found",
-        )).await;
+        transport
+            .queue_response(MockTransport::error_response(
+                RequestId::Number(1),
+                -32601,
+                "Method not found",
+            ))
+            .await;
 
         let result = transport.request("unknown", None).await.unwrap();
         assert!(result.error.is_some());
@@ -396,10 +402,19 @@ mod tests {
         mock.queue_response(MockTransport::success_response(
             RequestId::Number(1),
             json!({"test": true}),
-        )).await;
+        ))
+        .await;
 
         // Get transport from factory
-        let mut transport = factory.create("test", &[], TransportConfig::default(), TransportType::Stdio).await.unwrap();
+        let mut transport = factory
+            .create(
+                "test",
+                &[],
+                TransportConfig::default(),
+                TransportType::Stdio,
+            )
+            .await
+            .unwrap();
 
         let result = transport.request("test", None).await.unwrap();
         assert!(result.result.is_some());
@@ -411,10 +426,25 @@ mod tests {
         let factory = MockTransportFactory::new(transport);
 
         // First call succeeds
-        let _ = factory.create("test", &[], TransportConfig::default(), TransportType::Stdio).await.unwrap();
+        let _ = factory
+            .create(
+                "test",
+                &[],
+                TransportConfig::default(),
+                TransportType::Stdio,
+            )
+            .await
+            .unwrap();
 
         // Second call fails
-        let result = factory.create("test", &[], TransportConfig::default(), TransportType::Stdio).await;
+        let result = factory
+            .create(
+                "test",
+                &[],
+                TransportConfig::default(),
+                TransportType::Stdio,
+            )
+            .await;
         assert!(result.is_err());
     }
 

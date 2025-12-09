@@ -225,10 +225,13 @@ mod tests {
 
     #[test]
     fn protocol_validator_with_transport_type_stdio() {
-        let validator = ProtocolValidator::new("server", &[], 60)
-            .with_transport_type(TransportType::Stdio);
+        let validator =
+            ProtocolValidator::new("server", &[], 60).with_transport_type(TransportType::Stdio);
 
-        assert!(matches!(validator.transport_type, Some(TransportType::Stdio)));
+        assert!(matches!(
+            validator.transport_type,
+            Some(TransportType::Stdio)
+        ));
     }
 
     #[test]
@@ -236,7 +239,10 @@ mod tests {
         let validator = ProtocolValidator::new("http://localhost:3000", &[], 60)
             .with_transport_type(TransportType::StreamableHttp);
 
-        assert!(matches!(validator.transport_type, Some(TransportType::StreamableHttp)));
+        assert!(matches!(
+            validator.transport_type,
+            Some(TransportType::StreamableHttp)
+        ));
     }
 
     #[test]
@@ -244,7 +250,10 @@ mod tests {
         let validator = ProtocolValidator::new("http://localhost:3000/sse", &[], 60)
             .with_transport_type(TransportType::SseLegacy);
 
-        assert!(matches!(validator.transport_type, Some(TransportType::SseLegacy)));
+        assert!(matches!(
+            validator.transport_type,
+            Some(TransportType::SseLegacy)
+        ));
     }
 
     #[test]

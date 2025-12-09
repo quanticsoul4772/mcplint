@@ -7,8 +7,8 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::client::McpClient;
 use crate::client::mock::McpClientTrait;
+use crate::client::McpClient;
 use crate::protocol::mcp::{
     InitializeResult, ListPromptsResult, ListResourcesResult, ServerCapabilities, Tool,
 };
@@ -1375,7 +1375,7 @@ mod tests {
     mod mock_client_tests {
         use super::*;
         use crate::client::mock::MockMcpClient;
-        use crate::protocol::mcp::{ToolsCapability, ResourcesCapability, PromptsCapability};
+        use crate::protocol::mcp::{PromptsCapability, ResourcesCapability, ToolsCapability};
         use crate::protocol::ServerCapabilities;
 
         fn create_mock_with_capabilities() -> MockMcpClient {
@@ -1391,7 +1391,10 @@ mod tests {
             let mut engine = ValidationEngine::new(ValidationConfig::default());
             let mut client = MockMcpClient::new();
 
-            let results = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             assert_eq!(results.server, "mock-server");
             assert!(results.passed > 0);
@@ -1404,7 +1407,10 @@ mod tests {
             let mut client = MockMcpClient::new();
             client.set_next_error("Connection refused").await;
 
-            let results = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             // Should have failed at initialization
             assert!(results.failed > 0);
@@ -1417,10 +1423,17 @@ mod tests {
             let mut client = create_mock_with_capabilities();
 
             // Add some tools
-            client.add_tool(MockMcpClient::create_test_tool("tool1", "First tool")).await;
-            client.add_tool(MockMcpClient::create_test_tool("tool2", "Second tool")).await;
+            client
+                .add_tool(MockMcpClient::create_test_tool("tool1", "First tool"))
+                .await;
+            client
+                .add_tool(MockMcpClient::create_test_tool("tool2", "Second tool"))
+                .await;
 
-            let results = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             assert!(results.passed > 0);
             assert!(results.capabilities.is_some());
@@ -1434,9 +1447,17 @@ mod tests {
             let mut client = create_mock_with_capabilities();
 
             // Add resources
-            client.add_resource(MockMcpClient::create_test_resource("file://test.txt", "test.txt")).await;
+            client
+                .add_resource(MockMcpClient::create_test_resource(
+                    "file://test.txt",
+                    "test.txt",
+                ))
+                .await;
 
-            let results = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             assert!(results.passed > 0);
         }
@@ -1447,9 +1468,17 @@ mod tests {
             let mut client = create_mock_with_capabilities();
 
             // Add prompts
-            client.add_prompt(MockMcpClient::create_test_prompt("greeting", "A greeting prompt")).await;
+            client
+                .add_prompt(MockMcpClient::create_test_prompt(
+                    "greeting",
+                    "A greeting prompt",
+                ))
+                .await;
 
-            let results = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             assert!(results.passed > 0);
         }
@@ -1459,7 +1488,10 @@ mod tests {
             let mut engine = ValidationEngine::new(ValidationConfig::default());
             let mut client = MockMcpClient::new();
 
-            let results = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             // Check SEQ-001 (ping) passed
             let seq001_result = results.results.iter().find(|r| r.rule_id == "SEQ-001");
@@ -1472,7 +1504,10 @@ mod tests {
             let mut engine = ValidationEngine::new(ValidationConfig::default());
             let mut client = MockMcpClient::new();
 
-            let results = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             // Check PROTO-002 (protocol version) passed
             let proto002_result = results.results.iter().find(|r| r.rule_id == "PROTO-002");
@@ -1485,7 +1520,10 @@ mod tests {
             let mut engine = ValidationEngine::new(ValidationConfig::default());
             let mut client = MockMcpClient::new();
 
-            let results = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             // Check PROTO-003 (server info) passed
             let proto003_result = results.results.iter().find(|r| r.rule_id == "PROTO-003");
@@ -1498,7 +1536,10 @@ mod tests {
             let mut engine = ValidationEngine::new(ValidationConfig::default());
             let mut client = MockMcpClient::new();
 
-            let results = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             // Check PROTO-004 (capabilities) passed
             let proto004_result = results.results.iter().find(|r| r.rule_id == "PROTO-004");
@@ -1511,7 +1552,10 @@ mod tests {
             let mut engine = ValidationEngine::new(ValidationConfig::default());
             let mut client = MockMcpClient::new();
 
-            let results = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             // Check SEQ-002 (method not found handling)
             let seq002_result = results.results.iter().find(|r| r.rule_id == "SEQ-002");
@@ -1525,7 +1569,10 @@ mod tests {
             let mut engine = ValidationEngine::new(ValidationConfig::default());
             let mut client = MockMcpClient::new();
 
-            let results = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             // Check SEQ-003 (error response format)
             let seq003_result = results.results.iter().find(|r| r.rule_id == "SEQ-003");
@@ -1538,7 +1585,10 @@ mod tests {
             let mut engine = ValidationEngine::new(ValidationConfig::default());
             let mut client = MockMcpClient::new();
 
-            let _ = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let _ = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             // Client should be closed after validation
             assert!(client.is_closed());
@@ -1550,7 +1600,10 @@ mod tests {
             let client = MockMcpClient::new();
             let mut client = client; // no capabilities set
 
-            let results = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             // Should still pass basic checks
             assert!(results.passed > 0);
@@ -1571,7 +1624,10 @@ mod tests {
             let mut engine = ValidationEngine::new(config);
             let mut client = MockMcpClient::new();
 
-            let results = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             assert!(results.passed > 0);
         }
@@ -1582,11 +1638,17 @@ mod tests {
 
             // First validation
             let mut client1 = MockMcpClient::new();
-            let results1 = engine.validate_with_client("server1", &mut client1).await.unwrap();
+            let results1 = engine
+                .validate_with_client("server1", &mut client1)
+                .await
+                .unwrap();
 
             // Second validation with same engine
             let mut client2 = MockMcpClient::new();
-            let results2 = engine.validate_with_client("server2", &mut client2).await.unwrap();
+            let results2 = engine
+                .validate_with_client("server2", &mut client2)
+                .await
+                .unwrap();
 
             assert_eq!(results1.server, "server1");
             assert_eq!(results2.server, "server2");
@@ -1597,7 +1659,10 @@ mod tests {
             let mut engine = ValidationEngine::new(ValidationConfig::default());
             let mut client = MockMcpClient::new();
 
-            let results = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             // Duration is u64, just verify results struct is valid
             let _ = results.total_duration_ms;
@@ -1609,11 +1674,20 @@ mod tests {
             let mut client = create_mock_with_capabilities();
 
             // Add data so schema rules can run
-            client.add_tool(MockMcpClient::create_test_tool("test", "Test tool")).await;
-            client.add_resource(MockMcpClient::create_test_resource("file://t", "t")).await;
-            client.add_prompt(MockMcpClient::create_test_prompt("p", "Prompt")).await;
+            client
+                .add_tool(MockMcpClient::create_test_tool("test", "Test tool"))
+                .await;
+            client
+                .add_resource(MockMcpClient::create_test_resource("file://t", "t"))
+                .await;
+            client
+                .add_prompt(MockMcpClient::create_test_prompt("p", "Prompt"))
+                .await;
 
-            let results = engine.validate_with_client("mock-server", &mut client).await.unwrap();
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
 
             // We should have multiple check results
             assert!(results.results.len() > 5);

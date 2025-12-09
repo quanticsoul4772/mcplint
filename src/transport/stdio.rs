@@ -203,7 +203,7 @@ impl Transport for StdioTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{JsonRpcMessage, JsonRpcRequest, JsonRpcNotification};
+    use crate::protocol::{JsonRpcMessage, JsonRpcNotification, JsonRpcRequest};
 
     #[test]
     fn request_id_increments() {
@@ -326,7 +326,8 @@ mod tests {
 
     #[test]
     fn jsonrpc_response_with_error() {
-        let json = r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found"}}"#;
+        let json =
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found"}}"#;
         let message: JsonRpcMessage = serde_json::from_str(json).unwrap();
         match message {
             JsonRpcMessage::Response(resp) => {
@@ -349,7 +350,13 @@ mod tests {
             ..Default::default()
         };
 
-        assert_eq!(Duration::from_secs(30), Duration::from_secs(config1.timeout_secs));
-        assert_eq!(Duration::from_secs(120), Duration::from_secs(config2.timeout_secs));
+        assert_eq!(
+            Duration::from_secs(30),
+            Duration::from_secs(config1.timeout_secs)
+        );
+        assert_eq!(
+            Duration::from_secs(120),
+            Duration::from_secs(config2.timeout_secs)
+        );
     }
 }

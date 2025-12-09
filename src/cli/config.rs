@@ -192,8 +192,8 @@ mod tests {
 
     #[test]
     fn scan_run_config_with_args() {
-        let config =
-            ScanRunConfig::new("server", CliScanProfile::Full).with_args(vec!["--flag".to_string(), "value".to_string()]);
+        let config = ScanRunConfig::new("server", CliScanProfile::Full)
+            .with_args(vec!["--flag".to_string(), "value".to_string()]);
 
         assert_eq!(config.args.len(), 2);
         assert_eq!(config.args[0], "--flag");
@@ -263,7 +263,8 @@ mod tests {
 
     #[test]
     fn baseline_config_with_baseline() {
-        let config = BaselineConfig::default().with_baseline(PathBuf::from("/path/to/baseline.json"));
+        let config =
+            BaselineConfig::default().with_baseline(PathBuf::from("/path/to/baseline.json"));
 
         assert_eq!(
             config.baseline_path,
@@ -301,7 +302,8 @@ mod tests {
 
     #[test]
     fn baseline_config_with_fail_on() {
-        let config = BaselineConfig::default().with_fail_on(vec![Severity::Critical, Severity::High]);
+        let config =
+            BaselineConfig::default().with_fail_on(vec![Severity::Critical, Severity::High]);
 
         assert!(config.fail_on.is_some());
         let severities = config.fail_on.unwrap();
@@ -402,7 +404,8 @@ mod tests {
 
     #[test]
     fn ai_config_with_model_string() {
-        let config = AiExplainConfig::enabled(CliAiProvider::Anthropic).with_model(String::from("claude-3-sonnet"));
+        let config = AiExplainConfig::enabled(CliAiProvider::Anthropic)
+            .with_model(String::from("claude-3-sonnet"));
 
         assert_eq!(config.model, Some("claude-3-sonnet".to_string()));
     }

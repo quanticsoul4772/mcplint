@@ -444,7 +444,7 @@ impl McpClientBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::mcp::{ToolsCapability, ResourcesCapability, PromptsCapability};
+    use crate::protocol::mcp::{PromptsCapability, ResourcesCapability, ToolsCapability};
 
     #[test]
     fn builder_creates_config() {
