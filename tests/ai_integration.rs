@@ -547,14 +547,14 @@ async fn test_all_providers_explain_same_finding() {
         .with_audience(AudienceLevel::Expert)
         .with_tech_stack(vec!["Rust".to_string(), "PostgreSQL".to_string()]);
 
-    // Anthropic
+    // Anthropic - use Sonnet for combined test as it handles complex JSON more reliably
     if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
         let provider = AnthropicProvider::new(
             api_key,
-            "claude-3-haiku-20240307".to_string(),
+            "claude-sonnet-4-20250514".to_string(),
             4096,
             0.3,
-            Duration::from_secs(60),
+            Duration::from_secs(90),
         );
 
         // Use retry logic to handle occasional LLM response parsing failures
