@@ -463,50 +463,36 @@ async fn test_ollama_explain_finding() {
     let provider = OllamaProvider::new(
         base_url.clone(),
         "llama3.2".to_string(),
-        Duration::from_secs(120), // Ollama can be slower
+        Duration::from_secs(300), // 5 minutes - model loading can be slow
     );
 
     // First check if Ollama is available
     let healthy = provider.health_check().await.unwrap_or(false);
     if !healthy {
-        println!(
-            "Ollama server not available at {} - skipping test (not an error in CI)",
-            base_url
-        );
-        return;
+        panic!("Ollama is not available at {} - ensure it's running with llama3.2 model pulled", base_url);
     }
 
     let finding = simple_test_finding();
     let context = ExplanationContext::new("test-server").with_audience(AudienceLevel::Intermediate);
 
     // Use retry logic to handle occasional LLM response parsing failures
-    // Note: Even if health check passes, inference may timeout on slower CI runners
-    match with_retry(3, || async { provider.explain_finding(&finding, &context).await }).await {
-        Ok(response) => {
-            // Verify we got a real response
-            assert!(
-                !response.explanation.summary.is_empty(),
-                "Summary should not be empty"
-            );
-            // Note: LLM responses may not always include all fields
-            assert_eq!(response.metadata.provider, "ollama");
-            println!(
-                "Ollama response OK: {} chars",
-                response.explanation.summary.len()
-            );
-        }
-        Err(e) => {
-            let err_str = e.to_string();
-            if err_str.contains("timed out") || err_str.contains("timeout") {
-                println!(
-                    "Ollama inference timed out at {} - model not ready (not an error in CI)",
-                    base_url
-                );
-            } else {
-                panic!("Ollama explain_finding failed with unexpected error: {}", e);
-            }
-        }
-    }
+    let response = with_retry(3, || async {
+        provider.explain_finding(&finding, &context).await
+    })
+    .await
+    .expect("Ollama explain_finding failed after 3 retries");
+
+    // Verify we got a real response
+    assert!(
+        !response.explanation.summary.is_empty(),
+        "Summary should not be empty"
+    );
+    // Note: LLM responses may not always include all fields
+    assert_eq!(response.metadata.provider, "ollama");
+    println!(
+        "Ollama response OK: {} chars",
+        response.explanation.summary.len()
+    );
 }
 
 // -----------------------------------------------------------------------------
@@ -621,46 +607,33 @@ async fn test_all_providers_explain_same_finding() {
         panic!("OPENAI_API_KEY not set");
     }
 
-    // Ollama (if available - skip if not running or model not ready)
+    // Ollama
     let base_url =
         std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
     let ollama = OllamaProvider::new(
         base_url.clone(),
         "llama3.2".to_string(),
-        Duration::from_secs(120),
+        Duration::from_secs(300), // 5 minutes - model loading can be slow
     );
 
-    if ollama.health_check().await.unwrap_or(false) {
-        // Use retry logic to handle occasional LLM response parsing failures
-        // Note: Even if health check passes, model inference may timeout on slower CI runners
-        // (especially macOS) where the model isn't fully loaded into memory yet
-        match with_retry(3, || async { ollama.explain_finding(&finding, &context).await }).await {
-            Ok(response) => {
-                assert!(
-                    !response.explanation.summary.is_empty(),
-                    "Ollama: empty summary"
-                );
-                println!(
-                    "Ollama response OK: {} chars",
-                    response.explanation.summary.len()
-                );
-            }
-            Err(e) => {
-                let err_str = e.to_string();
-                if err_str.contains("timed out") || err_str.contains("timeout") {
-                    println!(
-                        "Ollama inference timed out at {} - model not ready (not an error in CI)",
-                        base_url
-                    );
-                } else {
-                    panic!("Ollama failed with unexpected error: {}", e);
-                }
-            }
-        }
-    } else {
-        println!(
-            "Ollama not available at {} - skipping (not an error if cloud-only CI)",
-            base_url
-        );
-    }
+    assert!(
+        ollama.health_check().await.unwrap_or(false),
+        "Ollama is not available at {} - ensure it's running with llama3.2 model pulled",
+        base_url
+    );
+
+    // Use retry logic to handle occasional LLM response parsing failures
+    let response = with_retry(3, || async {
+        ollama.explain_finding(&finding, &context).await
+    })
+    .await
+    .expect("Ollama failed to explain finding after 3 retries");
+    assert!(
+        !response.explanation.summary.is_empty(),
+        "Ollama: empty summary"
+    );
+    println!(
+        "Ollama response OK: {} chars",
+        response.explanation.summary.len()
+    );
 }
