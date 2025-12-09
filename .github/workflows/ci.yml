@@ -36,6 +36,31 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Install Ollama (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve &
+          sleep 5
+          ollama pull llama3.2
+
+      - name: Install Ollama (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ollama
+          ollama serve &
+          sleep 5
+          ollama pull llama3.2
+
+      - name: Install Ollama (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          Invoke-WebRequest -Uri "https://ollama.com/download/ollama-windows-amd64.exe" -OutFile "ollama.exe"
+          Start-Process -FilePath ".\ollama.exe" -ArgumentList "serve" -NoNewWindow
+          Start-Sleep -Seconds 5
+          .\ollama.exe pull llama3.2
+        shell: pwsh
+
       - name: Check formatting
         run: cargo fmt -- --check
 
