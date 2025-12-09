@@ -55,6 +55,7 @@ pub fn run(category: Option<String>, verbose: bool) -> Result<()> {
 }
 
 /// Get all available rule categories
+#[allow(dead_code)]
 pub fn get_categories() -> Vec<(&'static str, &'static str)> {
     vec![
         ("injection", "Injection Vulnerabilities"),

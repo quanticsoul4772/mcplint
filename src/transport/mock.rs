@@ -15,6 +15,9 @@ use crate::protocol::{JsonRpcMessage, JsonRpcResponse, RequestId};
 
 use super::{Transport, TransportConfig, TransportType};
 
+/// Type alias for sent notifications storage to reduce type complexity
+type SentNotifications = Arc<Mutex<Vec<(String, Option<Value>)>>>;
+
 /// Mock transport for testing
 ///
 /// Allows pre-configuring responses and capturing sent messages for assertions.
@@ -24,7 +27,7 @@ pub struct MockTransport {
     /// Messages sent through the transport
     sent_messages: Arc<Mutex<Vec<JsonRpcMessage>>>,
     /// Notifications sent through the transport
-    sent_notifications: Arc<Mutex<Vec<(String, Option<Value>)>>>,
+    sent_notifications: SentNotifications,
     /// Whether the transport is closed
     closed: Arc<Mutex<bool>>,
     /// Request counter for ID generation
