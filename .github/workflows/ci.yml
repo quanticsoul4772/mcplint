@@ -71,11 +71,21 @@ jobs:
             echo "Waiting for Ollama server... ($i/30)"
             sleep 2
           done
+          echo "Pulling llama3.2 model..."
           ollama pull llama3.2
+          echo "Model pull complete. Checking available models:"
+          ollama list
           # Warm up the model by loading it into memory - MUST complete before tests
           echo "Warming up llama3.2 model (this loads it into memory)..."
-          curl -s --max-time 300 http://localhost:11434/api/generate -d '{"model": "llama3.2", "prompt": "Say hello", "stream": false}'
+          echo "Start time: $(date)"
+          curl -v --max-time 600 http://localhost:11434/api/generate -d '{"model": "llama3.2", "prompt": "Say hello", "stream": false}' 2>&1 || {
+            echo "Warm-up curl failed with exit code $?"
+            echo "Checking if Ollama is still running..."
+            curl -s http://localhost:11434/api/tags || echo "Server not responding"
+            exit 1
+          }
           echo ""
+          echo "End time: $(date)"
           echo "Model warm-up complete - model is now loaded"
 
       - name: Install Ollama (Windows)
