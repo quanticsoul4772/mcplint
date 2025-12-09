@@ -552,7 +552,7 @@ async fn test_all_providers_explain_same_finding() {
         let provider = AnthropicProvider::new(
             api_key,
             "claude-3-haiku-20240307".to_string(),
-            2048,
+            4096,
             0.3,
             Duration::from_secs(60),
         );
