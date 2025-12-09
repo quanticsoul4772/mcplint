@@ -9,11 +9,11 @@
 use std::future::Future;
 use std::time::Duration;
 
+use mcplint::ai::provider::{AiProvider, AnthropicProvider, OllamaProvider, OpenAiProvider};
 use mcplint::ai::{
     AiConfig, AiProviderType, AudienceLevel, ExplainEngine, ExplanationContext, Likelihood,
     VulnerabilityExplanation,
 };
-use mcplint::ai::provider::{AiProvider, AnthropicProvider, OpenAiProvider, OllamaProvider};
 use mcplint::scanner::{Evidence, Finding, Severity};
 
 /// Retry helper for flaky LLM API calls
@@ -284,10 +284,15 @@ async fn test_anthropic_health_check() {
         Duration::from_secs(30),
     );
 
-    let healthy = provider.health_check().await
+    let healthy = provider
+        .health_check()
+        .await
         .expect("Anthropic health check request failed");
 
-    assert!(healthy, "Anthropic API health check returned false - API may be down or key invalid");
+    assert!(
+        healthy,
+        "Anthropic API health check returned false - API may be down or key invalid"
+    );
 }
 
 #[tokio::test]
@@ -320,16 +325,20 @@ async fn test_anthropic_explain_finding() {
     );
 
     let finding = simple_test_finding();
-    let context = ExplanationContext::new("test-server")
-        .with_audience(AudienceLevel::Intermediate);
+    let context = ExplanationContext::new("test-server").with_audience(AudienceLevel::Intermediate);
 
     // Use retry logic to handle occasional LLM response parsing failures
     let response = with_retry(3, || async {
         provider.explain_finding(&finding, &context).await
-    }).await.expect("Anthropic explain_finding failed after 3 retries");
+    })
+    .await
+    .expect("Anthropic explain_finding failed after 3 retries");
 
     // Verify we got a real response
-    assert!(!response.explanation.summary.is_empty(), "Summary should not be empty");
+    assert!(
+        !response.explanation.summary.is_empty(),
+        "Summary should not be empty"
+    );
     // Note: LLM responses may not always include all fields
     assert_eq!(response.metadata.provider, "anthropic");
 }
@@ -350,10 +359,15 @@ async fn test_openai_health_check() {
         Duration::from_secs(30),
     );
 
-    let healthy = provider.health_check().await
+    let healthy = provider
+        .health_check()
+        .await
         .expect("OpenAI health check request failed");
 
-    assert!(healthy, "OpenAI API health check returned false - API may be down or key invalid");
+    assert!(
+        healthy,
+        "OpenAI API health check returned false - API may be down or key invalid"
+    );
 }
 
 #[tokio::test]
@@ -385,16 +399,20 @@ async fn test_openai_explain_finding() {
     );
 
     let finding = simple_test_finding();
-    let context = ExplanationContext::new("test-server")
-        .with_audience(AudienceLevel::Intermediate);
+    let context = ExplanationContext::new("test-server").with_audience(AudienceLevel::Intermediate);
 
     // Use retry logic to handle occasional LLM response parsing failures
     let response = with_retry(3, || async {
         provider.explain_finding(&finding, &context).await
-    }).await.expect("OpenAI explain_finding failed after 3 retries");
+    })
+    .await
+    .expect("OpenAI explain_finding failed after 3 retries");
 
     // Verify we got a real response
-    assert!(!response.explanation.summary.is_empty(), "Summary should not be empty");
+    assert!(
+        !response.explanation.summary.is_empty(),
+        "Summary should not be empty"
+    );
     // Note: LLM responses may not always include all fields
     assert_eq!(response.metadata.provider, "openai");
 }
@@ -405,8 +423,8 @@ async fn test_openai_explain_finding() {
 
 #[tokio::test]
 async fn test_ollama_health_check() {
-    let base_url = std::env::var("OLLAMA_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let base_url =
+        std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
     let provider = OllamaProvider::new(
         base_url.clone(),
@@ -414,7 +432,9 @@ async fn test_ollama_health_check() {
         Duration::from_secs(30),
     );
 
-    let healthy = provider.health_check().await
+    let healthy = provider
+        .health_check()
+        .await
         .expect("Ollama health check request failed");
 
     assert!(
@@ -426,14 +446,10 @@ async fn test_ollama_health_check() {
 
 #[tokio::test]
 async fn test_ollama_provider_name_and_model() {
-    let base_url = std::env::var("OLLAMA_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let base_url =
+        std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
-    let provider = OllamaProvider::new(
-        base_url,
-        "llama3.2".to_string(),
-        Duration::from_secs(30),
-    );
+    let provider = OllamaProvider::new(base_url, "llama3.2".to_string(), Duration::from_secs(30));
 
     assert_eq!(provider.name(), "Ollama");
     assert_eq!(provider.model(), "llama3.2");
@@ -441,8 +457,8 @@ async fn test_ollama_provider_name_and_model() {
 
 #[tokio::test]
 async fn test_ollama_explain_finding() {
-    let base_url = std::env::var("OLLAMA_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let base_url =
+        std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
     let provider = OllamaProvider::new(
         base_url,
@@ -457,16 +473,20 @@ async fn test_ollama_explain_finding() {
     }
 
     let finding = simple_test_finding();
-    let context = ExplanationContext::new("test-server")
-        .with_audience(AudienceLevel::Intermediate);
+    let context = ExplanationContext::new("test-server").with_audience(AudienceLevel::Intermediate);
 
     // Use retry logic to handle occasional LLM response parsing failures
     let response = with_retry(3, || async {
         provider.explain_finding(&finding, &context).await
-    }).await.expect("Ollama explain_finding failed after 3 retries");
+    })
+    .await
+    .expect("Ollama explain_finding failed after 3 retries");
 
     // Verify we got a real response
-    assert!(!response.explanation.summary.is_empty(), "Summary should not be empty");
+    assert!(
+        !response.explanation.summary.is_empty(),
+        "Summary should not be empty"
+    );
     // Note: LLM responses may not always include all fields
     assert_eq!(response.metadata.provider, "ollama");
 }
@@ -480,14 +500,15 @@ async fn test_explain_engine_with_anthropic() {
     let _api_key = require_env("ANTHROPIC_API_KEY"); // Ensure key exists
 
     let config = AiConfig::anthropic();
-    let engine = ExplainEngine::new(config)
-        .expect("Failed to create ExplainEngine with Anthropic");
+    let engine = ExplainEngine::new(config).expect("Failed to create ExplainEngine with Anthropic");
 
     assert_eq!(engine.provider_name(), "Anthropic");
 
     let finding = simple_test_finding();
 
-    let response = engine.explain(&finding).await
+    let response = engine
+        .explain(&finding)
+        .await
         .expect("ExplainEngine explain failed with Anthropic");
 
     assert!(!response.explanation.summary.is_empty());
@@ -498,14 +519,15 @@ async fn test_explain_engine_with_openai() {
     let _api_key = require_env("OPENAI_API_KEY"); // Ensure key exists
 
     let config = AiConfig::openai();
-    let engine = ExplainEngine::new(config)
-        .expect("Failed to create ExplainEngine with OpenAI");
+    let engine = ExplainEngine::new(config).expect("Failed to create ExplainEngine with OpenAI");
 
     assert_eq!(engine.provider_name(), "OpenAI");
 
     let finding = simple_test_finding();
 
-    let response = engine.explain(&finding).await
+    let response = engine
+        .explain(&finding)
+        .await
         .expect("ExplainEngine explain failed with OpenAI");
 
     assert!(!response.explanation.summary.is_empty());
@@ -538,9 +560,17 @@ async fn test_all_providers_explain_same_finding() {
         // Use retry logic to handle occasional LLM response parsing failures
         let response = with_retry(3, || async {
             provider.explain_finding(&finding, &context).await
-        }).await.expect("Anthropic failed to explain finding after 3 retries");
-        assert!(!response.explanation.summary.is_empty(), "Anthropic: empty summary");
-        println!("Anthropic response OK: {} chars", response.explanation.summary.len());
+        })
+        .await
+        .expect("Anthropic failed to explain finding after 3 retries");
+        assert!(
+            !response.explanation.summary.is_empty(),
+            "Anthropic: empty summary"
+        );
+        println!(
+            "Anthropic response OK: {} chars",
+            response.explanation.summary.len()
+        );
     } else {
         panic!("ANTHROPIC_API_KEY not set");
     }
@@ -558,16 +588,24 @@ async fn test_all_providers_explain_same_finding() {
         // Use retry logic to handle occasional LLM response parsing failures
         let response = with_retry(3, || async {
             provider.explain_finding(&finding, &context).await
-        }).await.expect("OpenAI failed to explain finding after 3 retries");
-        assert!(!response.explanation.summary.is_empty(), "OpenAI: empty summary");
-        println!("OpenAI response OK: {} chars", response.explanation.summary.len());
+        })
+        .await
+        .expect("OpenAI failed to explain finding after 3 retries");
+        assert!(
+            !response.explanation.summary.is_empty(),
+            "OpenAI: empty summary"
+        );
+        println!(
+            "OpenAI response OK: {} chars",
+            response.explanation.summary.len()
+        );
     } else {
         panic!("OPENAI_API_KEY not set");
     }
 
     // Ollama (if available - skip if not running)
-    let base_url = std::env::var("OLLAMA_BASE_URL")
-        .unwrap_or_else(|_| "http://localhost:11434".to_string());
+    let base_url =
+        std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
     let ollama = OllamaProvider::new(
         base_url.clone(),
         "llama3.2".to_string(),
@@ -578,10 +616,21 @@ async fn test_all_providers_explain_same_finding() {
         // Use retry logic to handle occasional LLM response parsing failures
         let response = with_retry(3, || async {
             ollama.explain_finding(&finding, &context).await
-        }).await.expect("Ollama failed to explain finding after 3 retries");
-        assert!(!response.explanation.summary.is_empty(), "Ollama: empty summary");
-        println!("Ollama response OK: {} chars", response.explanation.summary.len());
+        })
+        .await
+        .expect("Ollama failed to explain finding after 3 retries");
+        assert!(
+            !response.explanation.summary.is_empty(),
+            "Ollama: empty summary"
+        );
+        println!(
+            "Ollama response OK: {} chars",
+            response.explanation.summary.len()
+        );
     } else {
-        println!("Ollama not available at {} - skipping (not an error if cloud-only CI)", base_url);
+        println!(
+            "Ollama not available at {} - skipping (not an error if cloud-only CI)",
+            base_url
+        );
     }
 }

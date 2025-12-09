@@ -39,8 +39,7 @@ pub trait McpClientTrait: Send + Sync {
     async fn list_tools(&mut self) -> Result<Vec<Tool>>;
 
     /// Call a tool on the server
-    async fn call_tool(&mut self, name: &str, arguments: Option<Value>)
-        -> Result<CallToolResult>;
+    async fn call_tool(&mut self, name: &str, arguments: Option<Value>) -> Result<CallToolResult>;
 
     /// List available resources from the server
     async fn list_resources(&mut self) -> Result<Vec<Resource>>;
@@ -52,11 +51,8 @@ pub trait McpClientTrait: Send + Sync {
     async fn list_prompts(&mut self) -> Result<Vec<Prompt>>;
 
     /// Get a prompt by name with optional arguments
-    async fn get_prompt(
-        &mut self,
-        name: &str,
-        arguments: Option<Value>,
-    ) -> Result<GetPromptResult>;
+    async fn get_prompt(&mut self, name: &str, arguments: Option<Value>)
+        -> Result<GetPromptResult>;
 
     /// Ping the server to check connection
     async fn ping(&mut self) -> Result<()>;
@@ -376,11 +372,7 @@ impl McpClientTrait for MockMcpClient {
         Ok(tools.clone())
     }
 
-    async fn call_tool(
-        &mut self,
-        name: &str,
-        _arguments: Option<Value>,
-    ) -> Result<CallToolResult> {
+    async fn call_tool(&mut self, name: &str, _arguments: Option<Value>) -> Result<CallToolResult> {
         self.check_error().await?;
 
         if !self.initialized {
@@ -619,7 +611,10 @@ mod tests {
     async fn mock_client_call_tool_custom_response() {
         let mut client = MockMcpClient::new();
         client
-            .set_tool_response("my_tool", MockMcpClient::success_tool_result("custom result"))
+            .set_tool_response(
+                "my_tool",
+                MockMcpClient::success_tool_result("custom result"),
+            )
             .await;
 
         client.initialize().await.unwrap();
@@ -636,7 +631,10 @@ mod tests {
     async fn mock_client_call_tool_error_response() {
         let mut client = MockMcpClient::new();
         client
-            .set_tool_response("error_tool", MockMcpClient::error_tool_result("error message"))
+            .set_tool_response(
+                "error_tool",
+                MockMcpClient::error_tool_result("error message"),
+            )
             .await;
 
         client.initialize().await.unwrap();

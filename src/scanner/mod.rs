@@ -193,11 +193,26 @@ mod tests {
 
     fn create_test_results(findings: Vec<Finding>) -> ScanResults {
         let summary = ScanSummary {
-            critical: findings.iter().filter(|f| f.severity == Severity::Critical).count(),
-            high: findings.iter().filter(|f| f.severity == Severity::High).count(),
-            medium: findings.iter().filter(|f| f.severity == Severity::Medium).count(),
-            low: findings.iter().filter(|f| f.severity == Severity::Low).count(),
-            info: findings.iter().filter(|f| f.severity == Severity::Info).count(),
+            critical: findings
+                .iter()
+                .filter(|f| f.severity == Severity::Critical)
+                .count(),
+            high: findings
+                .iter()
+                .filter(|f| f.severity == Severity::High)
+                .count(),
+            medium: findings
+                .iter()
+                .filter(|f| f.severity == Severity::Medium)
+                .count(),
+            low: findings
+                .iter()
+                .filter(|f| f.severity == Severity::Low)
+                .count(),
+            info: findings
+                .iter()
+                .filter(|f| f.severity == Severity::Info)
+                .count(),
         };
         ScanResults {
             server: "test-server".to_string(),
@@ -249,7 +264,9 @@ mod tests {
         let results = create_test_results(findings);
         let sarif = to_sarif_report(&results);
 
-        let rules = sarif["runs"][0]["tool"]["driver"]["rules"].as_array().unwrap();
+        let rules = sarif["runs"][0]["tool"]["driver"]["rules"]
+            .as_array()
+            .unwrap();
         // Should only have 2 unique rules even though we have 3 findings
         assert_eq!(rules.len(), 2);
     }
@@ -267,39 +284,41 @@ mod tests {
         let sarif = to_sarif_report(&results);
 
         let sarif_results = sarif["runs"][0]["results"].as_array().unwrap();
-        assert_eq!(sarif_results[0]["level"], "error");  // Critical
-        assert_eq!(sarif_results[1]["level"], "error");  // High
+        assert_eq!(sarif_results[0]["level"], "error"); // Critical
+        assert_eq!(sarif_results[1]["level"], "error"); // High
         assert_eq!(sarif_results[2]["level"], "warning"); // Medium
-        assert_eq!(sarif_results[3]["level"], "note");   // Low
-        assert_eq!(sarif_results[4]["level"], "note");   // Info (also maps to note)
+        assert_eq!(sarif_results[3]["level"], "note"); // Low
+        assert_eq!(sarif_results[4]["level"], "note"); // Info (also maps to note)
     }
 
     #[test]
     fn to_sarif_report_includes_server_uri() {
-        let results = create_test_results(vec![
-            create_finding(Severity::Medium, "TEST-001", "Test")
-        ]);
+        let results =
+            create_test_results(vec![create_finding(Severity::Medium, "TEST-001", "Test")]);
         let sarif = to_sarif_report(&results);
 
         let location = &sarif["runs"][0]["results"][0]["locations"][0];
-        assert_eq!(location["physicalLocation"]["artifactLocation"]["uri"], "test-server");
+        assert_eq!(
+            location["physicalLocation"]["artifactLocation"]["uri"],
+            "test-server"
+        );
     }
 
     #[test]
     fn scan_results_has_critical_or_high() {
-        let critical_results = create_test_results(vec![
-            create_finding(Severity::Critical, "TEST-001", "Critical")
-        ]);
+        let critical_results = create_test_results(vec![create_finding(
+            Severity::Critical,
+            "TEST-001",
+            "Critical",
+        )]);
         assert!(critical_results.has_critical_or_high());
 
-        let high_results = create_test_results(vec![
-            create_finding(Severity::High, "TEST-001", "High")
-        ]);
+        let high_results =
+            create_test_results(vec![create_finding(Severity::High, "TEST-001", "High")]);
         assert!(high_results.has_critical_or_high());
 
-        let medium_results = create_test_results(vec![
-            create_finding(Severity::Medium, "TEST-001", "Medium")
-        ]);
+        let medium_results =
+            create_test_results(vec![create_finding(Severity::Medium, "TEST-001", "Medium")]);
         assert!(!medium_results.has_critical_or_high());
 
         let empty_results = create_test_results(vec![]);
@@ -328,27 +347,33 @@ mod tests {
 
     #[test]
     fn print_text_with_critical_finding() {
-        let results = create_test_results(vec![
-            create_finding(Severity::Critical, "CRIT-001", "Critical Issue")
-        ]);
+        let results = create_test_results(vec![create_finding(
+            Severity::Critical,
+            "CRIT-001",
+            "Critical Issue",
+        )]);
         // Should not panic - tests the critical/high branch
         results.print_text();
     }
 
     #[test]
     fn print_text_with_medium_finding() {
-        let results = create_test_results(vec![
-            create_finding(Severity::Medium, "MED-001", "Medium Issue")
-        ]);
+        let results = create_test_results(vec![create_finding(
+            Severity::Medium,
+            "MED-001",
+            "Medium Issue",
+        )]);
         // Should not panic - tests the "has issues to address" branch
         results.print_text();
     }
 
     #[test]
     fn print_text_single_finding() {
-        let results = create_test_results(vec![
-            create_finding(Severity::Low, "LOW-001", "Single Finding")
-        ]);
+        let results = create_test_results(vec![create_finding(
+            Severity::Low,
+            "LOW-001",
+            "Single Finding",
+        )]);
         // Tests the "1 vulnerability" vs "vulnerabilities" logic
         results.print_text();
     }
@@ -401,9 +426,11 @@ mod tests {
 
     #[test]
     fn print_json_success() {
-        let results = create_test_results(vec![
-            create_finding(Severity::High, "TEST-001", "Test Finding")
-        ]);
+        let results = create_test_results(vec![create_finding(
+            Severity::High,
+            "TEST-001",
+            "Test Finding",
+        )]);
         let result = results.print_json();
         assert!(result.is_ok());
     }
@@ -417,9 +444,11 @@ mod tests {
 
     #[test]
     fn print_sarif_success() {
-        let results = create_test_results(vec![
-            create_finding(Severity::Critical, "TEST-001", "Test Finding")
-        ]);
+        let results = create_test_results(vec![create_finding(
+            Severity::Critical,
+            "TEST-001",
+            "Test Finding",
+        )]);
         let result = results.print_sarif();
         assert!(result.is_ok());
     }
@@ -482,17 +511,17 @@ mod tests {
     #[test]
     fn sarif_rule_includes_help_uri_when_present() {
         let mut finding = create_finding(Severity::High, "TEST-001", "Test");
-        finding.references = vec![
-            crate::scanner::finding::Reference {
-                kind: ReferenceKind::Cwe,
-                id: "CWE-78".to_string(),
-                url: Some("https://example.com/help".to_string()),
-            },
-        ];
+        finding.references = vec![crate::scanner::finding::Reference {
+            kind: ReferenceKind::Cwe,
+            id: "CWE-78".to_string(),
+            url: Some("https://example.com/help".to_string()),
+        }];
         let results = create_test_results(vec![finding]);
         let sarif = to_sarif_report(&results);
 
-        let rules = sarif["runs"][0]["tool"]["driver"]["rules"].as_array().unwrap();
+        let rules = sarif["runs"][0]["tool"]["driver"]["rules"]
+            .as_array()
+            .unwrap();
         assert_eq!(rules[0]["helpUri"], "https://example.com/help");
     }
 
@@ -502,7 +531,9 @@ mod tests {
         let results = create_test_results(vec![finding]);
         let sarif = to_sarif_report(&results);
 
-        let rules = sarif["runs"][0]["tool"]["driver"]["rules"].as_array().unwrap();
+        let rules = sarif["runs"][0]["tool"]["driver"]["rules"]
+            .as_array()
+            .unwrap();
         assert!(rules[0]["helpUri"].is_null());
     }
 
@@ -523,7 +554,7 @@ mod tests {
     #[test]
     fn print_text_empty_component_skips_location() {
         let mut finding = create_finding(Severity::Medium, "TEST-001", "Test");
-        finding.location.component = "".to_string();  // Empty component
+        finding.location.component = "".to_string(); // Empty component
         finding.location.identifier = "something".to_string();
         let results = create_test_results(vec![finding]);
         // Should not print location line
@@ -533,7 +564,7 @@ mod tests {
     #[test]
     fn print_text_empty_remediation_skips_fix() {
         let mut finding = create_finding(Severity::Medium, "TEST-001", "Test");
-        finding.remediation = "".to_string();  // Empty remediation
+        finding.remediation = "".to_string(); // Empty remediation
         let results = create_test_results(vec![finding]);
         // Should not print fix line
         results.print_text();

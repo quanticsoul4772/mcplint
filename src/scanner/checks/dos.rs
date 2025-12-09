@@ -90,7 +90,8 @@ mod tests {
     fn detect_download_no_limit() {
         let checker = DefaultDosChecks;
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool("download_files", make_empty_schema()));
+        ctx.tools
+            .push(make_tool("download_files", make_empty_schema()));
 
         let finding = checker.check_resource_consumption(&ctx);
         assert!(finding.is_some());
@@ -103,7 +104,8 @@ mod tests {
     fn detect_bulk_no_limit() {
         let checker = DefaultDosChecks;
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool("bulk_process", make_empty_schema()));
+        ctx.tools
+            .push(make_tool("bulk_process", make_empty_schema()));
 
         let finding = checker.check_resource_consumption(&ctx);
         assert!(finding.is_some());
@@ -113,7 +115,8 @@ mod tests {
     fn detect_export_no_limit() {
         let checker = DefaultDosChecks;
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool("export_data", make_empty_schema()));
+        ctx.tools
+            .push(make_tool("export_data", make_empty_schema()));
 
         let finding = checker.check_resource_consumption(&ctx);
         assert!(finding.is_some());
@@ -123,7 +126,8 @@ mod tests {
     fn detect_stream_no_limit() {
         let checker = DefaultDosChecks;
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool("stream_data", make_empty_schema()));
+        ctx.tools
+            .push(make_tool("stream_data", make_empty_schema()));
 
         let finding = checker.check_resource_consumption(&ctx);
         assert!(finding.is_some());
@@ -133,7 +137,8 @@ mod tests {
     fn no_finding_with_limit_param() {
         let checker = DefaultDosChecks;
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool("download_files", make_limit_schema()));
+        ctx.tools
+            .push(make_tool("download_files", make_limit_schema()));
 
         let finding = checker.check_resource_consumption(&ctx);
         assert!(finding.is_none());
@@ -161,7 +166,8 @@ mod tests {
     fn detect_upload_no_limit() {
         let checker = DefaultDosChecks;
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool("upload_batch", make_empty_schema()));
+        ctx.tools
+            .push(make_tool("upload_batch", make_empty_schema()));
 
         let finding = checker.check_resource_consumption(&ctx);
         assert!(finding.is_some());

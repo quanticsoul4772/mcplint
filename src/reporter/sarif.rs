@@ -312,8 +312,18 @@ mod tests {
     fn sarif_from_validation_results_with_failures() {
         let mut results = make_empty_results();
         results.results = vec![
-            make_validation_result("PROTO-001", "Test Rule", ValidationSeverity::Fail, Some("Failed validation")),
-            make_validation_result("PROTO-002", "Warning Rule", ValidationSeverity::Warning, Some("Warning message")),
+            make_validation_result(
+                "PROTO-001",
+                "Test Rule",
+                ValidationSeverity::Fail,
+                Some("Failed validation"),
+            ),
+            make_validation_result(
+                "PROTO-002",
+                "Warning Rule",
+                ValidationSeverity::Warning,
+                Some("Warning message"),
+            ),
         ];
         results.failed = 1;
         results.warnings = 1;
@@ -329,7 +339,12 @@ mod tests {
         let mut results = make_empty_results();
         results.results = vec![
             make_validation_result("PROTO-001", "Pass Rule", ValidationSeverity::Pass, None),
-            make_validation_result("PROTO-002", "Fail Rule", ValidationSeverity::Fail, Some("Error")),
+            make_validation_result(
+                "PROTO-002",
+                "Fail Rule",
+                ValidationSeverity::Fail,
+                Some("Error"),
+            ),
         ];
         results.passed = 1;
         results.failed = 1;
@@ -364,10 +379,6 @@ mod tests {
         let results = make_empty_results();
         let sarif = SarifReport::from_validation_results(&results);
         assert_eq!(sarif.runs[0].tool.driver.name, "mcplint");
-        assert!(sarif.runs[0]
-            .tool
-            .driver
-            .information_uri
-            .contains("github"));
+        assert!(sarif.runs[0].tool.driver.information_uri.contains("github"));
     }
 }

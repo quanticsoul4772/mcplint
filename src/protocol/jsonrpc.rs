@@ -423,7 +423,8 @@ mod tests {
 
     #[test]
     fn json_rpc_notification_new() {
-        let notif = JsonRpcNotification::new("test/method", Some(serde_json::json!({"key": "value"})));
+        let notif =
+            JsonRpcNotification::new("test/method", Some(serde_json::json!({"key": "value"})));
         assert_eq!(notif.jsonrpc, "2.0");
         assert_eq!(notif.method, "test/method");
         assert!(notif.params.is_some());

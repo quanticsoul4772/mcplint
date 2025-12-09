@@ -607,11 +607,7 @@ mod tests {
         let mut corpus = CorpusManager::new();
         corpus.initialize().unwrap();
 
-        let hang = CorpusManager::create_hang_record(
-            FuzzInput::ping(),
-            5000,
-            1,
-        );
+        let hang = CorpusManager::create_hang_record(FuzzInput::ping(), 5000, 1);
 
         corpus.record_hang(hang).unwrap();
         assert_eq!(corpus.hang_count(), 1);
@@ -710,11 +706,7 @@ mod tests {
 
     #[test]
     fn hang_record_fields() {
-        let hang = CorpusManager::create_hang_record(
-            FuzzInput::tools_list(),
-            10000,
-            50,
-        );
+        let hang = CorpusManager::create_hang_record(FuzzInput::tools_list(), 10000, 50);
 
         assert_eq!(hang.timeout_ms, 10000);
         assert_eq!(hang.iteration, 50);
@@ -740,7 +732,13 @@ mod tests {
 
     #[test]
     fn interesting_reason_equality() {
-        assert_eq!(InterestingReason::NewCoverage, InterestingReason::NewCoverage);
-        assert_ne!(InterestingReason::NewCoverage, InterestingReason::NewErrorCode);
+        assert_eq!(
+            InterestingReason::NewCoverage,
+            InterestingReason::NewCoverage
+        );
+        assert_ne!(
+            InterestingReason::NewCoverage,
+            InterestingReason::NewErrorCode
+        );
     }
 }
