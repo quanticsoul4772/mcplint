@@ -203,6 +203,7 @@ impl Transport for StdioTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::{JsonRpcMessage, JsonRpcRequest, JsonRpcNotification};
 
     #[test]
     fn request_id_increments() {
@@ -224,5 +225,131 @@ mod tests {
             Duration::from_secs(60),
             Duration::from_secs(config.timeout_secs)
         );
+    }
+
+    #[test]
+    fn default_transport_config() {
+        let config = TransportConfig::default();
+        assert_eq!(config.timeout_secs, 30);
+        assert!(config.max_message_size > 0);
+    }
+
+    #[test]
+    fn custom_transport_config() {
+        let config = TransportConfig {
+            timeout_secs: 120,
+            max_message_size: 1024 * 1024,
+        };
+        assert_eq!(config.timeout_secs, 120);
+        assert_eq!(config.max_message_size, 1024 * 1024);
+    }
+
+    #[test]
+    fn request_id_starts_at_one() {
+        let counter = AtomicU64::new(0);
+        let id = RequestId::Number(counter.fetch_add(1, Ordering::SeqCst) + 1);
+        assert_eq!(id, RequestId::Number(1));
+    }
+
+    #[test]
+    fn request_id_sequential() {
+        let counter = AtomicU64::new(0);
+        for i in 1..=100 {
+            let id = RequestId::Number(counter.fetch_add(1, Ordering::SeqCst) + 1);
+            assert_eq!(id, RequestId::Number(i));
+        }
+    }
+
+    #[test]
+    fn jsonrpc_request_serialization() {
+        let request = JsonRpcRequest::new(
+            RequestId::Number(1),
+            "initialize",
+            Some(serde_json::json!({"capabilities": {}})),
+        );
+        let json = serde_json::to_string(&request).unwrap();
+        assert!(json.contains("\"jsonrpc\":\"2.0\""));
+        assert!(json.contains("\"method\":\"initialize\""));
+        assert!(json.contains("\"id\":1"));
+    }
+
+    #[test]
+    fn jsonrpc_notification_serialization() {
+        let notification = JsonRpcNotification::new(
+            "notifications/message",
+            Some(serde_json::json!({"data": "test"})),
+        );
+        let json = serde_json::to_string(&notification).unwrap();
+        assert!(json.contains("\"jsonrpc\":\"2.0\""));
+        assert!(json.contains("\"method\":\"notifications/message\""));
+        // Notifications don't have id
+        assert!(!json.contains("\"id\""));
+    }
+
+    #[test]
+    fn jsonrpc_message_parse_request() {
+        let json = r#"{"jsonrpc":"2.0","method":"test","id":1}"#;
+        let message: JsonRpcMessage = serde_json::from_str(json).unwrap();
+        match message {
+            JsonRpcMessage::Request(req) => {
+                assert_eq!(req.method, "test");
+                assert_eq!(req.id, RequestId::Number(1));
+            }
+            _ => panic!("Expected request"),
+        }
+    }
+
+    #[test]
+    fn jsonrpc_message_parse_notification() {
+        let json = r#"{"jsonrpc":"2.0","method":"notifications/ping"}"#;
+        let message: JsonRpcMessage = serde_json::from_str(json).unwrap();
+        match message {
+            JsonRpcMessage::Notification(notif) => {
+                assert_eq!(notif.method, "notifications/ping");
+            }
+            _ => panic!("Expected notification"),
+        }
+    }
+
+    #[test]
+    fn jsonrpc_message_parse_response() {
+        let json = r#"{"jsonrpc":"2.0","id":1,"result":{"success":true}}"#;
+        let message: JsonRpcMessage = serde_json::from_str(json).unwrap();
+        match message {
+            JsonRpcMessage::Response(resp) => {
+                assert_eq!(resp.id, RequestId::Number(1));
+                assert!(resp.result.is_some());
+            }
+            _ => panic!("Expected response"),
+        }
+    }
+
+    #[test]
+    fn jsonrpc_response_with_error() {
+        let json = r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found"}}"#;
+        let message: JsonRpcMessage = serde_json::from_str(json).unwrap();
+        match message {
+            JsonRpcMessage::Response(resp) => {
+                assert!(resp.error.is_some());
+                let err = resp.error.unwrap();
+                assert_eq!(err.code, -32601);
+            }
+            _ => panic!("Expected response"),
+        }
+    }
+
+    #[test]
+    fn timeout_duration_calculation() {
+        let config1 = TransportConfig {
+            timeout_secs: 30,
+            ..Default::default()
+        };
+        let config2 = TransportConfig {
+            timeout_secs: 120,
+            ..Default::default()
+        };
+
+        assert_eq!(Duration::from_secs(30), Duration::from_secs(config1.timeout_secs));
+        assert_eq!(Duration::from_secs(120), Duration::from_secs(config2.timeout_secs));
     }
 }

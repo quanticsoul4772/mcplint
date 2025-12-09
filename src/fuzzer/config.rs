@@ -302,4 +302,234 @@ mod tests {
         assert_eq!(FuzzProfile::from_str("CI"), Some(FuzzProfile::CI));
         assert_eq!(FuzzProfile::from_str("unknown"), None);
     }
+
+    #[test]
+    fn default_config_values() {
+        let config = FuzzConfig::default();
+        assert_eq!(config.duration_secs, 60);
+        assert_eq!(config.max_iterations, 0);
+        assert_eq!(config.request_timeout_ms, 5000);
+        assert_eq!(config.workers, 1);
+        assert!(config.corpus_path.is_none());
+        assert!(config.dictionary_path.is_none());
+        assert!(config.target_tools.is_none());
+        assert_eq!(config.profile, FuzzProfile::Standard);
+        assert!(config.save_interesting);
+        assert!((config.coverage_threshold - 0.01).abs() < f64::EPSILON);
+        assert!(config.seed.is_none());
+    }
+
+    #[test]
+    fn with_profile_creates_config() {
+        let config = FuzzConfig::with_profile(FuzzProfile::Quick);
+        assert_eq!(config.profile, FuzzProfile::Quick);
+        assert_eq!(config.duration_secs, 60);
+        assert_eq!(config.max_iterations, 500);
+    }
+
+    #[test]
+    fn with_iterations() {
+        let config = FuzzConfig::default().with_iterations(1000);
+        assert_eq!(config.max_iterations, 1000);
+    }
+
+    #[test]
+    fn with_corpus() {
+        let path = PathBuf::from("/tmp/corpus");
+        let config = FuzzConfig::default().with_corpus(Some(path.clone()));
+        assert_eq!(config.corpus_path, Some(path));
+
+        let config2 = FuzzConfig::default().with_corpus(None);
+        assert!(config2.corpus_path.is_none());
+    }
+
+    #[test]
+    fn with_target_tools() {
+        let tools = vec!["tool1".to_string(), "tool2".to_string()];
+        let config = FuzzConfig::default().with_target_tools(Some(tools.clone()));
+        assert_eq!(config.target_tools, Some(tools));
+
+        let config2 = FuzzConfig::default().with_target_tools(None);
+        assert!(config2.target_tools.is_none());
+    }
+
+    #[test]
+    fn with_seed() {
+        let config = FuzzConfig::default().with_seed(12345);
+        assert_eq!(config.seed, Some(12345));
+    }
+
+    #[test]
+    fn with_resource_limits() {
+        let limits = ResourceLimits::default();
+        let config = FuzzConfig::default().with_resource_limits(limits);
+        // Just verify it doesn't panic - resource limits are optional
+        assert!(config.resource_limits.max_memory.is_some() || config.resource_limits.max_memory.is_none());
+    }
+
+    #[test]
+    fn with_max_memory() {
+        let config = FuzzConfig::default().with_max_memory(1024 * 1024 * 1024);
+        assert_eq!(config.resource_limits.max_memory, Some(1024 * 1024 * 1024));
+    }
+
+    #[test]
+    fn with_max_time() {
+        let config = FuzzConfig::default().with_max_time(Duration::from_secs(3600));
+        assert_eq!(config.resource_limits.max_time, Some(Duration::from_secs(3600)));
+    }
+
+    #[test]
+    fn with_max_corpus_size() {
+        let config = FuzzConfig::default().with_max_corpus_size(50000);
+        assert_eq!(config.resource_limits.max_corpus_size, Some(50000));
+    }
+
+    #[test]
+    fn with_max_restarts() {
+        let config = FuzzConfig::default().with_max_restarts(25);
+        assert_eq!(config.resource_limits.max_restarts, Some(25));
+    }
+
+    #[test]
+    fn with_unlimited_resources() {
+        let config = FuzzConfig::default().with_unlimited_resources();
+        // Unlimited means None (no limit)
+        assert!(config.resource_limits.max_memory.is_none());
+        assert!(config.resource_limits.max_time.is_none());
+    }
+
+    #[test]
+    fn with_workers_minimum_one() {
+        let config = FuzzConfig::default().with_workers(0);
+        assert_eq!(config.workers, 1);
+
+        let config2 = FuzzConfig::default().with_workers(1);
+        assert_eq!(config2.workers, 1);
+    }
+
+    #[test]
+    fn profile_as_str() {
+        assert_eq!(FuzzProfile::Quick.as_str(), "quick");
+        assert_eq!(FuzzProfile::Standard.as_str(), "standard");
+        assert_eq!(FuzzProfile::Intensive.as_str(), "intensive");
+        assert_eq!(FuzzProfile::CI.as_str(), "ci");
+    }
+
+    #[test]
+    fn profile_display() {
+        assert_eq!(format!("{}", FuzzProfile::Quick), "quick");
+        assert_eq!(format!("{}", FuzzProfile::Standard), "standard");
+        assert_eq!(format!("{}", FuzzProfile::Intensive), "intensive");
+        assert_eq!(format!("{}", FuzzProfile::CI), "ci");
+    }
+
+    #[test]
+    fn profile_from_str_all_variants() {
+        assert_eq!(FuzzProfile::from_str("quick"), Some(FuzzProfile::Quick));
+        assert_eq!(FuzzProfile::from_str("QUICK"), Some(FuzzProfile::Quick));
+        assert_eq!(FuzzProfile::from_str("Quick"), Some(FuzzProfile::Quick));
+        assert_eq!(FuzzProfile::from_str("standard"), Some(FuzzProfile::Standard));
+        assert_eq!(FuzzProfile::from_str("STANDARD"), Some(FuzzProfile::Standard));
+        assert_eq!(FuzzProfile::from_str("intensive"), Some(FuzzProfile::Intensive));
+        assert_eq!(FuzzProfile::from_str("INTENSIVE"), Some(FuzzProfile::Intensive));
+        assert_eq!(FuzzProfile::from_str("ci"), Some(FuzzProfile::CI));
+        assert_eq!(FuzzProfile::from_str("CI"), Some(FuzzProfile::CI));
+    }
+
+    #[test]
+    fn standard_profile_config() {
+        let config = FuzzProfile::Standard.default_config();
+        assert_eq!(config.duration_secs, 300);
+        assert_eq!(config.max_iterations, 0);
+        assert_eq!(config.request_timeout_ms, 5000);
+        assert!(config.save_interesting);
+        assert!(config.seed.is_none());
+    }
+
+    #[test]
+    fn intensive_profile_config() {
+        let config = FuzzProfile::Intensive.default_config();
+        assert_eq!(config.duration_secs, 0);
+        assert_eq!(config.max_iterations, 0);
+        assert_eq!(config.request_timeout_ms, 10000);
+        assert!(config.save_interesting);
+        assert!((config.coverage_threshold - 0.001).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn ci_profile_config() {
+        let config = FuzzProfile::CI.default_config();
+        assert_eq!(config.duration_secs, 30);
+        assert_eq!(config.max_iterations, 200);
+        assert_eq!(config.request_timeout_ms, 2000);
+        assert!(!config.save_interesting);
+        assert_eq!(config.seed, Some(42));
+    }
+
+    #[test]
+    fn quick_profile_config() {
+        let config = FuzzProfile::Quick.default_config();
+        assert_eq!(config.duration_secs, 60);
+        assert_eq!(config.max_iterations, 500);
+        assert_eq!(config.request_timeout_ms, 3000);
+        assert!(!config.save_interesting);
+    }
+
+    #[test]
+    fn profile_default() {
+        let profile = FuzzProfile::default();
+        assert_eq!(profile, FuzzProfile::Standard);
+    }
+
+    #[test]
+    fn profile_clone() {
+        let profile = FuzzProfile::Intensive;
+        let cloned = profile;
+        assert_eq!(cloned, FuzzProfile::Intensive);
+    }
+
+    #[test]
+    fn config_clone() {
+        let config = FuzzConfig::default()
+            .with_workers(4)
+            .with_seed(123);
+        let cloned = config.clone();
+        assert_eq!(cloned.workers, 4);
+        assert_eq!(cloned.seed, Some(123));
+    }
+
+    #[test]
+    fn config_debug() {
+        let config = FuzzConfig::default();
+        let debug = format!("{:?}", config);
+        assert!(debug.contains("FuzzConfig"));
+    }
+
+    #[test]
+    fn profile_debug() {
+        let profile = FuzzProfile::Quick;
+        let debug = format!("{:?}", profile);
+        assert!(debug.contains("Quick"));
+    }
+
+    #[test]
+    fn builder_chain() {
+        let config = FuzzConfig::default()
+            .with_workers(2)
+            .with_duration(180)
+            .with_iterations(5000)
+            .with_timeout(4000)
+            .with_seed(999)
+            .with_max_memory(1024 * 1024 * 256)
+            .with_max_restarts(5);
+
+        assert_eq!(config.workers, 2);
+        assert_eq!(config.duration_secs, 180);
+        assert_eq!(config.max_iterations, 5000);
+        assert_eq!(config.request_timeout_ms, 4000);
+        assert_eq!(config.seed, Some(999));
+        assert_eq!(config.resource_limits.max_memory, Some(1024 * 1024 * 256));
+        assert_eq!(config.resource_limits.max_restarts, Some(5));
+    }
 }

@@ -122,3 +122,105 @@ pub fn run(output: &str, force: bool) -> Result<()> {
 
     Ok(())
 }
+
+/// Get the default configuration content
+pub fn default_config() -> &'static str {
+    DEFAULT_CONFIG
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn default_config_contains_sections() {
+        let config = default_config();
+        assert!(config.contains("[general]"));
+        assert!(config.contains("[validate]"));
+        assert!(config.contains("[scan]"));
+        assert!(config.contains("[fuzz]"));
+        assert!(config.contains("[rules]"));
+        assert!(config.contains("[ai]"));
+        assert!(config.contains("[output]"));
+    }
+
+    #[test]
+    fn default_config_has_format_option() {
+        let config = default_config();
+        assert!(config.contains("format = \"text\""));
+    }
+
+    #[test]
+    fn default_config_has_timeout_option() {
+        let config = default_config();
+        assert!(config.contains("timeout = 30"));
+    }
+
+    #[test]
+    fn default_config_has_profile_option() {
+        let config = default_config();
+        assert!(config.contains("profile = \"standard\""));
+    }
+
+    #[test]
+    fn default_config_has_ai_settings() {
+        let config = default_config();
+        assert!(config.contains("provider = \"ollama\""));
+        assert!(config.contains("model = \"llama3.2\""));
+        assert!(config.contains("max_tokens = 4096"));
+    }
+
+    #[test]
+    fn run_creates_config_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join(".mcplint.toml");
+        let path_str = path.to_str().unwrap();
+
+        let result = run(path_str, false);
+        assert!(result.is_ok());
+        assert!(path.exists());
+
+        let contents = fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("[general]"));
+    }
+
+    #[test]
+    fn run_fails_if_file_exists_without_force() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join(".mcplint.toml");
+        let path_str = path.to_str().unwrap();
+
+        // Create the file first
+        fs::write(&path, "existing content").unwrap();
+
+        let result = run(path_str, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn run_overwrites_with_force() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join(".mcplint.toml");
+        let path_str = path.to_str().unwrap();
+
+        // Create the file first
+        fs::write(&path, "existing content").unwrap();
+
+        let result = run(path_str, true);
+        assert!(result.is_ok());
+
+        let contents = fs::read_to_string(&path).unwrap();
+        assert!(contents.contains("[general]"));
+        assert!(!contents.contains("existing content"));
+    }
+
+    #[test]
+    fn default_config_is_valid_toml() {
+        let config = default_config();
+        let parsed: Result<toml::Value, _> = toml::from_str(config);
+        assert!(parsed.is_ok(), "DEFAULT_CONFIG should be valid TOML");
+    }
+}

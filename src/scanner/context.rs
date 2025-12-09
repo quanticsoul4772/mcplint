@@ -54,6 +54,28 @@ impl ServerContext {
         }
     }
 
+    /// Create a minimal context for testing with just a target
+    #[cfg(test)]
+    pub fn for_test(target: impl Into<String>) -> Self {
+        Self {
+            server_name: "test-server".to_string(),
+            server_version: "1.0.0".to_string(),
+            protocol_version: "2024-11-05".to_string(),
+            capabilities: ServerCapabilities::default(),
+            transport_type: "stdio".to_string(),
+            target: target.into(),
+            tools: Vec::new(),
+            resources: Vec::new(),
+            prompts: Vec::new(),
+        }
+    }
+
+    /// Set transport type (for testing)
+    #[cfg(test)]
+    pub fn set_transport_type(&mut self, transport: impl Into<String>) {
+        self.transport_type = transport.into();
+    }
+
     pub fn with_transport(mut self, transport_type: impl Into<String>) -> Self {
         self.transport_type = transport_type.into();
         self

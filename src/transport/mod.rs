@@ -7,6 +7,7 @@
 
 #![allow(dead_code)] // Transport layer will be used in M1 (Protocol Validator)
 
+pub mod mock;
 pub mod sse;
 pub mod stdio;
 pub mod streamable_http;

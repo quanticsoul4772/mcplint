@@ -96,3 +96,166 @@ impl AuthChecks for DefaultAuthChecks {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::mcp::Tool;
+
+    fn make_tool(name: &str, description: Option<&str>) -> Tool {
+        Tool {
+            name: name.to_string(),
+            description: description.map(|s| s.to_string()),
+            input_schema: serde_json::json!({}),
+        }
+    }
+
+    #[test]
+    fn detect_missing_auth_remote_http() {
+        let checker = DefaultAuthChecks;
+        let mut ctx = ServerContext::for_test("https://api.example.com/mcp");
+        ctx.set_transport_type("sse");
+
+        let finding = checker.check_missing_auth(&ctx);
+        assert!(finding.is_some());
+        let f = finding.unwrap();
+        assert_eq!(f.rule_id, "MCP-AUTH-001");
+        assert_eq!(f.severity, Severity::High);
+    }
+
+    #[test]
+    fn no_missing_auth_localhost() {
+        let checker = DefaultAuthChecks;
+        let mut ctx = ServerContext::for_test("http://localhost:8080/mcp");
+        ctx.set_transport_type("sse");
+
+        let finding = checker.check_missing_auth(&ctx);
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn no_missing_auth_127_0_0_1() {
+        let checker = DefaultAuthChecks;
+        let mut ctx = ServerContext::for_test("http://127.0.0.1:8080/mcp");
+        ctx.set_transport_type("sse");
+
+        let finding = checker.check_missing_auth(&ctx);
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn no_missing_auth_with_token_in_url() {
+        let checker = DefaultAuthChecks;
+        let mut ctx = ServerContext::for_test("https://api.example.com/mcp?token=abc123");
+        ctx.set_transport_type("sse");
+
+        let finding = checker.check_missing_auth(&ctx);
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn no_missing_auth_with_key_in_url() {
+        let checker = DefaultAuthChecks;
+        let mut ctx = ServerContext::for_test("https://api.example.com/mcp?api_key=abc123");
+        ctx.set_transport_type("sse");
+
+        let finding = checker.check_missing_auth(&ctx);
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn no_missing_auth_stdio() {
+        let checker = DefaultAuthChecks;
+        let ctx = ServerContext::for_test("node server.js");
+        // Default transport is stdio, not http
+
+        let finding = checker.check_missing_auth(&ctx);
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn detect_credential_exposure_password_log() {
+        let checker = DefaultAuthChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "process_auth",
+            Some("Handles password authentication and logs attempts"),
+        ));
+
+        let finding = checker.check_credential_exposure(&ctx);
+        assert!(finding.is_some());
+        let f = finding.unwrap();
+        assert_eq!(f.rule_id, "MCP-AUTH-003");
+        assert_eq!(f.severity, Severity::Medium);
+    }
+
+    #[test]
+    fn detect_credential_exposure_token_log() {
+        let checker = DefaultAuthChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "auth_handler",
+            Some("Validates token and writes to log file"),
+        ));
+
+        let finding = checker.check_credential_exposure(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn detect_credential_exposure_apikey_log() {
+        let checker = DefaultAuthChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "verify",
+            Some("Checks apikey validity, logs results"),
+        ));
+
+        let finding = checker.check_credential_exposure(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn no_credential_exposure_no_log() {
+        let checker = DefaultAuthChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "auth_handler",
+            Some("Validates password securely"),
+        ));
+
+        let finding = checker.check_credential_exposure(&ctx);
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn no_credential_exposure_no_credentials() {
+        let checker = DefaultAuthChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "data_processor",
+            Some("Processes data and logs results"),
+        ));
+
+        let finding = checker.check_credential_exposure(&ctx);
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn no_credential_exposure_no_description() {
+        let checker = DefaultAuthChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool("password_handler", None));
+
+        let finding = checker.check_credential_exposure(&ctx);
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn empty_tools_no_findings() {
+        let checker = DefaultAuthChecks;
+        let ctx = ServerContext::for_test("test");
+
+        assert!(checker.check_credential_exposure(&ctx).is_none());
+    }
+}
