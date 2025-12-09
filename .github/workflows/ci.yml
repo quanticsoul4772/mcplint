@@ -41,7 +41,15 @@ jobs:
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
           ollama serve &
-          sleep 5
+          # Wait for server to be ready
+          for i in {1..30}; do
+            if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+              echo "Ollama server is ready"
+              break
+            fi
+            echo "Waiting for Ollama server... ($i/30)"
+            sleep 2
+          done
           ollama pull llama3.2
 
       - name: Install Ollama (macOS)
@@ -49,17 +57,64 @@ jobs:
         run: |
           brew install ollama
           ollama serve &
-          sleep 5
+          # Wait for server to be ready
+          for i in {1..30}; do
+            if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+              echo "Ollama server is ready"
+              break
+            fi
+            echo "Waiting for Ollama server... ($i/30)"
+            sleep 2
+          done
           ollama pull llama3.2
 
       - name: Install Ollama (Windows)
         if: runner.os == 'Windows'
         run: |
-          Invoke-WebRequest -Uri "https://github.com/ollama/ollama/releases/download/v0.13.1/ollama-windows-amd64.zip" -OutFile "ollama.zip"
-          Expand-Archive -Path "ollama.zip" -DestinationPath "ollama"
-          Start-Process -FilePath ".\ollama\ollama.exe" -ArgumentList "serve" -NoNewWindow
-          Start-Sleep -Seconds 10
-          .\ollama\ollama.exe pull llama3.2
+          # Download Ollama CLI directly (smaller than full zip)
+          $ollamaUrl = "https://github.com/ollama/ollama/releases/download/v0.13.2/ollama-windows-amd64.zip"
+          Write-Host "Downloading Ollama from $ollamaUrl"
+          Invoke-WebRequest -Uri $ollamaUrl -OutFile "ollama.zip" -TimeoutSec 600
+
+          # Extract
+          Expand-Archive -Path "ollama.zip" -DestinationPath "." -Force
+
+          # Verify ollama.exe exists
+          if (Test-Path ".\ollama.exe") {
+            Write-Host "ollama.exe found"
+          } else {
+            Write-Host "ERROR: ollama.exe not found after extraction"
+            Get-ChildItem -Recurse | Select-Object FullName
+            exit 1
+          }
+
+          # Start Ollama server in background
+          Start-Process -FilePath ".\ollama.exe" -ArgumentList "serve" -WindowStyle Hidden
+
+          # Wait for server to be ready
+          $maxRetries = 30
+          $retry = 0
+          while ($retry -lt $maxRetries) {
+            Start-Sleep -Seconds 2
+            try {
+              $response = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -TimeoutSec 5 -ErrorAction SilentlyContinue
+              if ($response.StatusCode -eq 200) {
+                Write-Host "Ollama server is ready"
+                break
+              }
+            } catch {
+              Write-Host "Waiting for Ollama server... ($retry/$maxRetries)"
+            }
+            $retry++
+          }
+
+          if ($retry -eq $maxRetries) {
+            Write-Host "ERROR: Ollama server failed to start"
+            exit 1
+          }
+
+          # Pull the model
+          .\ollama.exe pull llama3.2
         shell: pwsh
 
       - name: Check formatting
