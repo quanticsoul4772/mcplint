@@ -469,7 +469,10 @@ async fn test_ollama_explain_finding() {
     // First check if Ollama is available
     let healthy = provider.health_check().await.unwrap_or(false);
     if !healthy {
-        panic!("Ollama is not available at {} - ensure it's running with llama3.2 model pulled", base_url);
+        panic!(
+            "Ollama is not available at {} - ensure it's running with llama3.2 model pulled",
+            base_url
+        );
     }
 
     let finding = simple_test_finding();
