@@ -522,3 +522,214 @@ fn determine_exit_code(
         0
     }
 }
+
+/// Create default scan options
+impl Default for ScanOptions {
+    fn default() -> Self {
+        Self {
+            profile: CliScanProfile::Standard,
+            include: None,
+            exclude: None,
+            timeout: 30,
+        }
+    }
+}
+
+/// Create default output options
+impl Default for OutputOptions {
+    fn default() -> Self {
+        Self {
+            format: OutputFormat::Text,
+            fail_on: None,
+        }
+    }
+}
+
+/// Create default baseline options
+impl Default for BaselineOptions {
+    fn default() -> Self {
+        Self {
+            baseline_path: None,
+            save_baseline: None,
+            update_baseline: false,
+            diff_only: false,
+        }
+    }
+}
+
+/// Create default AI options
+impl Default for AiOptions {
+    fn default() -> Self {
+        Self {
+            explain: false,
+            provider: CliAiProvider::Ollama,
+            model: None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scanner::{Finding, ScanResults, ScanSummary};
+
+    fn create_test_results(findings: Vec<Finding>) -> ScanResults {
+        let summary = ScanSummary {
+            critical: findings.iter().filter(|f| f.severity == Severity::Critical).count(),
+            high: findings.iter().filter(|f| f.severity == Severity::High).count(),
+            medium: findings.iter().filter(|f| f.severity == Severity::Medium).count(),
+            low: findings.iter().filter(|f| f.severity == Severity::Low).count(),
+            info: findings.iter().filter(|f| f.severity == Severity::Info).count(),
+        };
+        ScanResults {
+            server: "test".to_string(),
+            profile: "standard".to_string(),
+            total_checks: 10,
+            duration_ms: 100,
+            findings,
+            summary,
+        }
+    }
+
+    fn create_finding(severity: Severity) -> Finding {
+        Finding::new(
+            format!("TEST-{:?}", severity).to_uppercase(),
+            severity,
+            "Test Finding",
+            "Test description",
+        )
+    }
+
+    #[test]
+    fn scan_options_default() {
+        let opts = ScanOptions::default();
+        assert!(matches!(opts.profile, CliScanProfile::Standard));
+        assert!(opts.include.is_none());
+        assert!(opts.exclude.is_none());
+        assert_eq!(opts.timeout, 30);
+    }
+
+    #[test]
+    fn output_options_default() {
+        let opts = OutputOptions::default();
+        assert!(matches!(opts.format, OutputFormat::Text));
+        assert!(opts.fail_on.is_none());
+    }
+
+    #[test]
+    fn baseline_options_default() {
+        let opts = BaselineOptions::default();
+        assert!(opts.baseline_path.is_none());
+        assert!(opts.save_baseline.is_none());
+        assert!(!opts.update_baseline);
+        assert!(!opts.diff_only);
+    }
+
+    #[test]
+    fn ai_options_default() {
+        let opts = AiOptions::default();
+        assert!(!opts.explain);
+        assert!(matches!(opts.provider, CliAiProvider::Ollama));
+        assert!(opts.model.is_none());
+    }
+
+    #[test]
+    fn scan_args_new_creates_args() {
+        let args = ScanArgs::new(
+            "server".to_string(),
+            vec!["arg1".to_string()],
+            CliScanProfile::Full,
+            Some(vec!["injection".to_string()]),
+            Some(vec!["dos".to_string()]),
+            60,
+            OutputFormat::Json,
+            true,
+            CliAiProvider::Anthropic,
+            Some("claude-3".to_string()),
+            Some(PathBuf::from("baseline.json")),
+            None,
+            false,
+            false,
+            Some(vec![Severity::Critical]),
+        );
+
+        assert_eq!(args.server, "server");
+        assert_eq!(args.args.len(), 1);
+        assert!(matches!(args.options.profile, CliScanProfile::Full));
+        assert!(args.options.include.is_some());
+        assert!(args.options.exclude.is_some());
+        assert_eq!(args.options.timeout, 60);
+        assert!(matches!(args.output.format, OutputFormat::Json));
+        assert!(args.ai.explain);
+        assert!(matches!(args.ai.provider, CliAiProvider::Anthropic));
+        assert_eq!(args.ai.model, Some("claude-3".to_string()));
+    }
+
+    #[test]
+    fn determine_exit_code_no_findings() {
+        let results = create_test_results(vec![]);
+        let exit = determine_exit_code(&results, &None, &None);
+        assert_eq!(exit, 0);
+    }
+
+    #[test]
+    fn determine_exit_code_critical_finding() {
+        let results = create_test_results(vec![create_finding(Severity::Critical)]);
+        let exit = determine_exit_code(&results, &None, &None);
+        assert_eq!(exit, 1);
+    }
+
+    #[test]
+    fn determine_exit_code_high_finding() {
+        let results = create_test_results(vec![create_finding(Severity::High)]);
+        let exit = determine_exit_code(&results, &None, &None);
+        assert_eq!(exit, 1);
+    }
+
+    #[test]
+    fn determine_exit_code_medium_finding_no_fail() {
+        let results = create_test_results(vec![create_finding(Severity::Medium)]);
+        let exit = determine_exit_code(&results, &None, &None);
+        assert_eq!(exit, 0);
+    }
+
+    #[test]
+    fn determine_exit_code_custom_fail_on_medium() {
+        let results = create_test_results(vec![create_finding(Severity::Medium)]);
+        let exit = determine_exit_code(&results, &None, &Some(vec![Severity::Medium]));
+        assert_eq!(exit, 1);
+    }
+
+    #[test]
+    fn determine_exit_code_custom_fail_on_not_matched() {
+        let results = create_test_results(vec![create_finding(Severity::Low)]);
+        let exit = determine_exit_code(&results, &None, &Some(vec![Severity::Critical]));
+        assert_eq!(exit, 0);
+    }
+
+    #[test]
+    fn scan_args_baseline_options() {
+        let args = ScanArgs::new(
+            "server".to_string(),
+            vec![],
+            CliScanProfile::Quick,
+            None,
+            None,
+            30,
+            OutputFormat::Text,
+            false,
+            CliAiProvider::Ollama,
+            None,
+            Some(PathBuf::from("old_baseline.json")),
+            Some(PathBuf::from("new_baseline.json")),
+            true,
+            true,
+            None,
+        );
+
+        assert!(args.baseline.baseline_path.is_some());
+        assert!(args.baseline.save_baseline.is_some());
+        assert!(args.baseline.update_baseline);
+        assert!(args.baseline.diff_only);
+    }
+}

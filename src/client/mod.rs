@@ -8,6 +8,11 @@
 
 #![allow(dead_code)] // Client API will be used in M1 (Protocol Validator)
 
+pub mod mock;
+
+// Re-export mock types for testing
+pub use mock::McpClientTrait;
+
 use anyhow::{Context, Result};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -439,7 +444,7 @@ impl McpClientBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::mcp::ToolsCapability;
+    use crate::protocol::mcp::{ToolsCapability, ResourcesCapability, PromptsCapability};
 
     #[test]
     fn builder_creates_config() {
@@ -449,6 +454,23 @@ mod tests {
 
         assert_eq!(builder.config.timeout_secs, 60);
         assert_eq!(builder.config.max_message_size, 1024);
+    }
+
+    #[test]
+    fn builder_default_values() {
+        let builder = McpClientBuilder::new("mcplint", "0.1.0");
+
+        assert_eq!(builder.client_name, "mcplint");
+        assert_eq!(builder.client_version, "0.1.0");
+        assert_eq!(builder.config.timeout_secs, 30); // default
+    }
+
+    #[test]
+    fn builder_with_capabilities() {
+        let caps = ClientCapabilities::default();
+        let builder = McpClientBuilder::new("test", "1.0.0").capabilities(caps);
+
+        assert!(builder.capabilities.roots.is_none());
     }
 
     #[test]
@@ -467,5 +489,83 @@ mod tests {
 
         caps.tools = Some(ToolsCapability::default());
         assert!(caps.has_tools());
+    }
+
+    #[test]
+    fn server_capability_resources() {
+        let mut caps = ServerCapabilities::default();
+        assert!(!caps.has_resources());
+
+        caps.resources = Some(ResourcesCapability::default());
+        assert!(caps.has_resources());
+    }
+
+    #[test]
+    fn server_capability_prompts() {
+        let mut caps = ServerCapabilities::default();
+        assert!(!caps.has_prompts());
+
+        caps.prompts = Some(PromptsCapability::default());
+        assert!(caps.has_prompts());
+    }
+
+    #[test]
+    fn implementation_new() {
+        let impl_info = Implementation::new("test-client", "1.0.0");
+        assert_eq!(impl_info.name, "test-client");
+        assert_eq!(impl_info.version, "1.0.0");
+    }
+
+    #[test]
+    fn connection_context_initial_state() {
+        let ctx = ConnectionContext::new();
+        assert!(!ctx.is_ready());
+        assert!(!ctx.is_connected());
+        assert!(ctx.server_capabilities().is_none());
+        assert!(ctx.protocol_version().is_none());
+    }
+
+    #[test]
+    fn connection_context_with_capabilities() {
+        let caps = ClientCapabilities::default();
+        let ctx = ConnectionContext::with_capabilities(caps);
+        assert!(!ctx.is_ready());
+    }
+
+    #[test]
+    fn connection_context_state_transitions() {
+        let mut ctx = ConnectionContext::new();
+
+        // Initial state - Disconnected, cannot initialize yet
+        assert!(!ctx.can_initialize());
+        assert!(!ctx.is_connected());
+
+        // After connecting - now in Connecting state
+        ctx.set_connected();
+        assert!(ctx.is_connected());
+        assert!(ctx.can_initialize()); // Can initialize from Connecting state
+
+        // After starting initialization
+        assert!(ctx.set_initializing().is_ok());
+        assert!(!ctx.can_initialize()); // No longer in Connecting state
+    }
+
+    #[test]
+    fn connection_state_display() {
+        let state = ConnectionState::Disconnected;
+        assert!(!format!("{}", state).is_empty());
+
+        let state = ConnectionState::Connecting;
+        assert!(!format!("{}", state).is_empty());
+
+        let state = ConnectionState::Ready;
+        assert!(!format!("{}", state).is_empty());
+    }
+
+    #[test]
+    fn transport_config_default() {
+        let config = TransportConfig::default();
+        assert_eq!(config.timeout_secs, 30);
+        assert!(config.max_message_size > 0);
     }
 }

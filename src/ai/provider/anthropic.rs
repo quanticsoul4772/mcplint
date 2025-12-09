@@ -236,9 +236,14 @@ impl AnthropicProvider {
         // Try to extract JSON from the response
         let json_str = extract_json(response_text)?;
 
+        // Debug: log what we're trying to parse if it fails
         let parsed: ParsedExplanation =
             serde_json::from_str(&json_str).map_err(|e| AiProviderError::ParseError {
-                message: format!("Failed to parse AI response: {}", e),
+                message: format!(
+                    "Failed to parse AI response: {}. JSON preview: {}",
+                    e,
+                    &json_str[..json_str.len().min(500)]
+                ),
             })?;
 
         // Convert to our response type
@@ -446,8 +451,51 @@ impl AiProvider for AnthropicProvider {
     }
 }
 
+/// Sanitize JSON string by properly escaping control characters within string values
+fn sanitize_json(text: &str) -> String {
+    let mut result = String::with_capacity(text.len());
+    let mut in_string = false;
+    let mut escape_next = false;
+
+    for c in text.chars() {
+        if escape_next {
+            // Previous char was backslash, this char is escaped
+            result.push(c);
+            escape_next = false;
+            continue;
+        }
+
+        match c {
+            '\\' if in_string => {
+                result.push(c);
+                escape_next = true;
+            }
+            '"' => {
+                in_string = !in_string;
+                result.push(c);
+            }
+            '\n' | '\r' if in_string => {
+                result.push_str("\\n");
+            }
+            '\t' if in_string => {
+                result.push_str("\\t");
+            }
+            c if c.is_control() => {
+                result.push(' ');
+            }
+            _ => {
+                result.push(c);
+            }
+        }
+    }
+    result
+}
+
 /// Extract JSON from a response that might have markdown code blocks
 fn extract_json(text: &str) -> Result<String> {
+    // Sanitize the text first to remove problematic control characters
+    let text = sanitize_json(text);
+
     // Try to find JSON in code blocks
     if let Some(start) = text.find("```json") {
         if let Some(end) = text[start..]
@@ -566,6 +614,7 @@ struct Usage {
 #[derive(Deserialize)]
 struct ParsedExplanation {
     explanation: ParsedVulnerability,
+    #[serde(default)]
     remediation: ParsedRemediation,
     education: Option<ParsedEducation>,
 }
@@ -573,17 +622,28 @@ struct ParsedExplanation {
 #[derive(Deserialize)]
 struct ParsedVulnerability {
     summary: String,
+    #[serde(default)]
     technical_details: String,
+    #[serde(default)]
     attack_scenario: String,
+    #[serde(default)]
     impact: String,
+    #[serde(default = "default_likelihood")]
     likelihood: String,
 }
 
-#[derive(Deserialize)]
+fn default_likelihood() -> String {
+    "medium".to_string()
+}
+
+#[derive(Deserialize, Default)]
 struct ParsedRemediation {
+    #[serde(default)]
     immediate_actions: Vec<String>,
+    #[serde(default)]
     permanent_fix: String,
     code_example: Option<ParsedCodeExample>,
+    #[serde(default)]
     verification: Vec<String>,
 }
 

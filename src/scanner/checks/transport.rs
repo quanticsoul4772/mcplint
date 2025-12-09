@@ -47,3 +47,92 @@ impl TransportChecks for DefaultTransportChecks {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_unencrypted_remote_http() {
+        let checker = DefaultTransportChecks;
+        let mut ctx = ServerContext::for_test("http://api.example.com/mcp");
+        ctx.set_transport_type("sse");
+
+        let finding = checker.check_unencrypted_transport(&ctx);
+        assert!(finding.is_some());
+        let f = finding.unwrap();
+        assert_eq!(f.rule_id, "MCP-TRANS-001");
+        assert_eq!(f.severity, Severity::High);
+    }
+
+    #[test]
+    fn detect_unencrypted_streamable_http() {
+        let checker = DefaultTransportChecks;
+        let mut ctx = ServerContext::for_test("http://remote-server.com:8080/mcp");
+        ctx.set_transport_type("streamable_http");
+
+        let finding = checker.check_unencrypted_transport(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn no_finding_localhost_http() {
+        let checker = DefaultTransportChecks;
+        let mut ctx = ServerContext::for_test("http://localhost:8080/mcp");
+        ctx.set_transport_type("sse");
+
+        let finding = checker.check_unencrypted_transport(&ctx);
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn no_finding_127_0_0_1_http() {
+        let checker = DefaultTransportChecks;
+        let mut ctx = ServerContext::for_test("http://127.0.0.1:8080/mcp");
+        ctx.set_transport_type("sse");
+
+        let finding = checker.check_unencrypted_transport(&ctx);
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn no_finding_https() {
+        let checker = DefaultTransportChecks;
+        let mut ctx = ServerContext::for_test("https://api.example.com/mcp");
+        ctx.set_transport_type("sse");
+
+        let finding = checker.check_unencrypted_transport(&ctx);
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn no_finding_stdio_transport() {
+        let checker = DefaultTransportChecks;
+        let ctx = ServerContext::for_test("node server.js");
+        // Default transport is stdio, which is not HTTP
+
+        let finding = checker.check_unencrypted_transport(&ctx);
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn finding_has_evidence() {
+        let checker = DefaultTransportChecks;
+        let mut ctx = ServerContext::for_test("http://api.example.com/mcp");
+        ctx.set_transport_type("sse");
+
+        let finding = checker.check_unencrypted_transport(&ctx).unwrap();
+        assert!(!finding.evidence.is_empty());
+    }
+
+    #[test]
+    fn finding_has_cwe() {
+        let checker = DefaultTransportChecks;
+        let mut ctx = ServerContext::for_test("http://remote.example.org/mcp");
+        ctx.set_transport_type("sse");
+
+        let finding = checker.check_unencrypted_transport(&ctx).unwrap();
+        assert!(!finding.references.is_empty());
+        assert!(finding.references.iter().any(|r| r.id.contains("CWE-319")));
+    }
+}

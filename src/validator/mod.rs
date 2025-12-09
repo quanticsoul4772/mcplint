@@ -164,3 +164,579 @@ impl ValidationResults {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validation_check_creation() {
+        let check = ValidationCheck {
+            name: "test-check".to_string(),
+            category: "protocol".to_string(),
+            status: CheckStatus::Passed,
+            message: Some("Test passed".to_string()),
+            duration_ms: 100,
+        };
+
+        assert_eq!(check.name, "test-check");
+        assert_eq!(check.category, "protocol");
+        assert!(matches!(check.status, CheckStatus::Passed));
+        assert_eq!(check.message.unwrap(), "Test passed");
+        assert_eq!(check.duration_ms, 100);
+    }
+
+    #[test]
+    fn validation_check_no_message() {
+        let check = ValidationCheck {
+            name: "check".to_string(),
+            category: "auth".to_string(),
+            status: CheckStatus::Skipped,
+            message: None,
+            duration_ms: 0,
+        };
+
+        assert!(check.message.is_none());
+    }
+
+    #[test]
+    fn check_status_variants() {
+        let passed = CheckStatus::Passed;
+        let failed = CheckStatus::Failed;
+        let warning = CheckStatus::Warning;
+        let skipped = CheckStatus::Skipped;
+
+        assert!(matches!(passed, CheckStatus::Passed));
+        assert!(matches!(failed, CheckStatus::Failed));
+        assert!(matches!(warning, CheckStatus::Warning));
+        assert!(matches!(skipped, CheckStatus::Skipped));
+    }
+
+    #[test]
+    fn protocol_validator_new() {
+        let args = vec!["--port".to_string(), "3000".to_string()];
+        let validator = ProtocolValidator::new("node server.js", &args, 30);
+
+        assert_eq!(validator.server, "node server.js");
+        assert_eq!(validator.args, args);
+        assert_eq!(validator.timeout, 30);
+        assert!(validator.transport_type.is_none());
+    }
+
+    #[test]
+    fn protocol_validator_with_transport_type_stdio() {
+        let validator = ProtocolValidator::new("server", &[], 60)
+            .with_transport_type(TransportType::Stdio);
+
+        assert!(matches!(validator.transport_type, Some(TransportType::Stdio)));
+    }
+
+    #[test]
+    fn protocol_validator_with_transport_type_streamable_http() {
+        let validator = ProtocolValidator::new("http://localhost:3000", &[], 60)
+            .with_transport_type(TransportType::StreamableHttp);
+
+        assert!(matches!(validator.transport_type, Some(TransportType::StreamableHttp)));
+    }
+
+    #[test]
+    fn protocol_validator_with_transport_type_sse_legacy() {
+        let validator = ProtocolValidator::new("http://localhost:3000/sse", &[], 60)
+            .with_transport_type(TransportType::SseLegacy);
+
+        assert!(matches!(validator.transport_type, Some(TransportType::SseLegacy)));
+    }
+
+    #[test]
+    fn validation_check_serialization() {
+        let check = ValidationCheck {
+            name: "test".to_string(),
+            category: "protocol".to_string(),
+            status: CheckStatus::Passed,
+            message: Some("ok".to_string()),
+            duration_ms: 10,
+        };
+
+        let json = serde_json::to_string(&check).unwrap();
+        assert!(json.contains("\"name\":\"test\""));
+        assert!(json.contains("\"status\":\"Passed\""));
+    }
+
+    #[test]
+    fn validation_check_deserialization() {
+        let json = r#"{"name":"test","category":"auth","status":"Failed","message":"error","duration_ms":50}"#;
+        let check: ValidationCheck = serde_json::from_str(json).unwrap();
+
+        assert_eq!(check.name, "test");
+        assert_eq!(check.category, "auth");
+        assert!(matches!(check.status, CheckStatus::Failed));
+        assert_eq!(check.message, Some("error".to_string()));
+        assert_eq!(check.duration_ms, 50);
+    }
+
+    #[test]
+    fn check_status_serialization() {
+        let passed = CheckStatus::Passed;
+        let failed = CheckStatus::Failed;
+        let warning = CheckStatus::Warning;
+        let skipped = CheckStatus::Skipped;
+
+        assert_eq!(serde_json::to_string(&passed).unwrap(), "\"Passed\"");
+        assert_eq!(serde_json::to_string(&failed).unwrap(), "\"Failed\"");
+        assert_eq!(serde_json::to_string(&warning).unwrap(), "\"Warning\"");
+        assert_eq!(serde_json::to_string(&skipped).unwrap(), "\"Skipped\"");
+    }
+
+    #[test]
+    fn check_status_deserialization() {
+        let passed: CheckStatus = serde_json::from_str("\"Passed\"").unwrap();
+        let failed: CheckStatus = serde_json::from_str("\"Failed\"").unwrap();
+        let warning: CheckStatus = serde_json::from_str("\"Warning\"").unwrap();
+        let skipped: CheckStatus = serde_json::from_str("\"Skipped\"").unwrap();
+
+        assert!(matches!(passed, CheckStatus::Passed));
+        assert!(matches!(failed, CheckStatus::Failed));
+        assert!(matches!(warning, CheckStatus::Warning));
+        assert!(matches!(skipped, CheckStatus::Skipped));
+    }
+
+    #[test]
+    fn validation_results_print_json_empty() {
+        let results = ValidationResults {
+            server: "test-server".to_string(),
+            protocol_version: None,
+            capabilities: None,
+            results: Vec::new(),
+            passed: 0,
+            failed: 0,
+            warnings: 0,
+            total_duration_ms: 0,
+        };
+
+        // Should not error
+        let json_result = results.print_json();
+        assert!(json_result.is_ok());
+    }
+
+    #[test]
+    fn validation_results_print_text_no_failures() {
+        let results = ValidationResults {
+            server: "test".to_string(),
+            protocol_version: None,
+            capabilities: None,
+            results: vec![ValidationResult {
+                rule_id: "MCP-PROTO-001".to_string(),
+                rule_name: "Protocol Version Check".to_string(),
+                category: "protocol".to_string(),
+                severity: ValidationSeverity::Pass,
+                message: Some("Passed".to_string()),
+                details: Vec::new(),
+                duration_ms: 10,
+            }],
+            passed: 1,
+            failed: 0,
+            warnings: 0,
+            total_duration_ms: 10,
+        };
+
+        // Should not panic
+        results.print_text();
+    }
+
+    #[test]
+    fn validation_results_print_text_with_failures() {
+        let results = ValidationResults {
+            server: "test".to_string(),
+            protocol_version: None,
+            capabilities: None,
+            results: vec![ValidationResult {
+                rule_id: "MCP-PROTO-002".to_string(),
+                rule_name: "Test Rule".to_string(),
+                category: "protocol".to_string(),
+                severity: ValidationSeverity::Fail,
+                message: Some("Test failed".to_string()),
+                details: vec!["detail1".to_string(), "detail2".to_string()],
+                duration_ms: 20,
+            }],
+            passed: 0,
+            failed: 1,
+            warnings: 0,
+            total_duration_ms: 20,
+        };
+
+        // Should not panic
+        results.print_text();
+    }
+
+    #[test]
+    fn validation_results_print_text_with_warnings() {
+        let results = ValidationResults {
+            server: "test".to_string(),
+            protocol_version: None,
+            capabilities: None,
+            results: vec![ValidationResult {
+                rule_id: "MCP-AUTH-001".to_string(),
+                rule_name: "Auth Check".to_string(),
+                category: "auth".to_string(),
+                severity: ValidationSeverity::Warning,
+                message: Some("Warning message".to_string()),
+                details: Vec::new(),
+                duration_ms: 5,
+            }],
+            passed: 0,
+            failed: 0,
+            warnings: 1,
+            total_duration_ms: 5,
+        };
+
+        // Should not panic
+        results.print_text();
+    }
+
+    #[test]
+    fn validation_results_print_sarif() {
+        let results = ValidationResults {
+            server: "test".to_string(),
+            protocol_version: None,
+            capabilities: None,
+            results: vec![ValidationResult {
+                rule_id: "MCP-PROTO-001".to_string(),
+                rule_name: "Test".to_string(),
+                category: "protocol".to_string(),
+                severity: ValidationSeverity::Pass,
+                message: Some("Test".to_string()),
+                details: Vec::new(),
+                duration_ms: 10,
+            }],
+            passed: 1,
+            failed: 0,
+            warnings: 0,
+            total_duration_ms: 10,
+        };
+
+        let sarif_result = results.print_sarif();
+        assert!(sarif_result.is_ok());
+    }
+
+    #[test]
+    fn validation_results_multiple_categories() {
+        let results = ValidationResults {
+            server: "test".to_string(),
+            protocol_version: Some("2024-11-05".to_string()),
+            capabilities: None,
+            results: vec![
+                ValidationResult {
+                    rule_id: "MCP-PROTO-001".to_string(),
+                    rule_name: "Rule 1".to_string(),
+                    category: "protocol".to_string(),
+                    severity: ValidationSeverity::Pass,
+                    message: None,
+                    details: Vec::new(),
+                    duration_ms: 10,
+                },
+                ValidationResult {
+                    rule_id: "MCP-AUTH-001".to_string(),
+                    rule_name: "Rule 2".to_string(),
+                    category: "auth".to_string(),
+                    severity: ValidationSeverity::Pass,
+                    message: None,
+                    details: Vec::new(),
+                    duration_ms: 15,
+                },
+                ValidationResult {
+                    rule_id: "MCP-PROTO-002".to_string(),
+                    rule_name: "Rule 3".to_string(),
+                    category: "protocol".to_string(),
+                    severity: ValidationSeverity::Info,
+                    message: Some("Info message".to_string()),
+                    details: Vec::new(),
+                    duration_ms: 5,
+                },
+            ],
+            passed: 2,
+            failed: 0,
+            warnings: 0,
+            total_duration_ms: 30,
+        };
+
+        // Should not panic - tests grouping by category
+        results.print_text();
+    }
+
+    #[test]
+    fn validation_results_all_severities() {
+        let results = ValidationResults {
+            server: "test".to_string(),
+            protocol_version: None,
+            capabilities: None,
+            results: vec![
+                ValidationResult {
+                    rule_id: "R1".to_string(),
+                    rule_name: "Pass Rule".to_string(),
+                    category: "test".to_string(),
+                    severity: ValidationSeverity::Pass,
+                    message: None,
+                    details: Vec::new(),
+                    duration_ms: 1,
+                },
+                ValidationResult {
+                    rule_id: "R2".to_string(),
+                    rule_name: "Fail Rule".to_string(),
+                    category: "test".to_string(),
+                    severity: ValidationSeverity::Fail,
+                    message: None,
+                    details: Vec::new(),
+                    duration_ms: 1,
+                },
+                ValidationResult {
+                    rule_id: "R3".to_string(),
+                    rule_name: "Warn Rule".to_string(),
+                    category: "test".to_string(),
+                    severity: ValidationSeverity::Warning,
+                    message: None,
+                    details: Vec::new(),
+                    duration_ms: 1,
+                },
+                ValidationResult {
+                    rule_id: "R4".to_string(),
+                    rule_name: "Info Rule".to_string(),
+                    category: "test".to_string(),
+                    severity: ValidationSeverity::Info,
+                    message: None,
+                    details: Vec::new(),
+                    duration_ms: 1,
+                },
+                ValidationResult {
+                    rule_id: "R5".to_string(),
+                    rule_name: "Skip Rule".to_string(),
+                    category: "test".to_string(),
+                    severity: ValidationSeverity::Skip,
+                    message: None,
+                    details: Vec::new(),
+                    duration_ms: 1,
+                },
+            ],
+            passed: 1,
+            failed: 1,
+            warnings: 1,
+            total_duration_ms: 5,
+        };
+
+        // Should not panic - tests all severity color branches
+        results.print_text();
+    }
+
+    #[test]
+    fn validation_check_clone() {
+        let check = ValidationCheck {
+            name: "test".to_string(),
+            category: "proto".to_string(),
+            status: CheckStatus::Passed,
+            message: Some("msg".to_string()),
+            duration_ms: 10,
+        };
+
+        let cloned = check.clone();
+        assert_eq!(cloned.name, check.name);
+        assert_eq!(cloned.category, check.category);
+    }
+
+    #[test]
+    fn check_status_clone() {
+        let status = CheckStatus::Warning;
+        let cloned = status.clone();
+        assert!(matches!(cloned, CheckStatus::Warning));
+    }
+
+    #[test]
+    fn validation_check_debug() {
+        let check = ValidationCheck {
+            name: "test".to_string(),
+            category: "test".to_string(),
+            status: CheckStatus::Passed,
+            message: None,
+            duration_ms: 0,
+        };
+
+        let debug = format!("{:?}", check);
+        assert!(debug.contains("ValidationCheck"));
+        assert!(debug.contains("test"));
+    }
+
+    #[test]
+    fn check_status_debug() {
+        let status = CheckStatus::Failed;
+        let debug = format!("{:?}", status);
+        assert!(debug.contains("Failed"));
+    }
+
+    #[test]
+    fn validation_results_new() {
+        let results = ValidationResults::new("my-server");
+        assert_eq!(results.server, "my-server");
+        assert!(results.protocol_version.is_none());
+        assert!(results.capabilities.is_none());
+        assert!(results.results.is_empty());
+        assert_eq!(results.passed, 0);
+        assert_eq!(results.failed, 0);
+        assert_eq!(results.warnings, 0);
+        assert_eq!(results.total_duration_ms, 0);
+    }
+
+    #[test]
+    fn validation_results_add_result_pass() {
+        let mut results = ValidationResults::new("test");
+        let result = ValidationResult {
+            rule_id: "R1".to_string(),
+            rule_name: "Test".to_string(),
+            category: "test".to_string(),
+            severity: ValidationSeverity::Pass,
+            message: None,
+            details: Vec::new(),
+            duration_ms: 10,
+        };
+
+        results.add_result(result);
+
+        assert_eq!(results.passed, 1);
+        assert_eq!(results.failed, 0);
+        assert_eq!(results.warnings, 0);
+        assert_eq!(results.total_duration_ms, 10);
+        assert_eq!(results.results.len(), 1);
+    }
+
+    #[test]
+    fn validation_results_add_result_fail() {
+        let mut results = ValidationResults::new("test");
+        let result = ValidationResult {
+            rule_id: "R1".to_string(),
+            rule_name: "Test".to_string(),
+            category: "test".to_string(),
+            severity: ValidationSeverity::Fail,
+            message: None,
+            details: Vec::new(),
+            duration_ms: 20,
+        };
+
+        results.add_result(result);
+
+        assert_eq!(results.passed, 0);
+        assert_eq!(results.failed, 1);
+        assert_eq!(results.warnings, 0);
+    }
+
+    #[test]
+    fn validation_results_add_result_warning() {
+        let mut results = ValidationResults::new("test");
+        let result = ValidationResult {
+            rule_id: "R1".to_string(),
+            rule_name: "Test".to_string(),
+            category: "test".to_string(),
+            severity: ValidationSeverity::Warning,
+            message: None,
+            details: Vec::new(),
+            duration_ms: 5,
+        };
+
+        results.add_result(result);
+
+        assert_eq!(results.passed, 0);
+        assert_eq!(results.failed, 0);
+        assert_eq!(results.warnings, 1);
+    }
+
+    #[test]
+    fn validation_results_add_result_info() {
+        let mut results = ValidationResults::new("test");
+        let result = ValidationResult {
+            rule_id: "R1".to_string(),
+            rule_name: "Test".to_string(),
+            category: "test".to_string(),
+            severity: ValidationSeverity::Info,
+            message: None,
+            details: Vec::new(),
+            duration_ms: 3,
+        };
+
+        results.add_result(result);
+
+        // Info doesn't increment any counter
+        assert_eq!(results.passed, 0);
+        assert_eq!(results.failed, 0);
+        assert_eq!(results.warnings, 0);
+        assert_eq!(results.total_duration_ms, 3);
+    }
+
+    #[test]
+    fn validation_results_add_result_skip() {
+        let mut results = ValidationResults::new("test");
+        let result = ValidationResult {
+            rule_id: "R1".to_string(),
+            rule_name: "Test".to_string(),
+            category: "test".to_string(),
+            severity: ValidationSeverity::Skip,
+            message: None,
+            details: Vec::new(),
+            duration_ms: 0,
+        };
+
+        results.add_result(result);
+
+        // Skip doesn't increment any counter
+        assert_eq!(results.passed, 0);
+        assert_eq!(results.failed, 0);
+        assert_eq!(results.warnings, 0);
+    }
+
+    #[test]
+    fn validation_results_has_failures() {
+        let mut results = ValidationResults::new("test");
+        assert!(!results.has_failures());
+
+        let result = ValidationResult {
+            rule_id: "R1".to_string(),
+            rule_name: "Test".to_string(),
+            category: "test".to_string(),
+            severity: ValidationSeverity::Fail,
+            message: None,
+            details: Vec::new(),
+            duration_ms: 10,
+        };
+        results.add_result(result);
+
+        assert!(results.has_failures());
+    }
+
+    #[test]
+    fn validation_config_default() {
+        let config = ValidationConfig::default();
+        assert_eq!(config.timeout_secs, 30);
+        assert!(config.skip_categories.is_empty());
+        assert!(config.skip_rules.is_empty());
+        assert!(!config.strict_mode);
+    }
+
+    #[test]
+    fn validation_severity_equality() {
+        assert_eq!(ValidationSeverity::Pass, ValidationSeverity::Pass);
+        assert_eq!(ValidationSeverity::Fail, ValidationSeverity::Fail);
+        assert_ne!(ValidationSeverity::Pass, ValidationSeverity::Fail);
+    }
+
+    #[test]
+    fn validation_result_with_details() {
+        let result = ValidationResult {
+            rule_id: "R1".to_string(),
+            rule_name: "Test".to_string(),
+            category: "test".to_string(),
+            severity: ValidationSeverity::Pass,
+            message: None,
+            details: Vec::new(),
+            duration_ms: 0,
+        };
+
+        let with_details = result.with_details(vec!["detail1".to_string(), "detail2".to_string()]);
+        assert_eq!(with_details.details.len(), 2);
+        assert_eq!(with_details.details[0], "detail1");
+    }
+}

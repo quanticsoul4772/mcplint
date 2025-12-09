@@ -547,4 +547,200 @@ mod tests {
         // Should only have one (deduplicated by hash)
         assert_eq!(corpus.interesting_count(), 1);
     }
+
+    #[test]
+    fn corpus_manager_default() {
+        let corpus = CorpusManager::default();
+        assert_eq!(corpus.seed_count(), 0);
+        assert_eq!(corpus.crash_count(), 0);
+        assert_eq!(corpus.hang_count(), 0);
+        assert_eq!(corpus.interesting_count(), 0);
+    }
+
+    #[test]
+    fn corpus_manager_new() {
+        let corpus = CorpusManager::new();
+        assert_eq!(corpus.corpus_size(), 0);
+    }
+
+    #[test]
+    fn corpus_manager_with_path() {
+        let path = PathBuf::from("/tmp/test_corpus");
+        let corpus = CorpusManager::with_path(path);
+        assert_eq!(corpus.seed_count(), 0);
+    }
+
+    #[test]
+    fn crash_type_as_str() {
+        assert_eq!(CrashType::Panic.as_str(), "panic");
+        assert_eq!(CrashType::Segfault.as_str(), "segfault");
+        assert_eq!(CrashType::OutOfMemory.as_str(), "oom");
+        assert_eq!(CrashType::ConnectionDrop.as_str(), "connection_drop");
+        assert_eq!(CrashType::AssertionFailure.as_str(), "assertion");
+        assert_eq!(CrashType::Unknown.as_str(), "unknown");
+    }
+
+    #[test]
+    fn crash_type_display() {
+        assert_eq!(format!("{}", CrashType::Panic), "panic");
+        assert_eq!(format!("{}", CrashType::Segfault), "segfault");
+        assert_eq!(format!("{}", CrashType::OutOfMemory), "oom");
+        assert_eq!(format!("{}", CrashType::ConnectionDrop), "connection_drop");
+        assert_eq!(format!("{}", CrashType::AssertionFailure), "assertion");
+        assert_eq!(format!("{}", CrashType::Unknown), "unknown");
+    }
+
+    #[test]
+    fn add_seed() {
+        let mut corpus = CorpusManager::new();
+        assert_eq!(corpus.seed_count(), 0);
+
+        corpus.add_seed(FuzzInput::ping());
+        assert_eq!(corpus.seed_count(), 1);
+
+        corpus.add_seed(FuzzInput::tools_list());
+        assert_eq!(corpus.seed_count(), 2);
+    }
+
+    #[test]
+    fn hang_recording() {
+        let mut corpus = CorpusManager::new();
+        corpus.initialize().unwrap();
+
+        let hang = CorpusManager::create_hang_record(
+            FuzzInput::ping(),
+            5000,
+            1,
+        );
+
+        corpus.record_hang(hang).unwrap();
+        assert_eq!(corpus.hang_count(), 1);
+        assert_eq!(corpus.hangs().len(), 1);
+    }
+
+    #[test]
+    fn interesting_recording() {
+        let mut corpus = CorpusManager::new();
+        corpus.initialize().unwrap();
+
+        let record = CorpusManager::create_interesting_record(
+            FuzzInput::ping(),
+            InterestingReason::NewErrorCode,
+            99999,
+            1,
+        );
+
+        corpus.record_interesting(record).unwrap();
+        assert_eq!(corpus.interesting_count(), 1);
+        assert_eq!(corpus.interesting().len(), 1);
+    }
+
+    #[test]
+    fn crashes_accessor() {
+        let mut corpus = CorpusManager::new();
+
+        let crash = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::Unknown,
+            "error".to_string(),
+            Some("trace".to_string()),
+            1,
+        );
+
+        corpus.record_crash(crash).unwrap();
+        assert_eq!(corpus.crashes().len(), 1);
+        assert_eq!(corpus.crashes()[0].error_message, "error");
+    }
+
+    #[test]
+    fn corpus_size_calculation() {
+        let mut corpus = CorpusManager::new();
+        assert_eq!(corpus.corpus_size(), 0);
+
+        corpus.add_seed(FuzzInput::ping());
+        assert_eq!(corpus.corpus_size(), 1);
+
+        let record = CorpusManager::create_interesting_record(
+            FuzzInput::tools_list(),
+            InterestingReason::UnexpectedSuccess,
+            11111,
+            1,
+        );
+        corpus.record_interesting(record).unwrap();
+        assert_eq!(corpus.corpus_size(), 2);
+    }
+
+    #[test]
+    fn interesting_reason_variants() {
+        let reasons = [
+            InterestingReason::NewCoverage,
+            InterestingReason::UnexpectedSuccess,
+            InterestingReason::NewErrorCode,
+            InterestingReason::ProtocolViolation,
+        ];
+
+        for reason in reasons {
+            let record = CorpusManager::create_interesting_record(
+                FuzzInput::ping(),
+                reason,
+                reason as u64, // unique hash for each
+                1,
+            );
+            assert_eq!(record.reason, reason);
+        }
+    }
+
+    #[test]
+    fn crash_record_with_stack_trace() {
+        let crash = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::Panic,
+            "test error".to_string(),
+            Some("at main.rs:42".to_string()),
+            100,
+        );
+
+        assert_eq!(crash.crash_type, CrashType::Panic);
+        assert_eq!(crash.error_message, "test error");
+        assert_eq!(crash.stack_trace, Some("at main.rs:42".to_string()));
+        assert_eq!(crash.iteration, 100);
+        assert!(!crash.id.is_empty());
+        assert!(!crash.timestamp.is_empty());
+    }
+
+    #[test]
+    fn hang_record_fields() {
+        let hang = CorpusManager::create_hang_record(
+            FuzzInput::tools_list(),
+            10000,
+            50,
+        );
+
+        assert_eq!(hang.timeout_ms, 10000);
+        assert_eq!(hang.iteration, 50);
+        assert!(!hang.id.is_empty());
+        assert!(!hang.timestamp.is_empty());
+    }
+
+    #[test]
+    fn next_input_fallback() {
+        let mut corpus = CorpusManager::new();
+        // Don't initialize - corpus is empty
+
+        // Should add a fallback and return it
+        let input = corpus.next_input();
+        assert!(!input.method.is_empty());
+    }
+
+    #[test]
+    fn crash_type_equality() {
+        assert_eq!(CrashType::Panic, CrashType::Panic);
+        assert_ne!(CrashType::Panic, CrashType::Segfault);
+    }
+
+    #[test]
+    fn interesting_reason_equality() {
+        assert_eq!(InterestingReason::NewCoverage, InterestingReason::NewCoverage);
+        assert_ne!(InterestingReason::NewCoverage, InterestingReason::NewErrorCode);
+    }
 }

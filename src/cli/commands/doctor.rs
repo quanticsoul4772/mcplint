@@ -85,3 +85,46 @@ async fn check_network(url: &str) -> Result<()> {
     client.get(url).send().await?.error_for_status()?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn get_rust_version_returns_some() {
+        // This test assumes Rust is installed (which it must be to run the test)
+        let version = get_rust_version();
+        assert!(version.is_some());
+        let v = version.unwrap();
+        // Version should not be empty and should not contain "rustc " prefix
+        assert!(!v.is_empty());
+        assert!(!v.starts_with("rustc "));
+    }
+
+    #[test]
+    fn get_rust_version_format() {
+        let version = get_rust_version();
+        if let Some(v) = version {
+            // Should be something like "1.75.0 (82e1608df 2023-12-21)"
+            assert!(v.contains('.'), "Version should contain dots");
+        }
+    }
+
+    // Note: We can't easily unit test check_runtime without mocking
+    // since it executes actual commands. In a real scenario, we'd use
+    // a trait-based approach or dependency injection.
+
+    #[tokio::test]
+    async fn check_network_invalid_url() {
+        // This should fail with an invalid URL
+        let result = check_network("http://invalid-domain-that-does-not-exist-12345.com").await;
+        assert!(result.is_err());
+    }
+
+    // Test that the module version constant is accessible
+    #[test]
+    fn cargo_pkg_version_exists() {
+        let version = env!("CARGO_PKG_VERSION");
+        assert!(!version.is_empty());
+    }
+}

@@ -265,4 +265,210 @@ mod tests {
         // After enough retries, should hit max
         assert!(config.delay_for_attempt(10) <= Duration::from_secs(5));
     }
+
+    #[test]
+    fn rate_limiter_new() {
+        let limiter = RateLimiter::new(100, 50000);
+        // Just test creation doesn't panic
+        assert!(limiter.rpm_limit == 100);
+        assert!(limiter.tpm_limit == 50000);
+    }
+
+    #[test]
+    fn rate_limiter_unlimited() {
+        let limiter = RateLimiter::unlimited();
+        assert_eq!(limiter.rpm_limit, u32::MAX);
+        assert_eq!(limiter.tpm_limit, u32::MAX);
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_stats() {
+        let limiter = RateLimiter::new(10, 1000);
+
+        let stats = limiter.stats().await;
+        assert_eq!(stats.requests_used, 0);
+        assert_eq!(stats.tokens_used, 0);
+        assert_eq!(stats.requests_limit, 10);
+        assert_eq!(stats.tokens_limit, 1000);
+        assert!(stats.window_remaining_secs <= 60);
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_record_tokens() {
+        let limiter = RateLimiter::new(100, 1000);
+
+        // Acquire with estimate
+        limiter.acquire(50).await.unwrap();
+
+        // Record that actual usage was higher
+        limiter.record_tokens(100, 50).await;
+
+        let stats = limiter.stats().await;
+        // Should have 50 (original) + (100-50) = 100 tokens
+        assert_eq!(stats.tokens_used, 100);
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_record_tokens_no_adjustment_when_less() {
+        let limiter = RateLimiter::new(100, 1000);
+
+        limiter.acquire(100).await.unwrap();
+
+        // Actual usage was less than estimated - shouldn't add more
+        limiter.record_tokens(50, 100).await;
+
+        let stats = limiter.stats().await;
+        // Should still be 100 (no adjustment when actual < estimated)
+        assert_eq!(stats.tokens_used, 100);
+    }
+
+    #[tokio::test]
+    async fn would_exceed_requests() {
+        let limiter = RateLimiter::new(2, 10000);
+
+        limiter.acquire(10).await.unwrap();
+        limiter.acquire(10).await.unwrap();
+
+        // Now at request limit
+        assert!(limiter.would_exceed(10).await);
+    }
+
+    #[test]
+    fn rate_limit_stats_requests_remaining() {
+        let stats = RateLimitStats {
+            requests_used: 5,
+            requests_limit: 10,
+            tokens_used: 100,
+            tokens_limit: 1000,
+            window_remaining_secs: 30,
+        };
+
+        assert_eq!(stats.requests_remaining(), 5);
+    }
+
+    #[test]
+    fn rate_limit_stats_tokens_remaining() {
+        let stats = RateLimitStats {
+            requests_used: 5,
+            requests_limit: 10,
+            tokens_used: 400,
+            tokens_limit: 1000,
+            window_remaining_secs: 30,
+        };
+
+        assert_eq!(stats.tokens_remaining(), 600);
+    }
+
+    #[test]
+    fn rate_limit_stats_is_at_limit_false() {
+        let stats = RateLimitStats {
+            requests_used: 5,
+            requests_limit: 10,
+            tokens_used: 400,
+            tokens_limit: 1000,
+            window_remaining_secs: 30,
+        };
+
+        assert!(!stats.is_at_limit());
+    }
+
+    #[test]
+    fn rate_limit_stats_is_at_limit_requests() {
+        let stats = RateLimitStats {
+            requests_used: 10,
+            requests_limit: 10,
+            tokens_used: 400,
+            tokens_limit: 1000,
+            window_remaining_secs: 30,
+        };
+
+        assert!(stats.is_at_limit());
+    }
+
+    #[test]
+    fn rate_limit_stats_is_at_limit_tokens() {
+        let stats = RateLimitStats {
+            requests_used: 5,
+            requests_limit: 10,
+            tokens_used: 1000,
+            tokens_limit: 1000,
+            window_remaining_secs: 30,
+        };
+
+        assert!(stats.is_at_limit());
+    }
+
+    #[test]
+    fn rate_limit_stats_saturating_sub() {
+        let stats = RateLimitStats {
+            requests_used: 15,
+            requests_limit: 10,
+            tokens_used: 1500,
+            tokens_limit: 1000,
+            window_remaining_secs: 30,
+        };
+
+        // Should not underflow
+        assert_eq!(stats.requests_remaining(), 0);
+        assert_eq!(stats.tokens_remaining(), 0);
+    }
+
+    #[test]
+    fn retry_config_default() {
+        let config = RetryConfig::default();
+        assert_eq!(config.max_retries, 3);
+        assert_eq!(config.initial_delay, Duration::from_secs(1));
+        assert_eq!(config.max_delay, Duration::from_secs(60));
+        assert!((config.backoff_factor - 2.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn retry_config_custom() {
+        let config = RetryConfig {
+            max_retries: 5,
+            initial_delay: Duration::from_millis(500),
+            max_delay: Duration::from_secs(30),
+            backoff_factor: 1.5,
+        };
+
+        assert_eq!(config.max_retries, 5);
+        assert_eq!(config.initial_delay, Duration::from_millis(500));
+    }
+
+    #[test]
+    fn rate_limit_stats_clone() {
+        let stats = RateLimitStats {
+            requests_used: 5,
+            requests_limit: 10,
+            tokens_used: 100,
+            tokens_limit: 1000,
+            window_remaining_secs: 30,
+        };
+
+        let cloned = stats.clone();
+        assert_eq!(cloned.requests_used, 5);
+        assert_eq!(cloned.tokens_limit, 1000);
+    }
+
+    #[test]
+    fn rate_limit_stats_debug() {
+        let stats = RateLimitStats {
+            requests_used: 5,
+            requests_limit: 10,
+            tokens_used: 100,
+            tokens_limit: 1000,
+            window_remaining_secs: 30,
+        };
+
+        let debug = format!("{:?}", stats);
+        assert!(debug.contains("RateLimitStats"));
+    }
+
+    #[test]
+    fn rate_limit_error_display() {
+        let err = RateLimitError::Exceeded { wait_secs: 45 };
+        let display = format!("{}", err);
+        assert!(display.contains("45"));
+        assert!(display.contains("Rate limit"));
+    }
 }

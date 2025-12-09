@@ -99,6 +99,35 @@ impl FuzzArgs {
     }
 }
 
+/// Create default resource limit options
+impl Default for ResourceLimitOptions {
+    fn default() -> Self {
+        Self {
+            max_memory: None,
+            max_time: None,
+            max_corpus: None,
+            max_restarts: None,
+            no_limits: false,
+        }
+    }
+}
+
+/// Create default fuzz options
+impl Default for FuzzOptions {
+    fn default() -> Self {
+        Self {
+            duration: 300,
+            corpus: None,
+            iterations: 0,
+            workers: 4,
+            tools: None,
+            profile: FuzzProfile::Standard,
+            seed: None,
+            limits: ResourceLimitOptions::default(),
+        }
+    }
+}
+
 /// Run the fuzz command with the given arguments
 pub async fn run(args: FuzzArgs) -> Result<()> {
     let FuzzArgs {
@@ -228,4 +257,146 @@ pub async fn run(args: FuzzArgs) -> Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn resource_limit_options_default() {
+        let opts = ResourceLimitOptions::default();
+        assert!(opts.max_memory.is_none());
+        assert!(opts.max_time.is_none());
+        assert!(opts.max_corpus.is_none());
+        assert!(opts.max_restarts.is_none());
+        assert!(!opts.no_limits);
+    }
+
+    #[test]
+    fn fuzz_options_default() {
+        let opts = FuzzOptions::default();
+        assert_eq!(opts.duration, 300);
+        assert!(opts.corpus.is_none());
+        assert_eq!(opts.iterations, 0);
+        assert_eq!(opts.workers, 4);
+        assert!(opts.tools.is_none());
+        assert!(matches!(opts.profile, FuzzProfile::Standard));
+        assert!(opts.seed.is_none());
+    }
+
+    #[test]
+    fn fuzz_args_new_creates_args() {
+        let args = FuzzArgs::new(
+            "server".to_string(),
+            vec!["arg1".to_string()],
+            60,
+            Some("corpus_path".to_string()),
+            100,
+            2,
+            Some(vec!["tool1".to_string()]),
+            FuzzProfile::Quick,
+            Some(42),
+            OutputFormat::Text,
+            Some("512MB".to_string()),
+            Some("5m".to_string()),
+            Some(1000),
+            Some(10),
+            false,
+        );
+
+        assert_eq!(args.server, "server");
+        assert_eq!(args.args.len(), 1);
+        assert_eq!(args.options.duration, 60);
+        assert_eq!(args.options.corpus, Some("corpus_path".to_string()));
+        assert_eq!(args.options.iterations, 100);
+        assert_eq!(args.options.workers, 2);
+        assert!(args.options.tools.is_some());
+        assert!(matches!(args.options.profile, FuzzProfile::Quick));
+        assert_eq!(args.options.seed, Some(42));
+        assert!(matches!(args.format, OutputFormat::Text));
+    }
+
+    #[test]
+    fn fuzz_args_resource_limits() {
+        let args = FuzzArgs::new(
+            "server".to_string(),
+            vec![],
+            300,
+            None,
+            0,
+            4,
+            None,
+            FuzzProfile::Standard,
+            None,
+            OutputFormat::Json,
+            Some("1GB".to_string()),
+            Some("10m".to_string()),
+            Some(5000),
+            Some(50),
+            false,
+        );
+
+        assert_eq!(args.options.limits.max_memory, Some("1GB".to_string()));
+        assert_eq!(args.options.limits.max_time, Some("10m".to_string()));
+        assert_eq!(args.options.limits.max_corpus, Some(5000));
+        assert_eq!(args.options.limits.max_restarts, Some(50));
+        assert!(!args.options.limits.no_limits);
+    }
+
+    #[test]
+    fn fuzz_args_no_limits() {
+        let args = FuzzArgs::new(
+            "server".to_string(),
+            vec![],
+            300,
+            None,
+            0,
+            4,
+            None,
+            FuzzProfile::Intensive,
+            None,
+            OutputFormat::Sarif,
+            None,
+            None,
+            None,
+            None,
+            true, // no_limits
+        );
+
+        assert!(args.options.limits.no_limits);
+        assert!(matches!(args.options.profile, FuzzProfile::Intensive));
+    }
+
+    #[test]
+    fn fuzz_options_with_seed() {
+        let mut opts = FuzzOptions::default();
+        opts.seed = Some(12345);
+        assert_eq!(opts.seed, Some(12345));
+    }
+
+    #[test]
+    fn fuzz_args_empty_args() {
+        let args = FuzzArgs::new(
+            "test-server".to_string(),
+            vec![],
+            0,
+            None,
+            0,
+            1,
+            None,
+            FuzzProfile::CI,
+            None,
+            OutputFormat::Text,
+            None,
+            None,
+            None,
+            None,
+            false,
+        );
+
+        assert_eq!(args.server, "test-server");
+        assert!(args.args.is_empty());
+        assert!(matches!(args.options.profile, FuzzProfile::CI));
+    }
 }

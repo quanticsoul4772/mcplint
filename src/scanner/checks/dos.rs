@@ -56,3 +56,124 @@ impl DosChecks for DefaultDosChecks {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::mcp::Tool;
+
+    fn make_tool(name: &str, schema: serde_json::Value) -> Tool {
+        Tool {
+            name: name.to_string(),
+            description: None,
+            input_schema: schema,
+        }
+    }
+
+    fn make_empty_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {}
+        })
+    }
+
+    fn make_limit_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "max_items": { "type": "integer" }
+            }
+        })
+    }
+
+    #[test]
+    fn detect_download_no_limit() {
+        let checker = DefaultDosChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool("download_files", make_empty_schema()));
+
+        let finding = checker.check_resource_consumption(&ctx);
+        assert!(finding.is_some());
+        let f = finding.unwrap();
+        assert_eq!(f.rule_id, "MCP-DOS-001");
+        assert_eq!(f.severity, Severity::Medium);
+    }
+
+    #[test]
+    fn detect_bulk_no_limit() {
+        let checker = DefaultDosChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool("bulk_process", make_empty_schema()));
+
+        let finding = checker.check_resource_consumption(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn detect_export_no_limit() {
+        let checker = DefaultDosChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool("export_data", make_empty_schema()));
+
+        let finding = checker.check_resource_consumption(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn detect_stream_no_limit() {
+        let checker = DefaultDosChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool("stream_data", make_empty_schema()));
+
+        let finding = checker.check_resource_consumption(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn no_finding_with_limit_param() {
+        let checker = DefaultDosChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool("download_files", make_limit_schema()));
+
+        let finding = checker.check_resource_consumption(&ctx);
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn no_finding_safe_tool() {
+        let checker = DefaultDosChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool("get_status", make_empty_schema()));
+
+        let finding = checker.check_resource_consumption(&ctx);
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn empty_tools_no_findings() {
+        let checker = DefaultDosChecks;
+        let ctx = ServerContext::for_test("test");
+
+        assert!(checker.check_resource_consumption(&ctx).is_none());
+    }
+
+    #[test]
+    fn detect_upload_no_limit() {
+        let checker = DefaultDosChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool("upload_batch", make_empty_schema()));
+
+        let finding = checker.check_resource_consumption(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn detect_import_no_limit() {
+        let checker = DefaultDosChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool("import_all", make_empty_schema()));
+
+        let finding = checker.check_resource_consumption(&ctx);
+        assert!(finding.is_some());
+    }
+}

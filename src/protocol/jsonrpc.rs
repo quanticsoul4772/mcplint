@@ -286,4 +286,161 @@ mod tests {
         assert!(display.contains("-32601"));
         assert!(display.contains("unknown"));
     }
+
+    // Additional tests for coverage
+
+    #[test]
+    fn request_id_from_string() {
+        let id: RequestId = String::from("test-id").into();
+        assert_eq!(id, RequestId::String("test-id".to_string()));
+    }
+
+    #[test]
+    fn request_id_from_u64() {
+        let id: RequestId = 42u64.into();
+        assert_eq!(id, RequestId::Number(42));
+    }
+
+    #[test]
+    fn request_id_display_number() {
+        let id = RequestId::Number(123);
+        assert_eq!(format!("{}", id), "123");
+    }
+
+    #[test]
+    fn request_id_display_string() {
+        let id = RequestId::String("abc".to_string());
+        assert_eq!(format!("{}", id), "abc");
+    }
+
+    #[test]
+    fn json_rpc_response_success() {
+        let id = RequestId::Number(1);
+        let result = serde_json::json!({"status": "ok"});
+        let response = JsonRpcResponse::success(id.clone(), result);
+
+        assert_eq!(response.jsonrpc, "2.0");
+        assert_eq!(response.id, id);
+        assert!(response.result.is_some());
+        assert!(response.error.is_none());
+        assert!(response.is_success());
+        assert!(!response.is_error());
+    }
+
+    #[test]
+    fn json_rpc_response_error() {
+        let id = RequestId::Number(1);
+        let error = JsonRpcError::internal_error("Something went wrong");
+        let response = JsonRpcResponse::error(id.clone(), error);
+
+        assert_eq!(response.jsonrpc, "2.0");
+        assert_eq!(response.id, id);
+        assert!(response.result.is_none());
+        assert!(response.error.is_some());
+        assert!(!response.is_success());
+        assert!(response.is_error());
+    }
+
+    #[test]
+    fn json_rpc_error_new() {
+        let err = JsonRpcError::new(-32000, "Custom error");
+        assert_eq!(err.code, -32000);
+        assert_eq!(err.message, "Custom error");
+        assert!(err.data.is_none());
+    }
+
+    #[test]
+    fn json_rpc_error_with_data() {
+        let err = JsonRpcError::new(-32000, "Error")
+            .with_data(serde_json::json!({"detail": "more info"}));
+        assert!(err.data.is_some());
+        assert_eq!(err.data.unwrap()["detail"], "more info");
+    }
+
+    #[test]
+    fn json_rpc_error_parse_error() {
+        let err = JsonRpcError::parse_error("Bad JSON");
+        assert_eq!(err.code, error_codes::PARSE_ERROR);
+        assert_eq!(err.message, "Bad JSON");
+    }
+
+    #[test]
+    fn json_rpc_error_invalid_request() {
+        let err = JsonRpcError::invalid_request("Missing field");
+        assert_eq!(err.code, error_codes::INVALID_REQUEST);
+        assert_eq!(err.message, "Missing field");
+    }
+
+    #[test]
+    fn json_rpc_error_invalid_params() {
+        let err = JsonRpcError::invalid_params("Wrong type");
+        assert_eq!(err.code, error_codes::INVALID_PARAMS);
+        assert_eq!(err.message, "Wrong type");
+    }
+
+    #[test]
+    fn json_rpc_error_internal_error() {
+        let err = JsonRpcError::internal_error("Server crash");
+        assert_eq!(err.code, error_codes::INTERNAL_ERROR);
+        assert_eq!(err.message, "Server crash");
+    }
+
+    #[test]
+    fn json_rpc_message_parse_request() {
+        let json = r#"{"jsonrpc":"2.0","id":1,"method":"test"}"#;
+        let msg = JsonRpcMessage::parse(json).unwrap();
+        assert!(msg.is_request());
+        assert!(!msg.is_response());
+        assert!(!msg.is_notification());
+    }
+
+    #[test]
+    fn json_rpc_message_parse_response() {
+        let json = r#"{"jsonrpc":"2.0","id":1,"result":{}}"#;
+        let msg = JsonRpcMessage::parse(json).unwrap();
+        assert!(!msg.is_request());
+        assert!(msg.is_response());
+        assert!(!msg.is_notification());
+    }
+
+    #[test]
+    fn json_rpc_message_parse_notification() {
+        let json = r#"{"jsonrpc":"2.0","method":"notify"}"#;
+        let msg = JsonRpcMessage::parse(json).unwrap();
+        assert!(!msg.is_request());
+        assert!(!msg.is_response());
+        assert!(msg.is_notification());
+    }
+
+    #[test]
+    fn json_rpc_message_to_json() {
+        let req = JsonRpcRequest::new(1u64, "test", None);
+        let msg = JsonRpcMessage::Request(req);
+        let json = msg.to_json().unwrap();
+        assert!(json.contains("\"jsonrpc\":\"2.0\""));
+        assert!(json.contains("\"method\":\"test\""));
+    }
+
+    #[test]
+    fn json_rpc_notification_new() {
+        let notif = JsonRpcNotification::new("test/method", Some(serde_json::json!({"key": "value"})));
+        assert_eq!(notif.jsonrpc, "2.0");
+        assert_eq!(notif.method, "test/method");
+        assert!(notif.params.is_some());
+    }
+
+    #[test]
+    fn json_rpc_error_is_std_error() {
+        let err = JsonRpcError::new(-32000, "Test");
+        let _: &dyn std::error::Error = &err;
+    }
+
+    #[test]
+    fn error_codes_constants() {
+        assert_eq!(error_codes::PARSE_ERROR, -32700);
+        assert_eq!(error_codes::INVALID_REQUEST, -32600);
+        assert_eq!(error_codes::METHOD_NOT_FOUND, -32601);
+        assert_eq!(error_codes::INVALID_PARAMS, -32602);
+        assert_eq!(error_codes::INTERNAL_ERROR, -32603);
+    }
 }
