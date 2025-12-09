@@ -422,6 +422,7 @@ async fn test_openai_explain_finding() {
 // -----------------------------------------------------------------------------
 
 #[tokio::test]
+#[ignore = "requires local Ollama instance"]
 async fn test_ollama_health_check() {
     let base_url =
         std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
@@ -456,6 +457,7 @@ async fn test_ollama_provider_name_and_model() {
 }
 
 #[tokio::test]
+#[ignore = "requires local Ollama instance"]
 async fn test_ollama_explain_finding() {
     let base_url =
         std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
