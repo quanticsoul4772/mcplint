@@ -266,6 +266,7 @@ impl ValidationEngine {
     /// Validate using a provided client (for testing with mock clients)
     ///
     /// This method allows dependency injection of mock clients for unit testing.
+    #[allow(dead_code)]
     pub async fn validate_with_client(
         &mut self,
         server_name: &str,
@@ -302,6 +303,7 @@ impl ValidationEngine {
     }
 
     /// Phase 1: Initialize and collect server info (using trait object)
+    #[allow(dead_code)]
     async fn run_initialization_phase_with_trait(
         &self,
         client: &mut dyn McpClientTrait,
@@ -450,6 +452,7 @@ impl ValidationEngine {
     }
 
     /// Run sequence validation rules (using trait object)
+    #[allow(dead_code)]
     async fn run_sequence_rules_with_trait(
         &self,
         client: &mut dyn McpClientTrait,

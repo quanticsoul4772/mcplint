@@ -124,6 +124,7 @@ pub fn run(output: &str, force: bool) -> Result<()> {
 }
 
 /// Get the default configuration content
+#[allow(dead_code)]
 pub fn default_config() -> &'static str {
     DEFAULT_CONFIG
 }
