@@ -30,7 +30,12 @@ pub struct StdioTransport {
 
 impl StdioTransport {
     /// Spawn a new MCP server process
-    pub async fn spawn(command: &str, args: &[String], env: &HashMap<String, String>, config: TransportConfig) -> Result<Self> {
+    pub async fn spawn(
+        command: &str,
+        args: &[String],
+        env: &HashMap<String, String>,
+        config: TransportConfig,
+    ) -> Result<Self> {
         let mut cmd = Command::new(command);
         cmd.args(args)
             .envs(std::env::vars()) // Explicitly inherit all environment variables
@@ -40,7 +45,8 @@ impl StdioTransport {
             .stderr(Stdio::inherit()) // Let stderr pass through for debugging
             .kill_on_drop(true);
 
-        let mut child = cmd.spawn()
+        let mut child = cmd
+            .spawn()
             .with_context(|| format!("Failed to spawn MCP server: {}", command))?;
 
         let stdin = child

@@ -63,12 +63,20 @@ fn load_config(path: &Path) -> Result<McpConfig> {
 }
 
 /// Resolve server specification to command, args, and env vars
-fn resolve_server(server: Option<&str>, config_path: Option<&Path>) -> Result<Vec<(String, String, Vec<String>, HashMap<String, String>)>> {
+fn resolve_server(
+    server: Option<&str>,
+    config_path: Option<&Path>,
+) -> Result<Vec<(String, String, Vec<String>, HashMap<String, String>)>> {
     // If server starts with @, it's an npm package
     if let Some(s) = server {
         if s.starts_with('@') || s.contains('/') && !s.contains('\\') && !Path::new(s).exists() {
             // npm package: npx @package/name
-            return Ok(vec![(s.to_string(), "npx".to_string(), vec!["-y".to_string(), s.to_string()], HashMap::new())]);
+            return Ok(vec![(
+                s.to_string(),
+                "npx".to_string(),
+                vec!["-y".to_string(), s.to_string()],
+                HashMap::new(),
+            )]);
         }
 
         // URL - use directly
@@ -88,9 +96,11 @@ fn resolve_server(server: Option<&str>, config_path: Option<&Path>) -> Result<Ve
     let config_file = config_path
         .map(PathBuf::from)
         .or_else(find_config_file)
-        .ok_or_else(|| anyhow::anyhow!(
-            "No MCP config found. Specify a server or create claude_desktop_config.json"
-        ))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "No MCP config found. Specify a server or create claude_desktop_config.json"
+            )
+        })?;
 
     println!("{} {}", "Found config:".green(), config_file.display());
 
@@ -102,14 +112,25 @@ fn resolve_server(server: Option<&str>, config_path: Option<&Path>) -> Result<Ve
 
     // If server name specified, find it in config
     if let Some(name) = server {
-        let server_config = config.mcp_servers.get(name)
-            .ok_or_else(|| anyhow::anyhow!(
+        let server_config = config.mcp_servers.get(name).ok_or_else(|| {
+            anyhow::anyhow!(
                 "Server '{}' not found in config. Available: {}",
                 name,
-                config.mcp_servers.keys().cloned().collect::<Vec<_>>().join(", ")
-            ))?;
+                config
+                    .mcp_servers
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })?;
 
-        return Ok(vec![(name.to_string(), server_config.command.clone(), server_config.args.clone(), server_config.env.clone())]);
+        return Ok(vec![(
+            name.to_string(),
+            server_config.command.clone(),
+            server_config.args.clone(),
+            server_config.env.clone(),
+        )]);
     }
 
     // No server specified - return all configured servers
@@ -119,7 +140,8 @@ fn resolve_server(server: Option<&str>, config_path: Option<&Path>) -> Result<Ve
     }
     println!();
 
-    Ok(config.mcp_servers
+    Ok(config
+        .mcp_servers
         .into_iter()
         .map(|(name, cfg)| (name, cfg.command, cfg.args, cfg.env))
         .collect())
@@ -131,7 +153,10 @@ fn detect_runtime_for_file(server: &str) -> (String, Vec<String>) {
 
     match path.extension().and_then(|e| e.to_str()) {
         Some("js") | Some("mjs") => ("node".to_string(), vec![server.to_string()]),
-        Some("ts") => ("npx".to_string(), vec!["ts-node".to_string(), server.to_string()]),
+        Some("ts") => (
+            "npx".to_string(),
+            vec!["ts-node".to_string(), server.to_string()],
+        ),
         Some("py") => ("python".to_string(), vec![server.to_string()]),
         _ => (server.to_string(), vec![]),
     }
@@ -150,7 +175,12 @@ pub async fn run(
 
     for (name, command, args, env) in &servers {
         info!("Validating MCP server: {} ({})", name, command);
-        debug!("Args: {:?}, Env: {:?}, Timeout: {}s", args, env.keys().collect::<Vec<_>>(), timeout);
+        debug!(
+            "Args: {:?}, Env: {:?}, Timeout: {}s",
+            args,
+            env.keys().collect::<Vec<_>>(),
+            timeout
+        );
 
         println!("{}", "━".repeat(60).dimmed());
         println!("{} {}", "Validating:".cyan(), name.yellow().bold());
