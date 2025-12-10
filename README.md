@@ -66,7 +66,7 @@ mcplint init
 
 ### validate
 
-Check MCP server for protocol compliance. Runs 39 validation rules across protocol, schema, sequence, tool, security, and edge case categories.
+Check MCP server for protocol compliance. Runs 56 validation rules across protocol, schema, sequence, tool, resource, security, and edge case categories.
 
 ```bash
 mcplint validate <server> [options]
@@ -151,15 +151,16 @@ mcplint cache import -i f    # import from file
 
 ## Validation Rules
 
-39 rules across 6 categories:
+56 rules across 7 categories:
 
 | Category | Rules | Description |
 |----------|-------|-------------|
-| Protocol | PROTO-001 to PROTO-010 | JSON-RPC 2.0 compliance, MCP version |
+| Protocol | PROTO-001 to PROTO-015 | JSON-RPC 2.0 compliance, MCP version |
 | Schema | SCHEMA-001 to SCHEMA-005 | JSON Schema validation |
 | Sequence | SEQ-001 to SEQ-003 | Method call sequences |
 | Tool | TOOL-001 to TOOL-005 | Tool invocation |
-| Security | SEC-001 to SEC-010 | Path traversal, injection, SSRF, XXE, template injection |
+| Resource | RES-001 to RES-003 | Resource listing and reading |
+| Security | SEC-001 to SEC-015 | Path traversal, injection, SSRF, XXE, template injection, prompt injection, tool shadowing |
 | Edge | EDGE-001 to EDGE-010 | Null bytes, deep nesting, overflow, timeouts |
 
 Run `mcplint rules --details` to see all rules.

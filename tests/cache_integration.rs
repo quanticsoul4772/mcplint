@@ -160,7 +160,7 @@ async fn test_cache_ttl_expiration() {
     let key = CacheKey::schema("expiring-test");
 
     // Create entry with very short TTL
-    let entry = CacheEntry::new(
+    let _entry = CacheEntry::new(
         serde_json::to_vec(&"test_data").unwrap(),
         Duration::from_millis(50),
     );
@@ -174,7 +174,7 @@ async fn test_cache_ttl_expiration() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // Entry should be expired (exists returns false for expired entries)
-    let retrieved: Option<String> = cache.get(&key).await.unwrap();
+    let _retrieved: Option<String> = cache.get(&key).await.unwrap();
     // Note: behavior depends on implementation - some return None, some check on get
 }
 

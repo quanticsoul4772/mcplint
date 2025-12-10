@@ -381,6 +381,6 @@ mod tests {
 
         let sarif = results.to_sarif();
         assert_eq!(sarif["version"], "2.1.0");
-        assert!(sarif["runs"][0]["results"].as_array().unwrap().len() > 0);
+        assert!(!sarif["runs"][0]["results"].as_array().unwrap().is_empty());
     }
 }

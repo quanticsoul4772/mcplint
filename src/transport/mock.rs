@@ -455,7 +455,7 @@ mod tests {
     #[test]
     fn default_transport_factory_creation() {
         let _factory = DefaultTransportFactory::new();
-        let _factory2 = DefaultTransportFactory::default();
+        let _factory2 = DefaultTransportFactory;
     }
 
     #[test]

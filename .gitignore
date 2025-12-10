@@ -29,3 +29,9 @@ Thumbs.db
 
 # Build logs
 build_*.txt
+
+# Data files (test databases, etc.)
+/data/
+
+# Windows special files
+nul
