@@ -115,6 +115,30 @@ pub enum ValidationRuleId {
     Sec009,
     #[serde(rename = "SEC-010")]
     Sec010,
+
+    // New security rules (SEC-011 to SEC-015)
+    #[serde(rename = "SEC-011")]
+    Sec011,
+    #[serde(rename = "SEC-012")]
+    Sec012,
+    #[serde(rename = "SEC-013")]
+    Sec013,
+    #[serde(rename = "SEC-014")]
+    Sec014,
+    #[serde(rename = "SEC-015")]
+    Sec015,
+
+    // Protocol rules (PROTO-011 to PROTO-015)
+    #[serde(rename = "PROTO-011")]
+    Proto011,
+    #[serde(rename = "PROTO-012")]
+    Proto012,
+    #[serde(rename = "PROTO-013")]
+    Proto013,
+    #[serde(rename = "PROTO-014")]
+    Proto014,
+    #[serde(rename = "PROTO-015")]
+    Proto015,
 }
 
 impl fmt::Display for ValidationRuleId {
@@ -166,6 +190,16 @@ impl fmt::Display for ValidationRuleId {
             ValidationRuleId::Sec008 => write!(f, "SEC-008"),
             ValidationRuleId::Sec009 => write!(f, "SEC-009"),
             ValidationRuleId::Sec010 => write!(f, "SEC-010"),
+            ValidationRuleId::Sec011 => write!(f, "SEC-011"),
+            ValidationRuleId::Sec012 => write!(f, "SEC-012"),
+            ValidationRuleId::Sec013 => write!(f, "SEC-013"),
+            ValidationRuleId::Sec014 => write!(f, "SEC-014"),
+            ValidationRuleId::Sec015 => write!(f, "SEC-015"),
+            ValidationRuleId::Proto011 => write!(f, "PROTO-011"),
+            ValidationRuleId::Proto012 => write!(f, "PROTO-012"),
+            ValidationRuleId::Proto013 => write!(f, "PROTO-013"),
+            ValidationRuleId::Proto014 => write!(f, "PROTO-014"),
+            ValidationRuleId::Proto015 => write!(f, "PROTO-015"),
         }
     }
 }
@@ -549,6 +583,78 @@ pub fn get_all_rules() -> Vec<ValidationRule> {
             description: "Server rejects template injection attempts".to_string(),
             category: ValidationCategory::Security,
             remediation: "Escape template delimiters. Never pass user input directly to template engines".to_string(),
+        },
+        // New security rules: Prompt injection, tool shadowing, rug pull
+        ValidationRule {
+            id: ValidationRuleId::Sec011,
+            name: "Tool Description Sanitization".to_string(),
+            description: "Tool descriptions must not contain hidden instructions or prompt injection attempts".to_string(),
+            category: ValidationCategory::Security,
+            remediation: "Review tool descriptions for hidden instructions. Remove any text that attempts to override LLM behavior".to_string(),
+        },
+        ValidationRule {
+            id: ValidationRuleId::Sec012,
+            name: "Tool Shadowing Prevention".to_string(),
+            description: "Tool names must not shadow or impersonate other tools".to_string(),
+            category: ValidationCategory::Security,
+            remediation: "Use unique tool names. Avoid names that could be confused with common tools like read_file, write_file, execute".to_string(),
+        },
+        ValidationRule {
+            id: ValidationRuleId::Sec013,
+            name: "Rug Pull Detection".to_string(),
+            description: "Tool definitions should not change unexpectedly after initial registration".to_string(),
+            category: ValidationCategory::Security,
+            remediation: "Implement tool definition caching. Alert on schema changes between sessions".to_string(),
+        },
+        ValidationRule {
+            id: ValidationRuleId::Sec014,
+            name: "Sensitive Data Exposure".to_string(),
+            description: "Server should not expose sensitive data in tool responses".to_string(),
+            category: ValidationCategory::Security,
+            remediation: "Sanitize tool outputs. Redact secrets, tokens, and credentials from responses".to_string(),
+        },
+        ValidationRule {
+            id: ValidationRuleId::Sec015,
+            name: "URL Fetch Whitelisting".to_string(),
+            description: "URL fetching tools should validate against whitelist".to_string(),
+            category: ValidationCategory::Security,
+            remediation: "Implement URL whitelisting. Restrict allowed domains for fetch operations".to_string(),
+        },
+        // New protocol rules
+        ValidationRule {
+            id: ValidationRuleId::Proto011,
+            name: "Batch Request Support".to_string(),
+            description: "Server should handle JSON-RPC batch requests correctly".to_string(),
+            category: ValidationCategory::Protocol,
+            remediation: "Implement batch request handling per JSON-RPC 2.0 spec. Return array of responses".to_string(),
+        },
+        ValidationRule {
+            id: ValidationRuleId::Proto012,
+            name: "Notification Handling".to_string(),
+            description: "Server must not respond to notification messages (no id field)".to_string(),
+            category: ValidationCategory::Protocol,
+            remediation: "Check for missing id field. Process notification silently without sending response".to_string(),
+        },
+        ValidationRule {
+            id: ValidationRuleId::Proto013,
+            name: "Progress Reporting".to_string(),
+            description: "Long-running operations should report progress".to_string(),
+            category: ValidationCategory::Protocol,
+            remediation: "Send progress notifications for operations taking more than a few seconds".to_string(),
+        },
+        ValidationRule {
+            id: ValidationRuleId::Proto014,
+            name: "Tool Definition Immutability".to_string(),
+            description: "Tool definitions should remain stable during a session".to_string(),
+            category: ValidationCategory::Protocol,
+            remediation: "Cache tool definitions. Do not modify tool schemas during active session".to_string(),
+        },
+        ValidationRule {
+            id: ValidationRuleId::Proto015,
+            name: "Cancellation Support".to_string(),
+            description: "Server should support request cancellation".to_string(),
+            category: ValidationCategory::Protocol,
+            remediation: "Implement notifications/cancelled handler. Clean up resources on cancel".to_string(),
         },
     ]
 }
