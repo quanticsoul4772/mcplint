@@ -463,7 +463,7 @@ async fn test_ollama_explain_finding() {
     let provider = OllamaProvider::new(
         base_url.clone(),
         "llama3.2".to_string(),
-        Duration::from_secs(300), // 5 minutes - model loading can be slow
+        Duration::from_secs(600), // 10 minutes - matches CI warm-up timeout
     );
 
     // First check if Ollama is available
@@ -616,7 +616,7 @@ async fn test_all_providers_explain_same_finding() {
     let ollama = OllamaProvider::new(
         base_url.clone(),
         "llama3.2".to_string(),
-        Duration::from_secs(300), // 5 minutes - model loading can be slow
+        Duration::from_secs(600), // 10 minutes - matches CI warm-up timeout
     );
 
     assert!(
