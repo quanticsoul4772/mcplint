@@ -36,12 +36,7 @@ fn find_config_file() -> Option<PathBuf> {
         PathBuf::from("mcp.json"),
     ];
 
-    for path in locations {
-        if path.exists() {
-            return Some(path);
-        }
-    }
-    None
+    locations.into_iter().find(|path| path.exists())
 }
 
 fn load_config(path: &Path) -> Result<McpConfig> {

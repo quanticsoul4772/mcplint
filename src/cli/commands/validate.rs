@@ -11,6 +11,9 @@ use tracing::{debug, info};
 use crate::validator::ProtocolValidator;
 use crate::OutputFormat;
 
+/// Server specification: (name, command, args, env)
+type ServerSpec = (String, String, Vec<String>, HashMap<String, String>);
+
 /// MCP server configuration from claude_desktop_config.json or similar
 #[derive(Debug, Deserialize)]
 struct McpConfig {
@@ -45,12 +48,7 @@ fn find_config_file() -> Option<PathBuf> {
         PathBuf::from("mcp.json"),
     ];
 
-    for path in locations {
-        if path.exists() {
-            return Some(path);
-        }
-    }
-    None
+    locations.into_iter().find(|path| path.exists())
 }
 
 /// Load MCP config from file
@@ -63,10 +61,7 @@ fn load_config(path: &Path) -> Result<McpConfig> {
 }
 
 /// Resolve server specification to command, args, and env vars
-fn resolve_server(
-    server: Option<&str>,
-    config_path: Option<&Path>,
-) -> Result<Vec<(String, String, Vec<String>, HashMap<String, String>)>> {
+fn resolve_server(server: Option<&str>, config_path: Option<&Path>) -> Result<Vec<ServerSpec>> {
     // If server starts with @, it's an npm package
     if let Some(s) = server {
         if s.starts_with('@') || s.contains('/') && !s.contains('\\') && !Path::new(s).exists() {
