@@ -154,6 +154,47 @@ jobs:
       - name: Build
         run: cargo build --verbose
 
+      - name: Re-warm Ollama model before tests (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          echo "Checking Ollama server health..."
+          if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
+            echo "ERROR: Ollama server is not responding!"
+            echo "Attempting to restart Ollama..."
+            OLLAMA_KEEP_ALIVE=60m ollama serve &
+            sleep 5
+          fi
+          echo "Available models:"
+          curl -s http://localhost:11434/api/tags | head -20
+          echo ""
+          echo "Re-warming llama3.2 model to ensure it's loaded before tests..."
+          curl -s --max-time 300 http://localhost:11434/api/generate -d '{"model": "llama3.2", "prompt": "Ready", "stream": false}' || {
+            echo "Warm-up failed, checking server status..."
+            curl -s http://localhost:11434/api/tags || echo "Server not responding"
+            exit 1
+          }
+          echo ""
+          echo "Model re-warmed and ready for tests"
+
+      - name: Re-warm Ollama model before tests (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          Write-Host "Checking Ollama server health..."
+          try {
+            $response = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -TimeoutSec 5 -ErrorAction Stop
+            Write-Host "Server is healthy"
+          } catch {
+            Write-Host "WARNING: Ollama server not responding, attempting restart..."
+            $env:OLLAMA_KEEP_ALIVE = "60m"
+            Start-Process -FilePath ".\ollama.exe" -ArgumentList "serve" -WindowStyle Hidden
+            Start-Sleep -Seconds 5
+          }
+          Write-Host "Re-warming llama3.2 model..."
+          $body = '{"model": "llama3.2", "prompt": "Ready", "stream": false}'
+          Invoke-WebRequest -Uri "http://localhost:11434/api/generate" -Method POST -Body $body -ContentType "application/json" -TimeoutSec 300
+          Write-Host "Model re-warmed and ready for tests"
+        shell: pwsh
+
       - name: Run tests
         run: cargo test --verbose
         env:
