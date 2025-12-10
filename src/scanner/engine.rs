@@ -108,9 +108,10 @@ impl ScanEngine {
         };
 
         tracing::info!("Connecting to server: {} via {:?}", target, transport);
-        let transport_box = connect_with_type(target, args, &HashMap::new(), transport_config, transport)
-            .await
-            .context("Failed to connect to server")?;
+        let transport_box =
+            connect_with_type(target, args, &HashMap::new(), transport_config, transport)
+                .await
+                .context("Failed to connect to server")?;
 
         // Create and initialize client
         let client_info = Implementation::new("mcplint-scanner", env!("CARGO_PKG_VERSION"));

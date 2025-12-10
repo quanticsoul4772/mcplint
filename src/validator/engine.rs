@@ -215,7 +215,10 @@ impl ValidationEngine {
         env: &HashMap<String, String>,
         transport_type: Option<TransportType>,
     ) -> Result<ValidationResults> {
-        tracing::info!("MCPLint validation engine v2 - running {} rules", self.rules.len());
+        tracing::info!(
+            "MCPLint validation engine v2 - running {} rules",
+            self.rules.len()
+        );
         let start = Instant::now();
         let mut results = ValidationResults::new(target);
 
@@ -1245,9 +1248,7 @@ impl ValidationEngine {
                     "___invalid_param___": [1, 2, 3]
                 });
 
-                let call_result = client
-                    .call_tool(&typed_tool.name, Some(wrong_params))
-                    .await;
+                let call_result = client.call_tool(&typed_tool.name, Some(wrong_params)).await;
 
                 // Either error or success is acceptable (server may ignore extra params)
                 results.add_result(
@@ -1397,11 +1398,17 @@ impl ValidationEngine {
         // Skip if no resources available
         let resources = match &ctx.resources {
             Some(r) if !r.resources.is_empty() => {
-                tracing::info!("Running RESOURCE rules with {} resources available", r.resources.len());
+                tracing::info!(
+                    "Running RESOURCE rules with {} resources available",
+                    r.resources.len()
+                );
                 r
             }
             Some(r) => {
-                tracing::info!("Skipping RESOURCE rules: resources list is empty (len={})", r.resources.len());
+                tracing::info!(
+                    "Skipping RESOURCE rules: resources list is empty (len={})",
+                    r.resources.len()
+                );
                 return;
             }
             None => {
@@ -1465,8 +1472,9 @@ impl ValidationEngine {
 
         // If we got content above, assume MIME handling is correct
         results.add_result(
-            ValidationResult::pass(rule, start.elapsed().as_millis() as u64)
-                .with_details(vec!["MIME type validation performed at protocol level".to_string()]),
+            ValidationResult::pass(rule, start.elapsed().as_millis() as u64).with_details(vec![
+                "MIME type validation performed at protocol level".to_string(),
+            ]),
         );
     }
 
@@ -1749,10 +1757,19 @@ impl ValidationEngine {
                 .iter()
                 .filter(|t| {
                     let name_lower = t.name.to_lowercase();
-                    let desc_lower = t.description.as_ref().map(|d| d.to_lowercase()).unwrap_or_default();
-                    name_lower.contains("query") || name_lower.contains("sql") || name_lower.contains("database")
-                        || name_lower.contains("db") || name_lower.contains("search") || name_lower.contains("find")
-                        || desc_lower.contains("query") || desc_lower.contains("database")
+                    let desc_lower = t
+                        .description
+                        .as_ref()
+                        .map(|d| d.to_lowercase())
+                        .unwrap_or_default();
+                    name_lower.contains("query")
+                        || name_lower.contains("sql")
+                        || name_lower.contains("database")
+                        || name_lower.contains("db")
+                        || name_lower.contains("search")
+                        || name_lower.contains("find")
+                        || desc_lower.contains("query")
+                        || desc_lower.contains("database")
                 })
                 .collect();
 
@@ -1771,8 +1788,10 @@ impl ValidationEngine {
 
                     if let Ok(content) = result {
                         let content_str = format!("{:?}", content).to_lowercase();
-                        if content_str.contains("syntax error") || content_str.contains("sql error")
-                            || content_str.contains("mysql") || content_str.contains("postgresql")
+                        if content_str.contains("syntax error")
+                            || content_str.contains("sql error")
+                            || content_str.contains("mysql")
+                            || content_str.contains("postgresql")
                             || content_str.contains("sqlite")
                         {
                             sql_injection_blocked = false;
@@ -1824,10 +1843,20 @@ impl ValidationEngine {
                 .iter()
                 .filter(|t| {
                     let name_lower = t.name.to_lowercase();
-                    let desc_lower = t.description.as_ref().map(|d| d.to_lowercase()).unwrap_or_default();
-                    name_lower.contains("fetch") || name_lower.contains("url") || name_lower.contains("http")
-                        || name_lower.contains("request") || name_lower.contains("get") || name_lower.contains("download")
-                        || desc_lower.contains("url") || desc_lower.contains("fetch") || desc_lower.contains("http")
+                    let desc_lower = t
+                        .description
+                        .as_ref()
+                        .map(|d| d.to_lowercase())
+                        .unwrap_or_default();
+                    name_lower.contains("fetch")
+                        || name_lower.contains("url")
+                        || name_lower.contains("http")
+                        || name_lower.contains("request")
+                        || name_lower.contains("get")
+                        || name_lower.contains("download")
+                        || desc_lower.contains("url")
+                        || desc_lower.contains("fetch")
+                        || desc_lower.contains("http")
                 })
                 .collect();
 
@@ -1845,8 +1874,10 @@ impl ValidationEngine {
 
                     if let Ok(content) = result {
                         let content_str = format!("{:?}", content).to_lowercase();
-                        if content_str.contains("root:") || content_str.contains("ami-id")
-                            || content_str.contains("instance-id") || content_str.len() > 100
+                        if content_str.contains("root:")
+                            || content_str.contains("ami-id")
+                            || content_str.contains("instance-id")
+                            || content_str.len() > 100
                         {
                             ssrf_blocked = false;
                             break;
@@ -1933,7 +1964,9 @@ impl ValidationEngine {
                     Ok(_) | Err(_) => {
                         results.add_result(
                             ValidationResult::pass(rule, start.elapsed().as_millis() as u64)
-                                .with_details(vec!["Log injection requires server-side log inspection".to_string()]),
+                                .with_details(vec![
+                                    "Log injection requires server-side log inspection".to_string(),
+                                ]),
                         );
                     }
                 }
@@ -1956,8 +1989,14 @@ impl ValidationEngine {
                 .iter()
                 .filter(|t| {
                     let name_lower = t.name.to_lowercase();
-                    let desc_lower = t.description.as_ref().map(|d| d.to_lowercase()).unwrap_or_default();
-                    name_lower.contains("xml") || name_lower.contains("parse") || name_lower.contains("import")
+                    let desc_lower = t
+                        .description
+                        .as_ref()
+                        .map(|d| d.to_lowercase())
+                        .unwrap_or_default();
+                    name_lower.contains("xml")
+                        || name_lower.contains("parse")
+                        || name_lower.contains("import")
                         || desc_lower.contains("xml")
                 })
                 .collect();
@@ -2172,7 +2211,9 @@ impl ValidationEngine {
                 } else {
                     results.add_result(
                         ValidationResult::pass(rule, start.elapsed().as_millis() as u64)
-                            .with_details(vec!["Server rejected large input gracefully".to_string()]),
+                            .with_details(vec![
+                                "Server rejected large input gracefully".to_string()
+                            ]),
                     );
                 }
             }
@@ -2183,12 +2224,12 @@ impl ValidationEngine {
         let start = Instant::now();
 
         let unicode_inputs = vec![
-            "こんにちは世界",                    // Japanese
-            "🎉🚀💻",                             // Emojis
-            "مرحبا",                              // Arabic
-            "\u{0000}\u{FFFF}",                  // Boundary chars
-            "Ω≈ç√∫",                             // Math symbols
-            "\u{202e}reversed\u{202c}",          // RTL override
+            "こんにちは世界",           // Japanese
+            "🎉🚀💻",                   // Emojis
+            "مرحبا",                    // Arabic
+            "\u{0000}\u{FFFF}",         // Boundary chars
+            "Ω≈ç√∫",                    // Math symbols
+            "\u{202e}reversed\u{202c}", // RTL override
         ];
 
         let mut unicode_handled = true;
@@ -2327,7 +2368,10 @@ impl ValidationEngine {
             }
             Err(e) => {
                 let err_str = e.to_string();
-                if err_str.contains("stack overflow") || err_str.contains("recursion") || err_str.contains("too deep") {
+                if err_str.contains("stack overflow")
+                    || err_str.contains("recursion")
+                    || err_str.contains("too deep")
+                {
                     results.add_result(ValidationResult::warning(
                         rule,
                         "Server may be vulnerable to deeply nested JSON",
@@ -2389,7 +2433,9 @@ impl ValidationEngine {
             "offset": i64::MIN
         });
 
-        let neg_result = client.call_tool(&test_tool.name, Some(neg_index_params)).await;
+        let neg_result = client
+            .call_tool(&test_tool.name, Some(neg_index_params))
+            .await;
 
         match neg_result {
             Ok(_) => {
@@ -2425,7 +2471,9 @@ impl ValidationEngine {
             "amount": i64::MAX
         });
 
-        let overflow_result = client.call_tool(&test_tool.name, Some(overflow_params)).await;
+        let overflow_result = client
+            .call_tool(&test_tool.name, Some(overflow_params))
+            .await;
 
         match overflow_result {
             Ok(_) => {
@@ -2468,7 +2516,10 @@ impl ValidationEngine {
         if response_time.as_secs() > 5 {
             results.add_result(ValidationResult::warning(
                 rule,
-                format!("Server took {}s to respond (possible ReDoS)", response_time.as_secs()),
+                format!(
+                    "Server took {}s to respond (possible ReDoS)",
+                    response_time.as_secs()
+                ),
                 start.elapsed().as_millis() as u64,
             ));
         } else {

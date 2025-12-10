@@ -97,10 +97,8 @@ impl ValidationResults {
     pub fn print_text(&self) {
         // Get rule definitions for remediation lookup
         let all_rules = rules::get_all_rules();
-        let rule_map: std::collections::HashMap<String, &rules::ValidationRule> = all_rules
-            .iter()
-            .map(|r| (r.id.to_string(), r))
-            .collect();
+        let rule_map: std::collections::HashMap<String, &rules::ValidationRule> =
+            all_rules.iter().map(|r| (r.id.to_string(), r)).collect();
 
         // Separate issues from passing tests
         let failures: Vec<_> = self
@@ -191,7 +189,11 @@ impl ValidationResults {
         } else if failures.is_empty() && warnings.is_empty() {
             // All passed - show brief summary
             println!();
-            println!("  {} All {} protocol checks passed", "✓".green().bold(), self.passed);
+            println!(
+                "  {} All {} protocol checks passed",
+                "✓".green().bold(),
+                self.passed
+            );
         }
 
         println!();
@@ -216,7 +218,12 @@ impl ValidationResults {
 
         // Rule ID and name
         println!();
-        println!("  {} {} - {}", icon, rule_id_colored, result.rule_name.bold());
+        println!(
+            "  {} {} - {}",
+            icon,
+            rule_id_colored,
+            result.rule_name.bold()
+        );
 
         // What happened
         if let Some(ref msg) = result.message {
@@ -308,8 +315,8 @@ mod tests {
 
     #[test]
     fn protocol_validator_with_transport_type_stdio() {
-        let validator =
-            ProtocolValidator::new("server", &[], HashMap::new(), 60).with_transport_type(TransportType::Stdio);
+        let validator = ProtocolValidator::new("server", &[], HashMap::new(), 60)
+            .with_transport_type(TransportType::Stdio);
 
         assert!(matches!(
             validator.transport_type,
@@ -330,8 +337,9 @@ mod tests {
 
     #[test]
     fn protocol_validator_with_transport_type_sse_legacy() {
-        let validator = ProtocolValidator::new("http://localhost:3000/sse", &[], HashMap::new(), 60)
-            .with_transport_type(TransportType::SseLegacy);
+        let validator =
+            ProtocolValidator::new("http://localhost:3000/sse", &[], HashMap::new(), 60)
+                .with_transport_type(TransportType::SseLegacy);
 
         assert!(matches!(
             validator.transport_type,

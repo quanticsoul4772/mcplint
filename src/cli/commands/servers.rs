@@ -91,10 +91,7 @@ pub fn run(config_path: Option<&Path>) -> Result<()> {
     }
 
     println!();
-    println!(
-        "{}",
-        "Use: mcplint validate <server-name>".dimmed()
-    );
+    println!("{}", "Use: mcplint validate <server-name>".dimmed());
 
     Ok(())
 }
