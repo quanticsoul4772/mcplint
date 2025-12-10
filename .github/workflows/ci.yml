@@ -154,7 +154,7 @@ jobs:
       - name: Build
         run: cargo build --verbose
 
-      - name: Re-warm Ollama model before tests (Linux/macOS)
+      - name: Re-warm and run Ollama tests FIRST (Linux/macOS)
         if: runner.os != 'Windows'
         run: |
           echo "Checking Ollama server health..."
@@ -165,18 +165,22 @@ jobs:
             sleep 5
           fi
           echo "Available models:"
-          curl -s http://localhost:11434/api/tags | head -20
+          curl -s http://localhost:11434/api/tags
           echo ""
-          echo "Re-warming llama3.2 model to ensure it's loaded before tests..."
+          echo "Re-warming llama3.2 model..."
           curl -s --max-time 300 http://localhost:11434/api/generate -d '{"model": "llama3.2", "prompt": "Ready", "stream": false}' || {
             echo "Warm-up failed, checking server status..."
             curl -s http://localhost:11434/api/tags || echo "Server not responding"
             exit 1
           }
           echo ""
-          echo "Model re-warmed and ready for tests"
+          echo "Model loaded - running Ollama tests IMMEDIATELY while model is in memory..."
+          # Run both Ollama-specific tests that need the model loaded
+          cargo test --test ai_integration -- test_ollama_explain_finding --test-threads=1
+          cargo test --test ai_integration -- test_all_providers_explain_same_finding --test-threads=1
+          echo "Ollama tests passed!"
 
-      - name: Re-warm Ollama model before tests (Windows)
+      - name: Re-warm and run Ollama tests FIRST (Windows)
         if: runner.os == 'Windows'
         run: |
           Write-Host "Checking Ollama server health..."
@@ -192,11 +196,15 @@ jobs:
           Write-Host "Re-warming llama3.2 model..."
           $body = '{"model": "llama3.2", "prompt": "Ready", "stream": false}'
           Invoke-WebRequest -Uri "http://localhost:11434/api/generate" -Method POST -Body $body -ContentType "application/json" -TimeoutSec 300
-          Write-Host "Model re-warmed and ready for tests"
+          Write-Host "Model loaded - running Ollama tests IMMEDIATELY while model is in memory..."
+          # Run both Ollama-specific tests that need the model loaded
+          cargo test --test ai_integration -- test_ollama_explain_finding --test-threads=1
+          cargo test --test ai_integration -- test_all_providers_explain_same_finding --test-threads=1
+          Write-Host "Ollama tests passed!"
         shell: pwsh
 
-      - name: Run tests
-        run: cargo test --verbose
+      - name: Run remaining tests
+        run: cargo test --verbose -- --skip test_ollama_explain_finding --skip test_all_providers_explain_same_finding
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
