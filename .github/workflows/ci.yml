@@ -156,6 +156,9 @@ jobs:
 
       - name: Re-warm and run Ollama tests FIRST (Linux/macOS)
         if: runner.os != 'Windows'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           echo "Checking Ollama server health..."
           if ! curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
@@ -182,6 +185,9 @@ jobs:
 
       - name: Re-warm and run Ollama tests FIRST (Windows)
         if: runner.os == 'Windows'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           Write-Host "Checking Ollama server health..."
           try {
