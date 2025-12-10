@@ -12,6 +12,8 @@ pub mod sse;
 pub mod stdio;
 pub mod streamable_http;
 
+use std::collections::HashMap;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
@@ -102,6 +104,7 @@ pub fn detect_transport_type(target: &str) -> TransportType {
 /// # Arguments
 /// * `target` - Server target (path for stdio, URL for HTTP)
 /// * `args` - Arguments for stdio transport (ignored for HTTP)
+/// * `env` - Environment variables for stdio transport (ignored for HTTP)
 /// * `config` - Transport configuration
 ///
 /// # Returns
@@ -110,10 +113,11 @@ pub fn detect_transport_type(target: &str) -> TransportType {
 pub async fn connect(
     target: &str,
     args: &[String],
+    env: &HashMap<String, String>,
     config: TransportConfig,
 ) -> Result<Box<dyn Transport>> {
     let transport_type = detect_transport_type(target);
-    connect_with_type(target, args, config, transport_type).await
+    connect_with_type(target, args, env, config, transport_type).await
 }
 
 /// Connect to an MCP server with explicit transport type
@@ -121,12 +125,13 @@ pub async fn connect(
 pub async fn connect_with_type(
     target: &str,
     args: &[String],
+    env: &HashMap<String, String>,
     config: TransportConfig,
     transport_type: TransportType,
 ) -> Result<Box<dyn Transport>> {
     match transport_type {
         TransportType::Stdio => {
-            let transport = StdioTransport::spawn(target, args, config).await?;
+            let transport = StdioTransport::spawn(target, args, env, config).await?;
             Ok(Box::new(transport))
         }
         TransportType::StreamableHttp => {

@@ -72,13 +72,13 @@ pub enum OutputFormat {
 enum Commands {
     /// Validate MCP server protocol compliance
     Validate {
-        /// Path to MCP server executable or command
-        #[arg(required = true)]
-        server: String,
+        /// Server to validate (name from config, npm package, URL, or file path)
+        /// If not specified, validates all servers from config
+        server: Option<String>,
 
-        /// Arguments to pass to the server
-        #[arg(last = true)]
-        args: Vec<String>,
+        /// Path to MCP config file (auto-detected if not specified)
+        #[arg(short, long)]
+        config: Option<std::path::PathBuf>,
 
         /// Check specific protocol features only
         #[arg(short, long)]
@@ -312,6 +312,13 @@ enum Commands {
         #[arg(short, long)]
         clear: bool,
     },
+
+    /// List available MCP servers from config
+    Servers {
+        /// Path to MCP config file (auto-detected if not specified)
+        #[arg(short, long)]
+        config: Option<std::path::PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -460,11 +467,18 @@ async fn main() -> Result<()> {
     match cli.command {
         Commands::Validate {
             server,
-            args,
+            config,
             features,
             timeout,
         } => {
-            commands::validate::run(&server, &args, features, timeout, cli.format).await?;
+            commands::validate::run(
+                server.as_deref(),
+                config.as_deref(),
+                features,
+                timeout,
+                cli.format,
+            )
+            .await?;
         }
         Commands::Scan {
             server,
@@ -601,6 +615,9 @@ async fn main() -> Result<()> {
             clear,
         } => {
             commands::watch::run(&server, &args, watch, profile.into(), debounce, clear).await?;
+        }
+        Commands::Servers { config } => {
+            commands::servers::run(config.as_deref())?;
         }
     }
 

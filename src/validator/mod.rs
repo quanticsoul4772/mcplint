@@ -4,11 +4,13 @@
 //! It validates MCP servers against the protocol specification.
 
 mod engine;
-mod rules;
+pub mod rules;
 
 pub use engine::{
     ValidationConfig, ValidationEngine, ValidationResult, ValidationResults, ValidationSeverity,
 };
+
+use std::collections::HashMap;
 
 use anyhow::Result;
 use colored::Colorize;
@@ -40,15 +42,17 @@ pub enum CheckStatus {
 pub struct ProtocolValidator {
     server: String,
     args: Vec<String>,
+    env: HashMap<String, String>,
     timeout: u64,
     transport_type: Option<TransportType>,
 }
 
 impl ProtocolValidator {
-    pub fn new(server: &str, args: &[String], timeout: u64) -> Self {
+    pub fn new(server: &str, args: &[String], env: HashMap<String, String>, timeout: u64) -> Self {
         Self {
             server: server.to_string(),
             args: args.to_vec(),
+            env,
             timeout,
             transport_type: None,
         }
@@ -75,7 +79,7 @@ impl ProtocolValidator {
 
         // Connect to server and run validation
         let results = engine
-            .validate_server(&self.server, &self.args, self.transport_type)
+            .validate_server(&self.server, &self.args, &self.env, self.transport_type)
             .await?;
 
         tracing::info!(
@@ -91,65 +95,144 @@ impl ProtocolValidator {
 
 impl ValidationResults {
     pub fn print_text(&self) {
-        println!("{}", "Validation Results".cyan().bold());
-        println!("{}", "=".repeat(60));
+        // Get rule definitions for remediation lookup
+        let all_rules = rules::get_all_rules();
+        let rule_map: std::collections::HashMap<String, &rules::ValidationRule> = all_rules
+            .iter()
+            .map(|r| (r.id.to_string(), r))
+            .collect();
+
+        // Separate issues from passing tests
+        let failures: Vec<_> = self
+            .results
+            .iter()
+            .filter(|r| r.severity == ValidationSeverity::Fail)
+            .collect();
+        let warnings: Vec<_> = self
+            .results
+            .iter()
+            .filter(|r| r.severity == ValidationSeverity::Warning)
+            .collect();
+        let passing: Vec<_> = self
+            .results
+            .iter()
+            .filter(|r| r.severity == ValidationSeverity::Pass)
+            .collect();
+
+        // Show summary first
         println!();
-
-        // Group by category
-        let mut by_category: std::collections::HashMap<&str, Vec<&ValidationResult>> =
-            std::collections::HashMap::new();
-        for result in &self.results {
-            by_category
-                .entry(result.category.as_str())
-                .or_default()
-                .push(result);
-        }
-
-        for (category, results) in by_category.iter() {
-            println!("  {} {}", "▸".cyan(), category.to_uppercase().bold());
-
-            for result in results {
-                let status = match result.severity {
-                    ValidationSeverity::Pass => "✓ PASS".green(),
-                    ValidationSeverity::Fail => "✗ FAIL".red(),
-                    ValidationSeverity::Warning => "⚠ WARN".yellow(),
-                    ValidationSeverity::Info => "ℹ INFO".blue(),
-                    ValidationSeverity::Skip => "- SKIP".dimmed(),
-                };
-
-                let duration = format!("({}ms)", result.duration_ms).dimmed();
-                println!("    {} {} {}", status, result.rule_id, duration);
-
-                if let Some(ref msg) = result.message {
-                    println!("      {}", msg.dimmed());
-                }
-
-                if !result.details.is_empty() {
-                    for detail in &result.details {
-                        println!("      • {}", detail.dimmed());
-                    }
-                }
-            }
-            println!();
-        }
-
-        println!("{}", "─".repeat(60));
-        println!(
-            "Summary: {} passed, {} failed, {} warnings",
-            self.passed.to_string().green(),
-            self.failed.to_string().red(),
-            self.warnings.to_string().yellow()
-        );
-
+        println!("{}", "━".repeat(70));
         if self.failed > 0 {
-            println!("\n{}", "Server failed protocol validation.".red().bold());
+            println!(
+                "  {} {} failures, {} warnings, {} passed",
+                "VALIDATION FAILED:".red().bold(),
+                self.failed.to_string().red().bold(),
+                self.warnings.to_string().yellow(),
+                self.passed.to_string().green()
+            );
         } else if self.warnings > 0 {
-            println!("\n{}", "Server passed with warnings.".yellow());
+            println!(
+                "  {} {} warnings, {} passed",
+                "VALIDATION PASSED WITH WARNINGS:".yellow().bold(),
+                self.warnings.to_string().yellow().bold(),
+                self.passed.to_string().green()
+            );
         } else {
             println!(
-                "\n{}",
-                "Server passed all validation checks.".green().bold()
+                "  {} All {} checks passed",
+                "VALIDATION PASSED:".green().bold(),
+                self.passed.to_string().green().bold()
             );
+        }
+        println!("{}", "━".repeat(70));
+
+        // Show failures first (most important)
+        if !failures.is_empty() {
+            println!();
+            println!("{}", "  ✗ FAILURES".red().bold());
+            println!("{}", "  ─".repeat(34).red());
+            for result in &failures {
+                self.print_issue(result, &rule_map, true);
+            }
+        }
+
+        // Show warnings next
+        if !warnings.is_empty() {
+            println!();
+            println!("{}", "  ⚠ WARNINGS".yellow().bold());
+            println!("{}", "  ─".repeat(34).yellow());
+            for result in &warnings {
+                self.print_issue(result, &rule_map, false);
+            }
+        }
+
+        // Show passing tests (collapsed summary)
+        if !passing.is_empty() && (self.failed > 0 || self.warnings > 0) {
+            println!();
+            println!(
+                "  {} {} checks passed",
+                "✓".green(),
+                passing.len().to_string().green()
+            );
+
+            // Group by category for compact display
+            let mut by_cat: std::collections::HashMap<&str, Vec<&ValidationResult>> =
+                std::collections::HashMap::new();
+            for r in &passing {
+                by_cat.entry(r.category.as_str()).or_default().push(r);
+            }
+            for (cat, results) in by_cat.iter() {
+                let ids: Vec<_> = results.iter().map(|r| r.rule_id.as_str()).collect();
+                println!("    {}: {}", cat.dimmed(), ids.join(", ").dimmed());
+            }
+        } else if passing.is_empty() && failures.is_empty() && warnings.is_empty() {
+            println!();
+            println!("  {}", "No validation checks were run.".dimmed());
+        } else if failures.is_empty() && warnings.is_empty() {
+            // All passed - show brief summary
+            println!();
+            println!("  {} All {} protocol checks passed", "✓".green().bold(), self.passed);
+        }
+
+        println!();
+    }
+
+    fn print_issue(
+        &self,
+        result: &ValidationResult,
+        rule_map: &std::collections::HashMap<String, &rules::ValidationRule>,
+        is_failure: bool,
+    ) {
+        let icon = if is_failure {
+            "✗".red()
+        } else {
+            "⚠".yellow()
+        };
+        let rule_id_colored = if is_failure {
+            result.rule_id.red().bold()
+        } else {
+            result.rule_id.yellow().bold()
+        };
+
+        // Rule ID and name
+        println!();
+        println!("  {} {} - {}", icon, rule_id_colored, result.rule_name.bold());
+
+        // What happened
+        if let Some(ref msg) = result.message {
+            println!("    {}: {}", "Issue".white().bold(), msg);
+        }
+
+        // Details
+        if !result.details.is_empty() {
+            for detail in &result.details {
+                println!("    • {}", detail);
+            }
+        }
+
+        // How to fix (from rule definition)
+        if let Some(rule) = rule_map.get(&result.rule_id) {
+            println!("    {}: {}", "Fix".cyan().bold(), rule.remediation);
         }
     }
 
@@ -215,7 +298,7 @@ mod tests {
     #[test]
     fn protocol_validator_new() {
         let args = vec!["--port".to_string(), "3000".to_string()];
-        let validator = ProtocolValidator::new("node server.js", &args, 30);
+        let validator = ProtocolValidator::new("node server.js", &args, HashMap::new(), 30);
 
         assert_eq!(validator.server, "node server.js");
         assert_eq!(validator.args, args);
@@ -226,7 +309,7 @@ mod tests {
     #[test]
     fn protocol_validator_with_transport_type_stdio() {
         let validator =
-            ProtocolValidator::new("server", &[], 60).with_transport_type(TransportType::Stdio);
+            ProtocolValidator::new("server", &[], HashMap::new(), 60).with_transport_type(TransportType::Stdio);
 
         assert!(matches!(
             validator.transport_type,
@@ -236,7 +319,7 @@ mod tests {
 
     #[test]
     fn protocol_validator_with_transport_type_streamable_http() {
-        let validator = ProtocolValidator::new("http://localhost:3000", &[], 60)
+        let validator = ProtocolValidator::new("http://localhost:3000", &[], HashMap::new(), 60)
             .with_transport_type(TransportType::StreamableHttp);
 
         assert!(matches!(
@@ -247,7 +330,7 @@ mod tests {
 
     #[test]
     fn protocol_validator_with_transport_type_sse_legacy() {
-        let validator = ProtocolValidator::new("http://localhost:3000/sse", &[], 60)
+        let validator = ProtocolValidator::new("http://localhost:3000/sse", &[], HashMap::new(), 60)
             .with_transport_type(TransportType::SseLegacy);
 
         assert!(matches!(

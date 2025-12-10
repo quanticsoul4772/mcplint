@@ -3,6 +3,7 @@
 //! Provides a mock implementation of the Transport trait that can be used
 //! for unit testing without spawning actual MCP server processes.
 
+use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::Arc;
 
@@ -237,7 +238,7 @@ impl TransportFactory for DefaultTransportFactory {
         config: TransportConfig,
         transport_type: TransportType,
     ) -> Result<Box<dyn Transport>> {
-        super::connect_with_type(target, args, config, transport_type).await
+        super::connect_with_type(target, args, &HashMap::new(), config, transport_type).await
     }
 }
 

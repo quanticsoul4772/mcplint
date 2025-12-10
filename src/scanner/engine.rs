@@ -2,6 +2,7 @@
 //!
 //! Coordinates security rule execution and findings collection.
 
+use std::collections::HashMap;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
@@ -107,7 +108,7 @@ impl ScanEngine {
         };
 
         tracing::info!("Connecting to server: {} via {:?}", target, transport);
-        let transport_box = connect_with_type(target, args, transport_config, transport)
+        let transport_box = connect_with_type(target, args, &HashMap::new(), transport_config, transport)
             .await
             .context("Failed to connect to server")?;
 

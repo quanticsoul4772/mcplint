@@ -3,6 +3,7 @@
 //! Communicates with MCP servers via stdin/stdout pipes.
 //! The server is spawned as a child process.
 
+use std::collections::HashMap;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -29,14 +30,17 @@ pub struct StdioTransport {
 
 impl StdioTransport {
     /// Spawn a new MCP server process
-    pub async fn spawn(command: &str, args: &[String], config: TransportConfig) -> Result<Self> {
-        let mut child = Command::new(command)
-            .args(args)
+    pub async fn spawn(command: &str, args: &[String], env: &HashMap<String, String>, config: TransportConfig) -> Result<Self> {
+        let mut cmd = Command::new(command);
+        cmd.args(args)
+            .envs(std::env::vars()) // Explicitly inherit all environment variables
+            .envs(env.iter()) // Add custom environment variables (override inherited)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit()) // Let stderr pass through for debugging
-            .kill_on_drop(true)
-            .spawn()
+            .kill_on_drop(true);
+
+        let mut child = cmd.spawn()
             .with_context(|| format!("Failed to spawn MCP server: {}", command))?;
 
         let stdin = child
