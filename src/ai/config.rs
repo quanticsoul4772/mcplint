@@ -151,7 +151,7 @@ impl Default for AiConfig {
             model: AiProvider::default().default_model().to_string(),
             api_key: None,
             ollama_url: "http://localhost:11434".to_string(),
-            max_tokens: 4096,
+            max_tokens: 16384,
             temperature: 0.3,
             cache_ttl_secs: 7 * 24 * 60 * 60, // 7 days
             stream: false,
@@ -686,12 +686,11 @@ rate_limit_tpm = 50000
 [ai]
 provider = "anthropic"
 model = "claude-sonnet-4-20250514"
-max_tokens = 4096
 "#;
         let config = AiConfig::parse_toml(toml_content).unwrap();
         assert_eq!(config.provider, AiProvider::Anthropic);
         assert_eq!(config.model, "claude-sonnet-4-20250514");
-        assert_eq!(config.max_tokens, 4096);
+        assert_eq!(config.max_tokens, 16384);
     }
 
     #[test]
@@ -736,7 +735,7 @@ provider = "ollama"
         // Model should be updated to Ollama's default
         assert_eq!(config.model, "llama3.2");
         // Other fields should be defaults
-        assert_eq!(config.max_tokens, 4096);
+        assert_eq!(config.max_tokens, 16384);
         assert!(config.temperature > 0.0);
     }
 

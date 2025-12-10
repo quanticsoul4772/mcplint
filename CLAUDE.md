@@ -86,7 +86,7 @@ src/
     mutation/          # Mutation strategies
   validator/           # Protocol validator
     engine.rs          # ValidationEngine
-    rules.rs           # Validation rules (39 rules)
+    rules.rs           # Validation rules (56 rules)
   transport/           # Transport layer
     stdio.rs           # Stdio transport
     sse.rs             # SSE transport
@@ -106,12 +106,13 @@ src/
 
 ### Validation Rules (validator/rules.rs)
 
-39 rules across 6 categories:
-- PROTO-001 to PROTO-010: Protocol compliance
+56 rules across 7 categories:
+- PROTO-001 to PROTO-015: Protocol compliance
 - SCHEMA-001 to SCHEMA-005: Schema validation
 - SEQ-001 to SEQ-003: Sequence validation
 - TOOL-001 to TOOL-005: Tool validation
-- SEC-001 to SEC-010: Security checks (path traversal, injection, SSRF, XXE, template injection)
+- RES-001 to RES-003: Resource validation
+- SEC-001 to SEC-015: Security checks (path traversal, injection, SSRF, XXE, template injection, prompt injection, tool shadowing)
 - EDGE-001 to EDGE-010: Edge cases (null bytes, deep nesting, overflow, timeouts)
 
 ### Scanner Rules (scanner/rules/)
