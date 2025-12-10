@@ -2129,22 +2129,42 @@ impl ValidationEngine {
             ));
         }
         // SEC-011: Tool Description Sanitization (Prompt Injection Detection)
+        // Smart detection: only flag patterns that appear in imperative/command context,
+        // not when they're part of legitimate documentation (e.g., "configures system prompt")
         let rule = self.get_rule(ValidationRuleId::Sec011).unwrap();
         let start = Instant::now();
-        let prompt_injection_patterns = vec![
+
+        // High-confidence injection patterns (always suspicious)
+        let always_suspicious = vec![
             "ignore previous",
             "ignore all previous",
-            "disregard",
+            "disregard previous",
             "forget everything",
-            "new instructions",
-            "system prompt",
+            "new instructions:",
             "you are now",
-            "act as",
             "pretend to be",
             "roleplay as",
             "<system>",
             "</system>",
+            "[[system]]",
+            "{{system}}",
         ];
+
+        // Context-dependent patterns (only suspicious with imperative verbs)
+        let context_patterns = vec!["system prompt", "act as"];
+        let imperative_prefixes = vec![
+            "override",
+            "change",
+            "set",
+            "use this",
+            "inject",
+            "insert",
+            "replace",
+            "modify",
+            "update the",
+            "become",
+        ];
+
         let mut injection_found = false;
         let mut injection_details = Vec::new();
         if let Some(ref tools) = ctx.tools {
@@ -2154,11 +2174,34 @@ impl ValidationEngine {
                     .as_ref()
                     .map(|d| d.to_lowercase())
                     .unwrap_or_default();
-                for pattern in &prompt_injection_patterns {
+
+                // Check always-suspicious patterns
+                for pattern in &always_suspicious {
                     if desc.contains(&pattern.to_lowercase()) {
                         injection_found = true;
                         injection_details
                             .push(format!("Tool '{}' contains: '{}'", tool.name, pattern));
+                    }
+                }
+
+                // Check context-dependent patterns (need imperative verb nearby)
+                for pattern in &context_patterns {
+                    if desc.contains(&pattern.to_lowercase()) {
+                        // Look for imperative verb within 50 chars before the pattern
+                        if let Some(pos) = desc.find(&pattern.to_lowercase()) {
+                            let prefix_start = pos.saturating_sub(50);
+                            let prefix = &desc[prefix_start..pos];
+                            for verb in &imperative_prefixes {
+                                if prefix.contains(verb) {
+                                    injection_found = true;
+                                    injection_details.push(format!(
+                                        "Tool '{}' contains: '{}' with imperative context",
+                                        tool.name, pattern
+                                    ));
+                                    break;
+                                }
+                            }
+                        }
                     }
                 }
             }
