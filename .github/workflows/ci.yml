@@ -154,6 +154,9 @@ jobs:
       - name: Build
         run: cargo build --verbose
 
+      - name: Build tests (pre-compile before Ollama warm-up)
+        run: cargo test --no-run --verbose
+
       - name: Re-warm and run Ollama tests FIRST (Linux/macOS)
         if: runner.os != 'Windows'
         env:
