@@ -40,7 +40,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve &
+          OLLAMA_KEEP_ALIVE=60m ollama serve &
           # Wait for server to be ready
           for i in {1..30}; do
             if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
@@ -61,7 +61,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install ollama
-          ollama serve &
+          OLLAMA_KEEP_ALIVE=60m ollama serve &
           # Wait for server to be ready
           for i in {1..30}; do
             if curl -s http://localhost:11434/api/tags > /dev/null 2>&1; then
@@ -108,7 +108,8 @@ jobs:
             exit 1
           }
 
-          # Start Ollama server in background
+          # Start Ollama server in background with keep-alive to prevent model unloading
+          $env:OLLAMA_KEEP_ALIVE = "60m"
           Start-Process -FilePath ".\ollama.exe" -ArgumentList "serve" -WindowStyle Hidden
 
           # Wait for server to be ready
