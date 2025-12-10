@@ -26,6 +26,8 @@ use crate::protocol::{
     },
     ClientCapabilities, ConnectionContext, ConnectionState, Implementation, ServerCapabilities,
 };
+use std::collections::HashMap;
+
 use crate::transport::{connect, Transport, TransportConfig};
 
 /// MCP Client for communicating with MCP servers
@@ -43,6 +45,14 @@ impl McpClient {
             context: ConnectionContext::new(),
             client_info,
         }
+    }
+
+    /// Mark the client as connected (transport is established)
+    ///
+    /// Call this after creating a client with `new()` when the transport
+    /// has been established externally.
+    pub fn mark_connected(&mut self) {
+        self.context.set_connected();
     }
 
     /// Create a client with custom capabilities
@@ -89,7 +99,7 @@ impl McpClient {
         client_version: &str,
         config: TransportConfig,
     ) -> Result<Self> {
-        let transport = connect(target, args, config).await?;
+        let transport = connect(target, args, &HashMap::new(), config).await?;
         let client_info = Implementation::new(client_name, client_version);
 
         let mut client = Self::new(transport, client_info);
@@ -431,7 +441,7 @@ impl McpClientBuilder {
     }
 
     pub async fn connect(self, target: &str, args: &[String]) -> Result<McpClient> {
-        let transport = connect(target, args, self.config).await?;
+        let transport = connect(target, args, &HashMap::new(), self.config).await?;
         let client_info = Implementation::new(self.client_name, self.client_version);
 
         let mut client = McpClient::with_capabilities(transport, client_info, self.capabilities);

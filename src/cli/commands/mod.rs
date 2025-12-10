@@ -7,5 +7,6 @@ pub mod fuzz;
 pub mod init;
 pub mod rules;
 pub mod scan;
+pub mod servers;
 pub mod validate;
 pub mod watch;

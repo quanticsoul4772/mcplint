@@ -1,307 +1,201 @@
 # MCPLint
 
-MCP Server Testing, Fuzzing, and Security Scanning Platform
+Security testing tool for Model Context Protocol (MCP) servers.
 
-## Overview
+## Features
 
-MCPLint is a comprehensive security and quality assurance tool for [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) servers. It provides:
-
-- **Protocol Validation** - Verify MCP protocol compliance
-- **Security Scanning** - Detect vulnerabilities like command injection, path traversal, SSRF
-- **AI-Powered Explanations** - Get detailed explanations of findings with remediation guidance
-- **Coverage-Guided Fuzzing** - Find crashes and edge cases with intelligent input generation
-- **Baseline Comparison** - Track security changes between scans
-- **Watch Mode** - Continuous scanning during development
-- **CI/CD Integration** - SARIF, JUnit, and GitLab output formats
+- Protocol validation - verify MCP compliance
+- Security scanning - detect vulnerabilities
+- Coverage-guided fuzzing - find crashes and edge cases
+- AI-powered explanations - understand findings with remediation guidance
+- CI/CD integration - SARIF, JUnit, GitLab output formats
+- Config file support - reads Claude Desktop config to find servers
 
 ## Installation
 
 ```bash
-cargo install mcplint
+cargo install --path .
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/quanticsoul4772/mcplint
-cd mcplint
 cargo build --release
+./target/release/mcplint --help
 ```
 
-## Quick Start
+## Usage
 
 ```bash
-# Validate protocol compliance
-mcplint validate node my-mcp-server.js
+# List servers from Claude Desktop config
+mcplint servers
 
-# Run security scan
-mcplint scan node my-mcp-server.js
+# Validate a server
+mcplint validate <server>
+mcplint validate filesystem
+mcplint validate                    # validates all servers from config
 
-# Get AI-powered explanations for findings
-mcplint explain node my-mcp-server.js
+# Security scan
+mcplint scan <server>
 
-# Fuzz for crashes
-mcplint fuzz node my-mcp-server.js --duration 300
+# Fuzz a server
+mcplint fuzz <server>
 
-# Watch mode for continuous scanning
-mcplint watch node my-mcp-server.js --watch ./src
+# AI-powered explanations
+mcplint explain <server>
 
-# Generate config file
-mcplint init
+# Watch mode
+mcplint watch <server>
 
 # List security rules
+mcplint rules
 mcplint rules --details
 
-# Check environment
-mcplint doctor --extended
+# Environment check
+mcplint doctor
 
-# Manage cache
+# Cache management
 mcplint cache stats
+mcplint cache clear
+
+# Generate config
+mcplint init
 ```
 
 ## Commands
 
-### `validate`
+### validate
 
-Check MCP server for protocol compliance:
+Check MCP server for protocol compliance. Runs 39 validation rules across protocol, schema, sequence, tool, security, and edge case categories.
 
 ```bash
-mcplint validate <server> [args...] [OPTIONS]
+mcplint validate <server> [options]
 
 Options:
-  -f, --features <FEATURES>  Check specific protocol features only
-  -t, --timeout <TIMEOUT>    Timeout for server operations [default: 30]
+  -t, --timeout <seconds>    Timeout for server operations [default: 30]
+  -f, --format <format>      Output format: text, json, sarif, junit, gitlab
+  -c, --config <path>        Path to MCP config file
 ```
 
-### `scan`
+### scan
 
-Scan for security vulnerabilities:
+Scan for security vulnerabilities.
 
 ```bash
-mcplint scan <server> [args...] [OPTIONS]
+mcplint scan <server> [options]
 
 Options:
-  -p, --profile <PROFILE>       Security scan profile [default: standard]
-                                [possible values: quick, standard, full, enterprise]
-  -i, --include <INCLUDE>       Include specific rule categories
-  -e, --exclude <EXCLUDE>       Exclude specific rule categories
-  -t, --timeout <TIMEOUT>       Timeout for server operations [default: 60]
-      --explain                 Generate AI-powered explanations for findings
-      --ai-provider <PROVIDER>  AI provider for explanations [default: ollama]
-                                [possible values: ollama, anthropic, openai]
-      --ai-model <MODEL>        AI model for explanations
-      --baseline <PATH>         Path to baseline file for comparison
-      --save-baseline <PATH>    Save scan results as new baseline
-      --update-baseline         Update existing baseline with current findings
-      --diff-only               Show only diff summary (requires --baseline)
-      --fail-on <SEVERITIES>    Fail only on specified severities (e.g., critical,high)
+  -p, --profile <profile>    Scan profile: quick, standard, full, enterprise
+  -i, --include <rules>      Include specific rule categories
+  -e, --exclude <rules>      Exclude specific rule categories
+  -t, --timeout <seconds>    Timeout [default: 60]
+  --baseline <path>          Compare against baseline file
+  --save-baseline <path>     Save results as baseline
+  --fail-on <severities>     Fail only on specified severities
 ```
 
-### `explain`
+### fuzz
 
-Get AI-powered explanations for security findings:
+Coverage-guided fuzzing.
 
 ```bash
-mcplint explain <server> [args...] [OPTIONS]
+mcplint fuzz <server> [options]
 
 Options:
-  -P, --provider <PROVIDER>     AI provider [default: ollama]
-                                [possible values: ollama, anthropic, openai]
-  -m, --model <MODEL>           AI model to use (defaults to provider's default)
-  -a, --audience <LEVEL>        Audience level for explanations [default: intermediate]
-                                [possible values: beginner, intermediate, expert]
-  -s, --severity <SEVERITY>     Minimum severity to explain
-  -n, --max-findings <N>        Maximum number of findings to explain
-      --no-cache                Disable response caching
-  -i, --interactive             Interactive mode (ask follow-up questions)
-  -t, --timeout <TIMEOUT>       Timeout for server operations [default: 120]
+  -d, --duration <seconds>   Duration to run [default: 300]
+  -c, --corpus <path>        Corpus directory
+  -W, --workers <count>      Parallel workers [default: 4]
+  --max-memory <size>        Memory limit (e.g., 512MB)
+  --max-time <time>          Time limit (e.g., 5m)
 ```
 
-**AI Provider Configuration:**
+### explain
 
-| Provider | Environment Variable | Default Model |
-|----------|---------------------|---------------|
-| Ollama | None (local) | llama3.2 |
-| Anthropic | `ANTHROPIC_API_KEY` | claude-sonnet-4-20250514 |
-| OpenAI | `OPENAI_API_KEY` | gpt-4o |
-
-### `fuzz`
-
-Run coverage-guided fuzzing:
+AI-powered explanations for security findings.
 
 ```bash
-mcplint fuzz <server> [args...] [OPTIONS]
+mcplint explain <server> [options]
 
 Options:
-  -d, --duration <DURATION>      Duration to run fuzzing (seconds) [default: 300]
-  -c, --corpus <CORPUS>          Path to corpus directory for inputs
-  -i, --iterations <ITERATIONS>  Maximum iterations [default: unlimited]
-  -W, --workers <WORKERS>        Number of parallel workers [default: 4]
-      --tools <TOOLS>            Focus on specific tools
-  -p, --profile <PROFILE>        Fuzzing profile [default: standard]
-                                 [possible values: quick, standard, intensive, ci]
-      --seed <SEED>              Random seed for reproducibility
-
-Resource Limits:
-      --max-memory <SIZE>        Maximum memory usage (e.g., "512MB", "1GB")
-      --max-time <TIME>          Maximum time limit (e.g., "5m", "1h")
-      --max-corpus <N>           Maximum corpus size (number of entries)
-      --max-restarts <N>         Maximum server restarts
-      --no-limits                Disable all resource limits (use with caution)
+  -P, --provider <provider>  AI provider: ollama, anthropic, openai [default: ollama]
+  -m, --model <model>        Model to use
+  -a, --audience <level>     Audience: beginner, intermediate, expert
+  -n, --max-findings <n>     Max findings to explain
 ```
 
-### `watch`
+AI providers require environment variables:
+- Anthropic: ANTHROPIC_API_KEY
+- OpenAI: OPENAI_API_KEY
+- Ollama: runs locally, no key needed
 
-Watch files and rescan on changes:
+### servers
+
+List MCP servers from Claude Desktop config.
 
 ```bash
-mcplint watch <server> [args...] [OPTIONS]
-
-Options:
-  -w, --watch <PATHS>         Paths to watch for changes [default: .]
-  -p, --profile <PROFILE>     Security scan profile [default: quick]
-  -d, --debounce <MS>         Debounce delay in milliseconds [default: 500]
-  -c, --clear                 Clear screen before each scan
+mcplint servers
 ```
 
-### `cache`
+### cache
 
-Manage cache storage:
+Manage cache storage.
 
 ```bash
-mcplint cache <SUBCOMMAND>
-
-Subcommands:
-  stats   Show cache statistics [--json]
-  clear   Clear cache entries [--category <CAT>] [--force]
-  prune   Remove expired cache entries [--json]
-  export  Export cache to file [--output <PATH>] [--category <CAT>]
-  import  Import cache from file [--input <PATH>] [--merge]
-  keys    List cache keys [--category <CAT>] [--json]
-
-Categories: schemas, scan_results, validation, corpus, tool_hashes
+mcplint cache stats          # show statistics
+mcplint cache clear          # clear all entries
+mcplint cache prune          # remove expired entries
+mcplint cache keys           # list cache keys
+mcplint cache export -o f    # export to file
+mcplint cache import -i f    # import from file
 ```
 
-### `init`
+## Validation Rules
 
-Generate a configuration file:
-
-```bash
-mcplint init [OPTIONS]
-
-Options:
-  -o, --output <PATH>   Output path for config file [default: .mcplint.toml]
-      --force           Overwrite existing config
-```
-
-### `rules`
-
-List available security rules:
-
-```bash
-mcplint rules [OPTIONS]
-
-Options:
-  -c, --category <CATEGORY>   Filter by category
-  -d, --details               Show rule details
-```
-
-### `doctor`
-
-Check MCPLint version and environment:
-
-```bash
-mcplint doctor [OPTIONS]
-
-Options:
-  -e, --extended    Run extended diagnostics
-```
-
-## Output Formats
-
-MCPLint supports multiple output formats:
-
-| Format | Flag | Use Case |
-|--------|------|----------|
-| `text` | `--format text` | Human-readable terminal output (default) |
-| `json` | `--format json` | Machine-parseable JSON |
-| `sarif` | `--format sarif` | SARIF 2.1.0 for GitHub Code Scanning |
-| `junit` | `--format junit` | JUnit XML for test runners |
-| `gitlab` | `--format gitlab` | GitLab Code Quality report |
-
-```bash
-mcplint scan server.js --format sarif > results.sarif
-mcplint scan server.js --format junit > results.xml
-```
-
-## GitHub Actions Integration
-
-```yaml
-- name: MCPLint Security Scan
-  run: |
-    mcplint scan node ${{ github.workspace }}/mcp-server.js \
-      --format sarif \
-      --output mcplint-results.sarif
-
-- name: Upload SARIF
-  uses: github/codeql-action/upload-sarif@v3
-  with:
-    sarif_file: mcplint-results.sarif
-```
-
-## Baseline Comparison
-
-Track security changes between scans using baselines:
-
-```bash
-# Create initial baseline
-mcplint scan server.js --save-baseline baseline.json
-
-# Compare against baseline
-mcplint scan server.js --baseline baseline.json
-
-# Show only differences
-mcplint scan server.js --baseline baseline.json --diff-only
-
-# Update baseline with new findings
-mcplint scan server.js --baseline baseline.json --update-baseline
-```
-
-## Security Rules
-
-MCPLint includes 20+ security rules across 6 categories:
+39 rules across 6 categories:
 
 | Category | Rules | Description |
 |----------|-------|-------------|
-| `injection` | MCP-INJ-001 to 004, MCP-SEC-040, 044, 045 | Command injection, SQL injection, path traversal, SSRF, tool poisoning |
-| `auth` | MCP-AUTH-001 to 003, MCP-SEC-043 | Authentication, authorization, credential exposure, OAuth scope abuse |
-| `transport` | MCP-TRANS-001, 002 | TLS/SSL and transport security |
-| `protocol` | MCP-PROTO-001 to 003, MCP-SEC-041, 042 | MCP protocol compliance, tool shadowing, rug pull detection |
-| `data` | MCP-DATA-001, 002 | Data exposure and leakage |
-| `dos` | MCP-DOS-001, 002 | Denial of service vulnerabilities |
+| Protocol | PROTO-001 to PROTO-010 | JSON-RPC 2.0 compliance, MCP version |
+| Schema | SCHEMA-001 to SCHEMA-005 | JSON Schema validation |
+| Sequence | SEQ-001 to SEQ-003 | Method call sequences |
+| Tool | TOOL-001 to TOOL-005 | Tool invocation |
+| Security | SEC-001 to SEC-010 | Path traversal, injection, SSRF, XXE, template injection |
+| Edge | EDGE-001 to EDGE-010 | Null bytes, deep nesting, overflow, timeouts |
 
-### Advanced Security Rules (M6)
+Run `mcplint rules --details` to see all rules.
 
-| Rule ID | Name | Severity |
-|---------|------|----------|
-| MCP-SEC-040 | Tool Description Injection | Critical |
-| MCP-SEC-041 | Cross-Server Tool Shadowing | High |
-| MCP-SEC-042 | Rug Pull Detection | Critical |
-| MCP-SEC-043 | OAuth Scope Abuse | High |
-| MCP-SEC-044 | Unicode Hidden Instructions | High |
-| MCP-SEC-045 | Full-Schema Poisoning | High |
+## Security Rules (Scanner)
 
-Run `mcplint rules --details` to see all available rules with descriptions.
+20+ rules for vulnerability detection:
+
+| Category | Description |
+|----------|-------------|
+| injection | Command injection, SQL injection, path traversal, SSRF |
+| auth | Authentication, credential exposure, OAuth scope abuse |
+| transport | TLS/SSL security |
+| protocol | Tool poisoning, shadowing, rug pull detection |
+| data | Data exposure |
+| dos | Denial of service |
+
+## Output Formats
+
+| Format | Flag | Use |
+|--------|------|-----|
+| text | --format text | Terminal output (default) |
+| json | --format json | Machine-parseable |
+| sarif | --format sarif | GitHub Code Scanning |
+| junit | --format junit | Test runners |
+| gitlab | --format gitlab | GitLab Code Quality |
 
 ## Configuration
 
-Create `.mcplint.toml` in your project:
+Create `.mcplint.toml`:
 
 ```bash
 mcplint init
 ```
 
-Example configuration:
+Example:
 
 ```toml
 [scan]
@@ -312,20 +206,10 @@ fail_on = ["critical", "high"]
 [fuzz]
 duration = 600
 workers = 8
-profile = "standard"
-
-[fuzz.limits]
-max_memory = "1GB"
-max_time = "10m"
-max_corpus = 10000
 
 [ai]
 provider = "ollama"
 model = "llama3.2"
-
-[watch]
-debounce = 500
-clear = true
 ```
 
 ## Exit Codes
@@ -334,14 +218,10 @@ clear = true
 |------|---------|
 | 0 | Success, no findings |
 | 1 | Success, findings detected |
-| 2 | Error (connection failed, config invalid) |
-| 3 | Partial success (some checks skipped) |
-| 4 | Timeout exceeded |
+| 2 | Error |
+| 3 | Partial success |
+| 4 | Timeout |
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Contributing
-
-Contributions welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) first.
+MIT
