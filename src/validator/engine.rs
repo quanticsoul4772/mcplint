@@ -611,9 +611,8 @@ impl ValidationEngine {
         match invalid_cursor_result {
             Ok(_) => {
                 results.add_result(
-                    ValidationResult::pass(rule, start.elapsed().as_millis() as u64).with_details(
-                        vec!["Server gracefully handled invalid cursor".to_string()],
-                    ),
+                    ValidationResult::pass(rule, start.elapsed().as_millis() as u64)
+                        .with_details(vec!["Server gracefully handled invalid cursor".to_string()]),
                 );
             }
             Err(e) => {
@@ -1228,9 +1227,8 @@ impl ValidationEngine {
             Ok(_) => {
                 // Server accepted invalid cursor - might return first page (acceptable)
                 results.add_result(
-                    ValidationResult::pass(rule, start.elapsed().as_millis() as u64).with_details(
-                        vec!["Server gracefully handled invalid cursor".to_string()],
-                    ),
+                    ValidationResult::pass(rule, start.elapsed().as_millis() as u64)
+                        .with_details(vec!["Server gracefully handled invalid cursor".to_string()]),
                 );
             }
             Err(e) => {
