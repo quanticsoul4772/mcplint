@@ -287,4 +287,163 @@ mod tests {
         assert_eq!(stats1.hits, 12);
         assert_eq!(stats1.misses, 3);
     }
+
+    #[test]
+    fn hit_ratio_zero_when_no_access() {
+        let mut stats = CacheStats {
+            hits: 0,
+            misses: 0,
+            ..Default::default()
+        };
+        stats.calculate_hit_ratio();
+        assert_eq!(stats.hit_ratio, 0.0);
+    }
+
+    #[test]
+    fn hit_ratio_one_when_all_hits() {
+        let mut stats = CacheStats {
+            hits: 100,
+            misses: 0,
+            ..Default::default()
+        };
+        stats.calculate_hit_ratio();
+        assert_eq!(stats.hit_ratio, 1.0);
+    }
+
+    #[test]
+    fn formatted_size() {
+        let stats = CacheStats {
+            total_size_bytes: 2048,
+            ..Default::default()
+        };
+        assert_eq!(stats.formatted_size(), "2.00 KB");
+    }
+
+    #[test]
+    fn update_category() {
+        let mut stats = CacheStats::new();
+        let cat_stats = CategoryStats::new(10, 1024, 2);
+        stats.update_category(CacheCategory::Schema, cat_stats);
+
+        assert!(stats.by_category.contains_key("schemas"));
+        let retrieved = stats.by_category.get("schemas").unwrap();
+        assert_eq!(retrieved.entries, 10);
+        assert_eq!(retrieved.size_bytes, 1024);
+        assert_eq!(retrieved.expired, 2);
+    }
+
+    #[test]
+    fn category_stats_new() {
+        let cat_stats = CategoryStats::new(5, 512, 1);
+        assert_eq!(cat_stats.entries, 5);
+        assert_eq!(cat_stats.size_bytes, 512);
+        assert_eq!(cat_stats.expired, 1);
+    }
+
+    #[test]
+    fn category_stats_formatted_size() {
+        let cat_stats = CategoryStats::new(0, 1048576, 0);
+        assert_eq!(cat_stats.formatted_size(), "1.00 MB");
+    }
+
+    #[test]
+    fn atomic_stats_reset() {
+        let stats = AtomicCacheStats::new();
+        stats.record_hit();
+        stats.record_hit();
+        stats.record_miss();
+        stats.record_add(100);
+
+        stats.reset();
+
+        let snapshot = stats.to_stats();
+        assert_eq!(snapshot.hits, 0);
+        assert_eq!(snapshot.misses, 0);
+        assert_eq!(snapshot.total_entries, 0);
+        assert_eq!(snapshot.total_size_bytes, 0);
+    }
+
+    #[test]
+    fn atomic_stats_record_remove() {
+        let stats = AtomicCacheStats::new();
+        stats.record_add(200);
+        stats.record_add(100);
+        stats.record_remove(100);
+
+        let snapshot = stats.to_stats();
+        assert_eq!(snapshot.total_entries, 1);
+        assert_eq!(snapshot.total_size_bytes, 200);
+    }
+
+    #[test]
+    fn atomic_stats_default() {
+        let stats = AtomicCacheStats::default();
+        let snapshot = stats.to_stats();
+        assert_eq!(snapshot.hits, 0);
+        assert_eq!(snapshot.misses, 0);
+    }
+
+    #[test]
+    fn merge_with_timestamps() {
+        let now = Utc::now();
+        let earlier = now - chrono::Duration::hours(1);
+        let later = now + chrono::Duration::hours(1);
+
+        let mut stats1 = CacheStats {
+            oldest_entry: Some(now),
+            newest_entry: Some(now),
+            ..Default::default()
+        };
+
+        let stats2 = CacheStats {
+            oldest_entry: Some(earlier),
+            newest_entry: Some(later),
+            ..Default::default()
+        };
+
+        stats1.merge(&stats2);
+        assert_eq!(stats1.oldest_entry, Some(earlier));
+        assert_eq!(stats1.newest_entry, Some(later));
+    }
+
+    #[test]
+    fn merge_with_category_stats() {
+        let mut stats1 = CacheStats::new();
+        stats1
+            .by_category
+            .insert("schemas".to_string(), CategoryStats::new(5, 100, 1));
+
+        let mut stats2 = CacheStats::new();
+        stats2
+            .by_category
+            .insert("schemas".to_string(), CategoryStats::new(3, 50, 0));
+        stats2
+            .by_category
+            .insert("validation".to_string(), CategoryStats::new(2, 20, 0));
+
+        stats1.merge(&stats2);
+
+        let schemas = stats1.by_category.get("schemas").unwrap();
+        assert_eq!(schemas.entries, 8);
+        assert_eq!(schemas.size_bytes, 150);
+        assert_eq!(schemas.expired, 1);
+
+        let validation = stats1.by_category.get("validation").unwrap();
+        assert_eq!(validation.entries, 2);
+    }
+
+    #[test]
+    fn merge_expired_entries() {
+        let mut stats1 = CacheStats {
+            expired_entries: 5,
+            ..Default::default()
+        };
+        let stats2 = CacheStats {
+            expired_entries: 3,
+            ..Default::default()
+        };
+
+        stats1.merge(&stats2);
+        assert_eq!(stats1.expired_entries, 8);
+    }
 }

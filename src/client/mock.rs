@@ -11,8 +11,9 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::protocol::mcp::{
-    CallToolResult, Content, GetPromptResult, InitializeResult, Prompt, PromptMessage,
-    ReadResourceResult, Resource, ResourceContent, Role, Tool,
+    CallToolResult, Content, GetPromptResult, InitializeResult, ListResourcesResult,
+    ListToolsResult, Prompt, PromptMessage, ReadResourceResult, Resource, ResourceContent, Role,
+    Tool,
 };
 use crate::protocol::{ClientCapabilities, Implementation, ServerCapabilities};
 use serde_json::json;
@@ -38,11 +39,20 @@ pub trait McpClientTrait: Send + Sync {
     /// List available tools from the server
     async fn list_tools(&mut self) -> Result<Vec<Tool>>;
 
+    /// List tools with pagination support
+    async fn list_tools_paginated(&mut self, cursor: Option<String>) -> Result<ListToolsResult>;
+
     /// Call a tool on the server
     async fn call_tool(&mut self, name: &str, arguments: Option<Value>) -> Result<CallToolResult>;
 
     /// List available resources from the server
     async fn list_resources(&mut self) -> Result<Vec<Resource>>;
+
+    /// List resources with pagination support
+    async fn list_resources_paginated(
+        &mut self,
+        cursor: Option<String>,
+    ) -> Result<ListResourcesResult>;
 
     /// Read a resource by URI
     async fn read_resource(&mut self, uri: &str) -> Result<ReadResourceResult>;
@@ -372,6 +382,20 @@ impl McpClientTrait for MockMcpClient {
         Ok(tools.clone())
     }
 
+    async fn list_tools_paginated(&mut self, _cursor: Option<String>) -> Result<ListToolsResult> {
+        self.check_error().await?;
+
+        if !self.initialized {
+            anyhow::bail!("Client not initialized");
+        }
+
+        let tools = self.tools.lock().await;
+        Ok(ListToolsResult {
+            tools: tools.clone(),
+            next_cursor: None, // Mock doesn't paginate
+        })
+    }
+
     async fn call_tool(&mut self, name: &str, _arguments: Option<Value>) -> Result<CallToolResult> {
         self.check_error().await?;
 
@@ -402,6 +426,23 @@ impl McpClientTrait for MockMcpClient {
 
         let resources = self.resources.lock().await;
         Ok(resources.clone())
+    }
+
+    async fn list_resources_paginated(
+        &mut self,
+        _cursor: Option<String>,
+    ) -> Result<ListResourcesResult> {
+        self.check_error().await?;
+
+        if !self.initialized {
+            anyhow::bail!("Client not initialized");
+        }
+
+        let resources = self.resources.lock().await;
+        Ok(ListResourcesResult {
+            resources: resources.clone(),
+            next_cursor: None, // Mock doesn't paginate
+        })
     }
 
     async fn read_resource(&mut self, uri: &str) -> Result<ReadResourceResult> {

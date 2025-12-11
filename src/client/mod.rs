@@ -6,8 +6,6 @@
 //! - Tool discovery and invocation
 //! - Resource and prompt access
 
-#![allow(dead_code)] // Client API will be used in M1 (Protocol Validator)
-
 pub mod mock;
 
 // Re-export mock types for testing

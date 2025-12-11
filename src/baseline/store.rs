@@ -9,6 +9,7 @@ use std::path::Path;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::fingerprinting::ToolFingerprint;
 use crate::scanner::{ScanResults, Severity};
 
 use super::FindingFingerprint;
@@ -26,6 +27,9 @@ pub struct Baseline {
     pub findings: Vec<BaselineFinding>,
     /// Scan configuration used
     pub config: BaselineConfig,
+    /// Tool definition fingerprints for schema change detection
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_fingerprints: Option<Vec<ToolFingerprint>>,
 }
 
 impl Baseline {
@@ -54,7 +58,57 @@ impl Baseline {
                 profile: Some(results.profile.clone()),
                 ..Default::default()
             },
+            tool_fingerprints: None,
         }
+    }
+
+    /// Create a new baseline from scan results with tool fingerprints
+    #[allow(dead_code)]
+    pub fn from_results_with_fingerprints(
+        results: &ScanResults,
+        fingerprints: Vec<ToolFingerprint>,
+    ) -> Self {
+        let mut baseline = Self::from_results(results);
+        baseline.tool_fingerprints = Some(fingerprints);
+        baseline
+    }
+
+    /// Add tool fingerprints to an existing baseline
+    #[allow(dead_code)]
+    pub fn with_fingerprints(mut self, fingerprints: Vec<ToolFingerprint>) -> Self {
+        self.tool_fingerprints = Some(fingerprints);
+        self
+    }
+
+    /// Set tool fingerprints
+    #[allow(dead_code)]
+    pub fn set_fingerprints(&mut self, fingerprints: Vec<ToolFingerprint>) {
+        self.tool_fingerprints = Some(fingerprints);
+    }
+
+    /// Check if baseline has tool fingerprints
+    #[allow(dead_code)]
+    pub fn has_fingerprints(&self) -> bool {
+        self.tool_fingerprints
+            .as_ref()
+            .is_some_and(|f| !f.is_empty())
+    }
+
+    /// Get the number of fingerprints
+    #[allow(dead_code)]
+    pub fn fingerprint_count(&self) -> usize {
+        self.tool_fingerprints
+            .as_ref()
+            .map(|f| f.len())
+            .unwrap_or(0)
+    }
+
+    /// Get a specific tool's fingerprint by name
+    #[allow(dead_code)]
+    pub fn get_fingerprint(&self, tool_name: &str) -> Option<&ToolFingerprint> {
+        self.tool_fingerprints
+            .as_ref()
+            .and_then(|fps| fps.iter().find(|fp| fp.tool_name == tool_name))
     }
 
     /// Load baseline from a JSON file

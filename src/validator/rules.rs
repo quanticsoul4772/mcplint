@@ -42,13 +42,17 @@ pub enum ValidationRuleId {
     #[serde(rename = "SCHEMA-005")]
     Schema005,
 
-    // Sequence rules (SEQ-001 to SEQ-003)
+    // Sequence rules (SEQ-001 to SEQ-005)
     #[serde(rename = "SEQ-001")]
     Seq001,
     #[serde(rename = "SEQ-002")]
     Seq002,
     #[serde(rename = "SEQ-003")]
     Seq003,
+    #[serde(rename = "SEQ-004")]
+    Seq004,
+    #[serde(rename = "SEQ-005")]
+    Seq005,
 
     // Tool invocation rules (TOOL-001 to TOOL-005)
     #[serde(rename = "TOOL-001")]
@@ -162,6 +166,8 @@ impl fmt::Display for ValidationRuleId {
             ValidationRuleId::Seq001 => write!(f, "SEQ-001"),
             ValidationRuleId::Seq002 => write!(f, "SEQ-002"),
             ValidationRuleId::Seq003 => write!(f, "SEQ-003"),
+            ValidationRuleId::Seq004 => write!(f, "SEQ-004"),
+            ValidationRuleId::Seq005 => write!(f, "SEQ-005"),
             ValidationRuleId::Tool001 => write!(f, "TOOL-001"),
             ValidationRuleId::Tool002 => write!(f, "TOOL-002"),
             ValidationRuleId::Tool003 => write!(f, "TOOL-003"),
@@ -381,6 +387,20 @@ pub fn get_all_rules() -> Vec<ValidationRule> {
             description: "Error responses must follow JSON-RPC format".to_string(),
             category: ValidationCategory::Sequence,
             remediation: "Return errors as {\"jsonrpc\": \"2.0\", \"id\": N, \"error\": {\"code\": -32XXX, \"message\": \"...\"}}".to_string(),
+        },
+        ValidationRule {
+            id: ValidationRuleId::Seq004,
+            name: "Pagination Support".to_string(),
+            description: "Server supports pagination for list operations with cursor parameter".to_string(),
+            category: ValidationCategory::Sequence,
+            remediation: "Support optional cursor parameter in tools/list and resources/list. Return nextCursor for more results".to_string(),
+        },
+        ValidationRule {
+            id: ValidationRuleId::Seq005,
+            name: "Invalid Cursor Handling".to_string(),
+            description: "Server handles invalid pagination cursors gracefully".to_string(),
+            category: ValidationCategory::Sequence,
+            remediation: "Return error -32602 for malformed cursors. Don't crash or return inconsistent results".to_string(),
         },
         // Tool invocation rules
         ValidationRule {

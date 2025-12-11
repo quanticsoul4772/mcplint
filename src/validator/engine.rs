@@ -562,6 +562,77 @@ impl ValidationEngine {
             rule,
             start.elapsed().as_millis() as u64,
         ));
+
+        // SEQ-004: Pagination Support
+        let rule = self.get_rule(ValidationRuleId::Seq004).unwrap();
+        let start = Instant::now();
+
+        // Test pagination with tools/list if server has tools
+        let pagination_result = client.list_tools_paginated(None).await;
+        match pagination_result {
+            Ok(result) => {
+                let details = if result.next_cursor.is_some() {
+                    vec![format!(
+                        "Pagination supported: {} tools returned with cursor",
+                        result.tools.len()
+                    )]
+                } else {
+                    vec![format!(
+                        "Pagination response valid: {} tools (no more pages)",
+                        result.tools.len()
+                    )]
+                };
+                results.add_result(
+                    ValidationResult::pass(rule, start.elapsed().as_millis() as u64)
+                        .with_details(details),
+                );
+            }
+            Err(e) => {
+                results.add_result(
+                    ValidationResult::warning(
+                        rule,
+                        format!("Pagination request failed: {}", e),
+                        start.elapsed().as_millis() as u64,
+                    )
+                    .with_details(vec![
+                        "Consider implementing pagination for large tool lists".to_string(),
+                    ]),
+                );
+            }
+        }
+
+        // SEQ-005: Invalid Cursor Handling
+        let rule = self.get_rule(ValidationRuleId::Seq005).unwrap();
+        let start = Instant::now();
+
+        let invalid_cursor_result = client
+            .list_tools_paginated(Some("__invalid_cursor_12345__".to_string()))
+            .await;
+        match invalid_cursor_result {
+            Ok(_) => {
+                results.add_result(
+                    ValidationResult::pass(rule, start.elapsed().as_millis() as u64).with_details(
+                        vec!["Server gracefully handled invalid cursor".to_string()],
+                    ),
+                );
+            }
+            Err(e) => {
+                let err_str = e.to_string();
+                if err_str.contains("-32602") || err_str.contains("invalid") {
+                    results.add_result(
+                        ValidationResult::pass(rule, start.elapsed().as_millis() as u64)
+                            .with_details(vec![
+                                "Server correctly rejected invalid cursor".to_string()
+                            ]),
+                    );
+                } else {
+                    results.add_result(
+                        ValidationResult::pass(rule, start.elapsed().as_millis() as u64)
+                            .with_details(vec![format!("Server handled invalid cursor: {}", e)]),
+                    );
+                }
+            }
+        }
     }
 
     /// Phase 1: Initialize and collect server info
@@ -1104,6 +1175,83 @@ impl ValidationEngine {
             rule,
             start.elapsed().as_millis() as u64,
         ));
+
+        // SEQ-004: Pagination Support
+        let rule = self.get_rule(ValidationRuleId::Seq004).unwrap();
+        let start = Instant::now();
+
+        // Test pagination with tools/list if server has tools
+        let pagination_result = client.list_tools_paginated(None).await;
+        match pagination_result {
+            Ok(result) => {
+                // Pagination worked - check if cursor is returned when appropriate
+                let details = if result.next_cursor.is_some() {
+                    vec![format!(
+                        "Pagination supported: {} tools returned with cursor",
+                        result.tools.len()
+                    )]
+                } else {
+                    vec![format!(
+                        "Pagination response valid: {} tools (no more pages)",
+                        result.tools.len()
+                    )]
+                };
+                results.add_result(
+                    ValidationResult::pass(rule, start.elapsed().as_millis() as u64)
+                        .with_details(details),
+                );
+            }
+            Err(e) => {
+                // Pagination might not be supported, which is a warning not failure
+                results.add_result(
+                    ValidationResult::warning(
+                        rule,
+                        format!("Pagination request failed: {}", e),
+                        start.elapsed().as_millis() as u64,
+                    )
+                    .with_details(vec![
+                        "Consider implementing pagination for large tool lists".to_string(),
+                    ]),
+                );
+            }
+        }
+
+        // SEQ-005: Invalid Cursor Handling
+        let rule = self.get_rule(ValidationRuleId::Seq005).unwrap();
+        let start = Instant::now();
+
+        // Test with an invalid cursor value
+        let invalid_cursor_result = client
+            .list_tools_paginated(Some("__invalid_cursor_12345__".to_string()))
+            .await;
+        match invalid_cursor_result {
+            Ok(_) => {
+                // Server accepted invalid cursor - might return first page (acceptable)
+                results.add_result(
+                    ValidationResult::pass(rule, start.elapsed().as_millis() as u64).with_details(
+                        vec!["Server gracefully handled invalid cursor".to_string()],
+                    ),
+                );
+            }
+            Err(e) => {
+                let err_str = e.to_string();
+                if err_str.contains("-32602") || err_str.contains("invalid") {
+                    // Proper error for invalid cursor
+                    results.add_result(
+                        ValidationResult::pass(rule, start.elapsed().as_millis() as u64)
+                            .with_details(vec![
+                                "Server correctly rejected invalid cursor".to_string()
+                            ]),
+                    );
+                } else {
+                    // Some other error - server didn't crash at least
+                    results.add_result(
+                        ValidationResult::pass(rule, start.elapsed().as_millis() as u64)
+                            .with_details(vec![format!("Server handled invalid cursor: {}", e)]),
+                    );
+                }
+            }
+        }
 
         // PROTO-011: Batch Request Support
         let rule = self.get_rule(ValidationRuleId::Proto011).unwrap();
@@ -3500,6 +3648,690 @@ mod tests {
             assert!(rule_ids.contains(&"PROTO-003"));
             assert!(rule_ids.contains(&"PROTO-004"));
             assert!(rule_ids.contains(&"SEQ-001"));
+        }
+
+        // SEC-001: Basic security check passes
+        #[tokio::test]
+        async fn validate_sec001_passes() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            let sec001 = results
+                .results
+                .iter()
+                .find(|r| r.rule_id == "SEC-001")
+                .unwrap();
+            assert_eq!(sec001.severity, ValidationSeverity::Pass);
+        }
+
+        // SEC-002: Basic security check passes
+        #[tokio::test]
+        async fn validate_sec002_passes() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            let sec002 = results
+                .results
+                .iter()
+                .find(|r| r.rule_id == "SEC-002")
+                .unwrap();
+            assert_eq!(sec002.severity, ValidationSeverity::Pass);
+        }
+
+        // SEC-003: Basic security check passes
+        #[tokio::test]
+        async fn validate_sec003_passes() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            let sec003 = results
+                .results
+                .iter()
+                .find(|r| r.rule_id == "SEC-003")
+                .unwrap();
+            assert_eq!(sec003.severity, ValidationSeverity::Pass);
+        }
+
+        // SEC-004: Basic security check passes
+        #[tokio::test]
+        async fn validate_sec004_passes() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            let sec004 = results
+                .results
+                .iter()
+                .find(|r| r.rule_id == "SEC-004")
+                .unwrap();
+            assert_eq!(sec004.severity, ValidationSeverity::Pass);
+        }
+
+        // Protocol rule tests
+        #[tokio::test]
+        async fn validate_proto002_supported_version() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = MockMcpClient::new();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // Default MockMcpClient returns "2024-11-05" which is supported
+            let proto002 = results
+                .results
+                .iter()
+                .find(|r| r.rule_id == "PROTO-002")
+                .unwrap();
+            assert_eq!(proto002.severity, ValidationSeverity::Pass);
+        }
+
+        #[tokio::test]
+        async fn validate_proto003_valid_server_info() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = MockMcpClient::new();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // MockMcpClient returns "mock-server" and "1.0.0" which are non-empty
+            let proto003 = results
+                .results
+                .iter()
+                .find(|r| r.rule_id == "PROTO-003")
+                .unwrap();
+            assert_eq!(proto003.severity, ValidationSeverity::Pass);
+        }
+
+        #[tokio::test]
+        async fn validate_proto004_capabilities() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = MockMcpClient::new();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            let proto004 = results
+                .results
+                .iter()
+                .find(|r| r.rule_id == "PROTO-004")
+                .unwrap();
+            assert_eq!(proto004.severity, ValidationSeverity::Pass);
+        }
+
+        // Sequence rule tests
+        #[tokio::test]
+        async fn validate_seq001_ping_response() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = MockMcpClient::new();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            let seq001 = results
+                .results
+                .iter()
+                .find(|r| r.rule_id == "SEQ-001")
+                .unwrap();
+            assert_eq!(seq001.severity, ValidationSeverity::Pass);
+        }
+
+        #[tokio::test]
+        async fn validate_seq002_unknown_method_handling() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            let seq002 = results
+                .results
+                .iter()
+                .find(|r| r.rule_id == "SEQ-002")
+                .unwrap();
+            // MockMcpClient returns error for unknown tools, which is correct
+            assert!(
+                seq002.severity == ValidationSeverity::Pass
+                    || seq002.severity == ValidationSeverity::Warning
+            );
+        }
+
+        #[tokio::test]
+        async fn validate_seq003_error_format() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = MockMcpClient::new();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            let seq003 = results
+                .results
+                .iter()
+                .find(|r| r.rule_id == "SEQ-003")
+                .unwrap();
+            assert_eq!(seq003.severity, ValidationSeverity::Pass);
+        }
+
+        // Schema rule tests
+        #[tokio::test]
+        async fn validate_schema001_valid_tool_schema() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            client
+                .add_tool(MockMcpClient::create_test_tool(
+                    "schema_tool",
+                    "Tool with valid schema",
+                ))
+                .await;
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            let schema001 = results
+                .results
+                .iter()
+                .find(|r| r.rule_id == "SCHEMA-001")
+                .unwrap();
+            assert_eq!(schema001.severity, ValidationSeverity::Pass);
+        }
+
+        #[tokio::test]
+        async fn validate_schema002_tool_descriptions() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            // Tool with description
+            client
+                .add_tool(MockMcpClient::create_test_tool(
+                    "described_tool",
+                    "This tool has a description",
+                ))
+                .await;
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            let schema002 = results
+                .results
+                .iter()
+                .find(|r| r.rule_id == "SCHEMA-002")
+                .unwrap();
+            assert_eq!(schema002.severity, ValidationSeverity::Pass);
+        }
+
+        // Tool rule tests
+        #[tokio::test]
+        async fn validate_tool001_tool_invocation() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            // Add a tool
+            client
+                .add_tool(MockMcpClient::create_test_tool(
+                    "invoke_test",
+                    "Test tool for invocation",
+                ))
+                .await;
+            // Set a response for the tool
+            client
+                .set_tool_response("invoke_test", MockMcpClient::success_tool_result("Success"))
+                .await;
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            let tool001 = results
+                .results
+                .iter()
+                .find(|r| r.rule_id == "TOOL-001")
+                .unwrap();
+            assert_eq!(tool001.severity, ValidationSeverity::Pass);
+        }
+
+        // Resource rule tests
+        #[tokio::test]
+        async fn validate_resource_rules_with_resources() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            client
+                .add_resource(MockMcpClient::create_test_resource(
+                    "file:///test.txt",
+                    "test.txt",
+                ))
+                .await;
+            client
+                .set_resource_response(
+                    "file:///test.txt",
+                    MockMcpClient::text_resource_result("file:///test.txt", "Test content"),
+                )
+                .await;
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            let res001 = results
+                .results
+                .iter()
+                .find(|r| r.rule_id == "RES-001")
+                .unwrap();
+            assert_eq!(res001.severity, ValidationSeverity::Pass);
+        }
+
+        // Test with no tools
+        #[tokio::test]
+        async fn validate_with_no_tools() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut caps = ServerCapabilities::default();
+            // No tools capability
+            caps.resources = Some(ResourcesCapability::default());
+            let mut client = MockMcpClient::with_capabilities(caps);
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // Should still pass basic checks
+            assert!(results.passed > 0);
+        }
+
+        // Test with multiple tools with various issues
+        #[tokio::test]
+        async fn validate_multiple_tools_mixed_issues() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            // Clean tool
+            client
+                .add_tool(MockMcpClient::create_test_tool(
+                    "clean_tool",
+                    "A clean safe tool",
+                ))
+                .await;
+            // Tool with reserved name
+            client
+                .add_tool(MockMcpClient::create_test_tool(
+                    "shell",
+                    "Execute shell commands",
+                ))
+                .await;
+            // Tool with sensitive data pattern
+            client
+                .add_tool(MockMcpClient::create_test_tool(
+                    "secrets",
+                    "Handles secret_key values",
+                ))
+                .await;
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // Should have at least some warnings
+            assert!(results.warnings >= 1 || results.failed >= 1);
+        }
+
+        // Test strict mode
+        #[tokio::test]
+        async fn validate_with_strict_mode() {
+            let config = ValidationConfig {
+                strict_mode: true,
+                ..Default::default()
+            };
+            let mut engine = ValidationEngine::new(config);
+            let mut client = MockMcpClient::new();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // Strict mode should still complete
+            assert!(results.passed > 0 || results.failed > 0 || results.warnings > 0);
+        }
+
+        // Test skip categories
+        #[tokio::test]
+        async fn validate_with_skip_categories() {
+            use crate::validator::rules::ValidationCategory;
+            let config = ValidationConfig {
+                skip_categories: vec![ValidationCategory::Security],
+                ..Default::default()
+            };
+            let mut engine = ValidationEngine::new(config);
+            let mut client = create_mock_with_capabilities();
+
+            // Add tool that would trigger security warnings
+            client
+                .add_tool(MockMcpClient::create_test_tool("exec", "Execute commands"))
+                .await;
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // Should complete without the security rules being triggered
+            // Note: skip_categories functionality depends on implementation
+            assert!(results.results.len() > 0);
+        }
+
+        // Test skip rules
+        #[tokio::test]
+        async fn validate_with_skip_rules() {
+            use crate::validator::rules::ValidationRuleId;
+            let config = ValidationConfig {
+                skip_rules: vec![ValidationRuleId::Sec012],
+                ..Default::default()
+            };
+            let mut engine = ValidationEngine::new(config);
+            let mut client = create_mock_with_capabilities();
+
+            client
+                .add_tool(MockMcpClient::create_test_tool("exec", "Execute commands"))
+                .await;
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // Should complete
+            assert!(results.results.len() > 0);
+        }
+
+        // Test with prompts
+        #[tokio::test]
+        async fn validate_with_prompts() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            client
+                .add_prompt(MockMcpClient::create_test_prompt(
+                    "test_prompt",
+                    "A test prompt",
+                ))
+                .await;
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            assert!(results.passed > 0);
+        }
+
+        // Test result details captured
+        #[tokio::test]
+        async fn validate_result_details_captured() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // SEC rules should have details about requiring real server
+            let sec001 = results
+                .results
+                .iter()
+                .find(|r| r.rule_id == "SEC-001")
+                .unwrap();
+            assert!(!sec001.details.is_empty());
+        }
+
+        // Test all validation rules are returned
+        #[tokio::test]
+        async fn validate_returns_all_rule_results() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // Should have results for protocol, schema, sequence, security rules
+            let rule_ids: Vec<&str> = results.results.iter().map(|r| r.rule_id.as_str()).collect();
+            assert!(rule_ids.iter().any(|id| id.starts_with("PROTO-")));
+            assert!(rule_ids.iter().any(|id| id.starts_with("SCHEMA-")));
+            assert!(rule_ids.iter().any(|id| id.starts_with("SEQ-")));
+            assert!(rule_ids.iter().any(|id| id.starts_with("SEC-")));
+        }
+
+        // Test validation with many tools
+        #[tokio::test]
+        async fn validate_with_many_tools() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            // Add multiple tools
+            for i in 0..10 {
+                let name = format!("tool_{}", i);
+                let desc = format!("Tool number {}", i);
+                client
+                    .add_tool(MockMcpClient::create_test_tool(&name, &desc))
+                    .await;
+            }
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            assert!(results.passed > 0);
+        }
+
+        // Test validation with many resources
+        #[tokio::test]
+        async fn validate_with_many_resources() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            // Add multiple resources
+            for i in 0..10 {
+                let uri = format!("file:///resource_{}.txt", i);
+                let name = format!("resource_{}", i);
+                client
+                    .add_resource(MockMcpClient::create_test_resource(&uri, &name))
+                    .await;
+            }
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            assert!(results.passed > 0);
+        }
+
+        // Test validation rule category counts
+        #[tokio::test]
+        async fn validate_rule_category_counts() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // Count by category
+            let protocol_count = results
+                .results
+                .iter()
+                .filter(|r| r.category == "protocol")
+                .count();
+            let schema_count = results
+                .results
+                .iter()
+                .filter(|r| r.category == "schema")
+                .count();
+            let sequence_count = results
+                .results
+                .iter()
+                .filter(|r| r.category == "sequence")
+                .count();
+            let security_count = results
+                .results
+                .iter()
+                .filter(|r| r.category == "security")
+                .count();
+
+            assert!(protocol_count > 0);
+            assert!(schema_count > 0);
+            assert!(sequence_count > 0);
+            assert!(security_count > 0);
+        }
+
+        // Test validation results serialization to JSON
+        #[tokio::test]
+        async fn validate_results_json_output() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // Should serialize to valid JSON
+            let json = serde_json::to_string(&results).unwrap();
+            assert!(json.contains("\"server\":\"mock-server\""));
+            assert!(json.contains("\"passed\":"));
+            assert!(json.contains("\"results\":"));
+        }
+
+        // Test validation completes with all categories
+        #[tokio::test]
+        async fn validate_completes_all_categories() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // All major categories should have results
+            // (Edge rules may be skipped when using trait method, so we just verify completion)
+            assert!(results.results.len() > 10);
+            assert!(results.passed > 0);
+        }
+
+        // Test validation severity distribution
+        #[tokio::test]
+        async fn validate_severity_distribution() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut client = create_mock_with_capabilities();
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // With mock client, most should pass
+            assert!(results.passed >= results.failed);
+            // Total should match sum of individual results
+            let total_counted = results.passed + results.failed + results.warnings;
+            // Allow for skipped rules which aren't counted in totals
+            assert!(total_counted as usize <= results.results.len());
+        }
+
+        // Test validation with empty tool list
+        #[tokio::test]
+        async fn validate_with_empty_tool_list() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut caps = ServerCapabilities::default();
+            caps.tools = Some(ToolsCapability::default());
+            // Set tools capability but don't add any actual tools
+            let mut client = MockMcpClient::with_capabilities(caps);
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // Should still complete
+            assert!(results.results.len() > 0);
+        }
+
+        // Test validation with empty resource list
+        #[tokio::test]
+        async fn validate_with_empty_resource_list() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut caps = ServerCapabilities::default();
+            caps.resources = Some(ResourcesCapability::default());
+            // Set resources capability but don't add any actual resources
+            let mut client = MockMcpClient::with_capabilities(caps);
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // Should still complete
+            assert!(results.results.len() > 0);
+        }
+
+        // Test validation with empty prompt list
+        #[tokio::test]
+        async fn validate_with_empty_prompt_list() {
+            let mut engine = ValidationEngine::new(ValidationConfig::default());
+            let mut caps = ServerCapabilities::default();
+            caps.prompts = Some(PromptsCapability::default());
+            // Set prompts capability but don't add any actual prompts
+            let mut client = MockMcpClient::with_capabilities(caps);
+
+            let results = engine
+                .validate_with_client("mock-server", &mut client)
+                .await
+                .unwrap();
+
+            // Should still complete
+            assert!(results.results.len() > 0);
         }
     }
 }

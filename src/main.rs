@@ -14,6 +14,7 @@ mod baseline;
 mod cache;
 mod cli;
 mod client;
+mod fingerprinting;
 mod fuzzer;
 mod protocol;
 mod reporter;
@@ -24,6 +25,9 @@ mod validator;
 
 use cli::commands;
 use cli::commands::explain::{CliAiProvider, CliAudienceLevel};
+use cli::config::{
+    AiExplainConfig, BaselineConfig, OutputConfig, ScanCommandConfig, ScanRunConfig,
+};
 use fuzzer::FuzzProfile;
 use scanner::Severity;
 
@@ -319,6 +323,53 @@ enum Commands {
         #[arg(short, long)]
         config: Option<std::path::PathBuf>,
     },
+
+    /// Generate and compare tool definition fingerprints
+    Fingerprint {
+        #[command(subcommand)]
+        action: FingerprintAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum FingerprintAction {
+    /// Generate fingerprints for a server's tools
+    Generate {
+        /// Path to MCP server executable or server name from config
+        #[arg(required = true)]
+        server: String,
+
+        /// Path to MCP config file (auto-detected if not specified)
+        #[arg(short, long)]
+        config: Option<std::path::PathBuf>,
+
+        /// Output file path for fingerprints
+        #[arg(short, long)]
+        output: Option<std::path::PathBuf>,
+
+        /// Timeout for server operations (seconds)
+        #[arg(short, long, default_value = "30")]
+        timeout: u64,
+    },
+
+    /// Compare current fingerprints against a baseline
+    Compare {
+        /// Path to MCP server executable or server name from config
+        #[arg(required = true)]
+        server: String,
+
+        /// Path to baseline file for comparison
+        #[arg(short, long, required = true)]
+        baseline: std::path::PathBuf,
+
+        /// Path to MCP config file (auto-detected if not specified)
+        #[arg(short, long)]
+        config: Option<std::path::PathBuf>,
+
+        /// Timeout for server operations (seconds)
+        #[arg(short, long, default_value = "30")]
+        timeout: u64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -496,24 +547,52 @@ async fn main() -> Result<()> {
             diff_only,
             fail_on,
         } => {
-            let scan_args = commands::scan::ScanArgs::new(
-                server,
-                args,
-                profile,
-                include,
-                exclude,
-                timeout,
-                cli.format,
-                explain,
-                ai_provider,
-                ai_model,
-                baseline,
-                save_baseline,
-                update_baseline,
-                diff_only,
-                fail_on,
-            );
-            commands::scan::run(scan_args).await?;
+            // Build run configuration
+            let mut run_config = ScanRunConfig::new(server, profile)
+                .with_args(args)
+                .with_timeout(timeout);
+            if let Some(inc) = include {
+                run_config.include = Some(inc);
+            }
+            if let Some(exc) = exclude {
+                run_config.exclude = Some(exc);
+            }
+
+            // Build baseline configuration
+            let mut baseline_config = BaselineConfig::default()
+                .with_update(update_baseline)
+                .with_diff_only(diff_only);
+            if let Some(path) = baseline {
+                baseline_config = baseline_config.with_baseline(path);
+            }
+            if let Some(path) = save_baseline {
+                baseline_config = baseline_config.with_save_baseline(path);
+            }
+            if let Some(severities) = fail_on {
+                baseline_config = baseline_config.with_fail_on(severities);
+            }
+
+            // Build AI configuration
+            let ai_config = if explain {
+                let mut config = AiExplainConfig::enabled(ai_provider);
+                if let Some(model) = ai_model {
+                    config = config.with_model(model);
+                }
+                config
+            } else {
+                AiExplainConfig::disabled()
+            };
+
+            // Build output configuration
+            let output_config = OutputConfig::new(cli.format);
+
+            // Combine into ScanCommandConfig
+            let scan_config = ScanCommandConfig::new(run_config)
+                .with_baseline(baseline_config)
+                .with_ai(ai_config)
+                .with_output(output_config);
+
+            commands::scan::run(scan_config).await?;
         }
         Commands::Fuzz {
             server,
@@ -619,6 +698,38 @@ async fn main() -> Result<()> {
         Commands::Servers { config } => {
             commands::servers::run(config.as_deref())?;
         }
+        Commands::Fingerprint { action } => match action {
+            FingerprintAction::Generate {
+                server,
+                config,
+                output,
+                timeout,
+            } => {
+                commands::fingerprint::run_generate(
+                    &server,
+                    config.as_deref(),
+                    output.as_deref(),
+                    timeout,
+                    cli.format,
+                )
+                .await?;
+            }
+            FingerprintAction::Compare {
+                server,
+                baseline,
+                config,
+                timeout,
+            } => {
+                commands::fingerprint::run_compare(
+                    &server,
+                    &baseline,
+                    config.as_deref(),
+                    timeout,
+                    cli.format,
+                )
+                .await?;
+            }
+        },
     }
 
     Ok(())

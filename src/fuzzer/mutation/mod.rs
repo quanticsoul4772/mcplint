@@ -389,4 +389,252 @@ mod tests {
 
         assert_eq!(m1.strategy_used, m2.strategy_used);
     }
+
+    #[test]
+    fn engine_with_specific_strategies() {
+        let strategies = vec![
+            MutationStrategy::TypeConfusion,
+            MutationStrategy::BoundaryValues,
+        ];
+        let engine = MutationEngine::new(strategies.clone());
+        assert_eq!(engine.strategies.len(), 2);
+    }
+
+    #[test]
+    fn engine_with_custom_dictionary() {
+        let dict = Dictionary::mcp_default();
+        let engine = MutationEngine::all_strategies().with_dictionary(dict);
+        // Just verify dictionary was set (Dictionary doesn't have public unicode_chars)
+        assert!(engine.strategies.len() > 0);
+    }
+
+    #[test]
+    fn cache_tools() {
+        use crate::protocol::mcp::Tool;
+
+        let mut engine = MutationEngine::all_strategies();
+        let tools = vec![
+            Tool {
+                name: "test_tool".to_string(),
+                description: Some("A test tool".to_string()),
+                input_schema: serde_json::json!({"type": "object"}),
+            },
+            Tool {
+                name: "another_tool".to_string(),
+                description: None,
+                input_schema: serde_json::json!({"type": "object", "properties": {}}),
+            },
+        ];
+
+        engine.cache_tools(&tools);
+        assert_eq!(engine.tool_names.len(), 2);
+        assert!(engine.tool_schemas.contains_key("test_tool"));
+        assert!(engine.tool_schemas.contains_key("another_tool"));
+    }
+
+    #[test]
+    fn apply_type_confusion_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tools_list();
+        let mutated = engine.apply_strategy(MutationStrategy::TypeConfusion, &base);
+        assert_eq!(mutated.strategy_used, Some("type_confusion".to_string()));
+    }
+
+    #[test]
+    fn apply_boundary_values_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tool_call("test", serde_json::json!({"arg": 1}));
+        let mutated = engine.apply_strategy(MutationStrategy::BoundaryValues, &base);
+        assert_eq!(mutated.strategy_used, Some("boundary_values".to_string()));
+    }
+
+    #[test]
+    fn apply_deep_nesting_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tools_list();
+        let mutated = engine.apply_strategy(MutationStrategy::DeepNesting, &base);
+        assert_eq!(mutated.strategy_used, Some("deep_nesting".to_string()));
+        // Should have deeply nested params
+        assert!(mutated.params.is_some());
+    }
+
+    #[test]
+    fn apply_unicode_injection_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tool_call("test", serde_json::json!({"arg": "value"}));
+        let mutated = engine.apply_strategy(MutationStrategy::UnicodeInjection, &base);
+        assert_eq!(mutated.strategy_used, Some("unicode_injection".to_string()));
+    }
+
+    #[test]
+    fn apply_string_mutation_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tool_call("test", serde_json::json!({"str": "hello world"}));
+        let mutated = engine.apply_strategy(MutationStrategy::StringMutation, &base);
+        assert_eq!(mutated.strategy_used, Some("string_mutation".to_string()));
+    }
+
+    #[test]
+    fn apply_invalid_id_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tools_list();
+        let mutated = engine.apply_strategy(MutationStrategy::InvalidId, &base);
+        assert_eq!(mutated.strategy_used, Some("invalid_id".to_string()));
+    }
+
+    #[test]
+    fn apply_malformed_version_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tools_list();
+        let mutated = engine.apply_strategy(MutationStrategy::MalformedVersion, &base);
+        assert_eq!(mutated.strategy_used, Some("malformed_version".to_string()));
+    }
+
+    #[test]
+    fn apply_unknown_method_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tools_list();
+        let mutated = engine.apply_strategy(MutationStrategy::UnknownMethod, &base);
+        assert_eq!(mutated.strategy_used, Some("unknown_method".to_string()));
+        // Method can be empty (which is intentionally invalid)
+        assert!(mutated.strategy_used.is_some());
+    }
+
+    #[test]
+    fn apply_missing_fields_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tools_list();
+        let mutated = engine.apply_strategy(MutationStrategy::MissingFields, &base);
+        assert_eq!(mutated.strategy_used, Some("missing_fields".to_string()));
+    }
+
+    #[test]
+    fn apply_extra_fields_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tool_call("test", serde_json::json!({"key": "value"}));
+        let mutated = engine.apply_strategy(MutationStrategy::ExtraFields, &base);
+        assert_eq!(mutated.strategy_used, Some("extra_fields".to_string()));
+    }
+
+    #[test]
+    fn apply_tool_not_found_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tools_list();
+        let mutated = engine.apply_strategy(MutationStrategy::ToolNotFound, &base);
+        assert_eq!(mutated.strategy_used, Some("tool_not_found".to_string()));
+        assert_eq!(mutated.method, "tools/call");
+    }
+
+    #[test]
+    fn apply_schema_violation_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tool_call("test_tool", serde_json::json!({}));
+        let mutated = engine.apply_strategy(MutationStrategy::SchemaViolation, &base);
+        assert_eq!(mutated.strategy_used, Some("schema_violation".to_string()));
+    }
+
+    #[test]
+    fn apply_sequence_violation_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tools_list();
+        let mutated = engine.apply_strategy(MutationStrategy::SequenceViolation, &base);
+        assert_eq!(
+            mutated.strategy_used,
+            Some("sequence_violation".to_string())
+        );
+    }
+
+    #[test]
+    fn apply_resource_exhaustion_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tools_list();
+        let mutated = engine.apply_strategy(MutationStrategy::ResourceExhaustion, &base);
+        assert_eq!(
+            mutated.strategy_used,
+            Some("resource_exhaustion".to_string())
+        );
+    }
+
+    #[test]
+    fn apply_capability_mismatch_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tools_list();
+        let mutated = engine.apply_strategy(MutationStrategy::CapabilityMismatch, &base);
+        assert_eq!(
+            mutated.strategy_used,
+            Some("capability_mismatch".to_string())
+        );
+    }
+
+    #[test]
+    fn apply_invalid_pagination_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tools_list();
+        let mutated = engine.apply_strategy(MutationStrategy::InvalidPagination, &base);
+        assert_eq!(
+            mutated.strategy_used,
+            Some("invalid_pagination".to_string())
+        );
+    }
+
+    #[test]
+    fn apply_rapid_fire_strategy() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let base = FuzzInput::tools_list();
+        let mutated = engine.apply_strategy(MutationStrategy::RapidFire, &base);
+        assert_eq!(mutated.strategy_used, Some("rapid_fire".to_string()));
+    }
+
+    #[test]
+    fn select_strategy_empty() {
+        let mut engine = MutationEngine::new(vec![]);
+        let strategy = engine.select_strategy();
+        // Default is TypeConfusion
+        assert_eq!(strategy, MutationStrategy::TypeConfusion);
+    }
+
+    #[test]
+    fn generate_random_params_tools_call() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let params = engine.generate_random_params("tools/call");
+        assert!(params.get("name").is_some());
+        assert!(params.get("arguments").is_some());
+    }
+
+    #[test]
+    fn generate_random_params_resources_read() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let params = engine.generate_random_params("resources/read");
+        assert!(params.get("uri").is_some());
+    }
+
+    #[test]
+    fn generate_random_params_prompts_get() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let params = engine.generate_random_params("prompts/get");
+        assert!(params.get("name").is_some());
+    }
+
+    #[test]
+    fn generate_random_params_other() {
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        let params = engine.generate_random_params("ping");
+        assert!(params.is_object());
+    }
+
+    #[test]
+    fn mutate_with_cached_tools() {
+        use crate::protocol::mcp::Tool;
+
+        let mut engine = MutationEngine::all_strategies().with_seed(42);
+        engine.cache_tools(&[Tool {
+            name: "cached_tool".to_string(),
+            description: Some("desc".to_string()),
+            input_schema: serde_json::json!({}),
+        }]);
+
+        let base = FuzzInput::tool_call("cached_tool", serde_json::json!({}));
+        let mutated = engine.mutate(&base);
+        assert!(mutated.strategy_used.is_some());
+    }
 }

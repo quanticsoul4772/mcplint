@@ -427,4 +427,276 @@ mod tests {
         let response = FuzzResponse::from_jsonrpc(&error);
         assert!(matches!(response.result, FuzzResponseResult::Error(_)));
     }
+
+    #[test]
+    fn from_jsonrpc_invalid_response() {
+        let invalid = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 1
+        });
+
+        let response = FuzzResponse::from_jsonrpc(&invalid);
+        assert!(matches!(response.result, FuzzResponseResult::Error(_)));
+    }
+
+    #[test]
+    fn detect_assertion_failure() {
+        let detector = CrashDetector::new(5000);
+        let response = FuzzResponse::error(-32603, "assertion failed: x > 0");
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Crash(CrashInfo {
+                crash_type: CrashType::AssertionFailure,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn detect_segfault() {
+        let detector = CrashDetector::new(5000);
+        let response = FuzzResponse::error(-32603, "SIGSEGV: segmentation fault");
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Crash(CrashInfo {
+                crash_type: CrashType::Segfault,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn detect_null_pointer() {
+        let detector = CrashDetector::new(5000);
+        let response = FuzzResponse::error(-32603, "null pointer dereference");
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Crash(CrashInfo {
+                crash_type: CrashType::Segfault,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn detect_connection_lost() {
+        let detector = CrashDetector::new(5000);
+        let response = FuzzResponse::connection_lost("connection reset by peer");
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Crash(CrashInfo {
+                crash_type: CrashType::ConnectionDrop,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn detect_process_exit_abort() {
+        let detector = CrashDetector::new(5000);
+        let response = FuzzResponse::process_exit(134);
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Crash(CrashInfo {
+                crash_type: CrashType::AssertionFailure,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn detect_process_exit_oom() {
+        let detector = CrashDetector::new(5000);
+        let response = FuzzResponse::process_exit(137);
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Crash(CrashInfo {
+                crash_type: CrashType::OutOfMemory,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn detect_process_exit_success() {
+        let detector = CrashDetector::new(5000);
+        let response = FuzzResponse::process_exit(0);
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(analysis, CrashAnalysis::None));
+    }
+
+    #[test]
+    fn detect_panic_with_stack_trace() {
+        let detector = CrashDetector::new(5000);
+        let response = FuzzResponse::error(
+            -32603,
+            "thread 'main' panicked at 'assertion failed'\nstack backtrace:\n  0: foo::bar\n",
+        );
+
+        let analysis = detector.analyze(&response);
+        if let CrashAnalysis::Crash(info) = analysis {
+            assert_eq!(info.crash_type, CrashType::Panic);
+            assert!(info.stack_trace.is_some());
+        } else {
+            panic!("Expected Crash analysis");
+        }
+    }
+
+    #[test]
+    fn detect_interesting_parse_error() {
+        let detector = CrashDetector::new(5000);
+        let response = FuzzResponse::error(-32700, "Parse error");
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Interesting(InterestingReason::ProtocolViolation)
+        ));
+    }
+
+    #[test]
+    fn detect_interesting_invalid_request() {
+        let detector = CrashDetector::new(5000);
+        let response = FuzzResponse::error(-32600, "Invalid Request");
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Interesting(InterestingReason::ProtocolViolation)
+        ));
+    }
+
+    #[test]
+    fn detect_interesting_new_error_code() {
+        let detector = CrashDetector::new(5000);
+        // Non-standard error code
+        let response = FuzzResponse::error(123, "Custom error");
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Interesting(InterestingReason::NewErrorCode)
+        ));
+    }
+
+    #[test]
+    fn detect_interesting_verbose_internal_error() {
+        let detector = CrashDetector::new(5000);
+        // Long internal error message might leak info
+        let long_message = "Internal error: ".to_string() + &"x".repeat(100);
+        let response = FuzzResponse::error(-32603, &long_message);
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Interesting(InterestingReason::ProtocolViolation)
+        ));
+    }
+
+    #[test]
+    fn analyze_success_with_error_content() {
+        let detector = CrashDetector::new(5000);
+        let response = FuzzResponse::success(serde_json::json!({
+            "error": "Something went wrong",
+            "errorCode": 500
+        }));
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Interesting(InterestingReason::UnexpectedSuccess)
+        ));
+    }
+
+    #[test]
+    fn analyze_success_with_panic_message() {
+        let detector = CrashDetector::new(5000);
+        let response = FuzzResponse::success(serde_json::json!({
+            "message": "panic occurred in handler"
+        }));
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Interesting(InterestingReason::ProtocolViolation)
+        ));
+    }
+
+    #[test]
+    fn analyze_normal_success() {
+        let detector = CrashDetector::new(5000);
+        let response = FuzzResponse::success(serde_json::json!({
+            "tools": []
+        }));
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(analysis, CrashAnalysis::None));
+    }
+
+    #[test]
+    fn crash_analysis_is_crash() {
+        let analysis = CrashAnalysis::Crash(CrashInfo {
+            crash_type: CrashType::Panic,
+            message: "test".to_string(),
+            stack_trace: None,
+        });
+        assert!(analysis.is_crash());
+        assert!(!analysis.is_hang());
+        assert!(!analysis.is_interesting());
+    }
+
+    #[test]
+    fn crash_analysis_is_hang() {
+        let analysis = CrashAnalysis::Hang(HangInfo { timeout_ms: 5000 });
+        assert!(!analysis.is_crash());
+        assert!(analysis.is_hang());
+        assert!(!analysis.is_interesting());
+    }
+
+    #[test]
+    fn crash_analysis_is_interesting() {
+        let analysis = CrashAnalysis::Interesting(InterestingReason::NewCoverage);
+        assert!(!analysis.is_crash());
+        assert!(!analysis.is_hang());
+        assert!(analysis.is_interesting());
+    }
+
+    #[test]
+    fn fuzz_response_with_time() {
+        let response = FuzzResponse::success(serde_json::json!({})).with_time(123);
+        assert_eq!(response.response_time_ms, 123);
+    }
+
+    #[test]
+    fn from_jsonrpc_error_with_data() {
+        let error = serde_json::json!({
+            "jsonrpc": "2.0",
+            "error": {
+                "code": -32603,
+                "message": "Internal error",
+                "data": {"details": "more info"}
+            },
+            "id": 1
+        });
+
+        let response = FuzzResponse::from_jsonrpc(&error);
+        if let FuzzResponseResult::Error(e) = response.result {
+            assert!(e.data.is_some());
+        } else {
+            panic!("Expected error response");
+        }
+    }
 }

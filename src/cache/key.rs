@@ -190,4 +190,126 @@ mod tests {
         );
         assert_eq!(CacheCategory::from_str("invalid"), None);
     }
+
+    #[test]
+    fn category_parsing_all_variants() {
+        assert_eq!(
+            CacheCategory::from_str("schema"),
+            Some(CacheCategory::Schema)
+        );
+        assert_eq!(
+            CacheCategory::from_str("scan_result"),
+            Some(CacheCategory::ScanResult)
+        );
+        assert_eq!(
+            CacheCategory::from_str("scan_results"),
+            Some(CacheCategory::ScanResult)
+        );
+        assert_eq!(
+            CacheCategory::from_str("scanresult"),
+            Some(CacheCategory::ScanResult)
+        );
+        assert_eq!(
+            CacheCategory::from_str("corpus"),
+            Some(CacheCategory::Corpus)
+        );
+        assert_eq!(
+            CacheCategory::from_str("tool_hash"),
+            Some(CacheCategory::ToolHash)
+        );
+        assert_eq!(
+            CacheCategory::from_str("tool_hashes"),
+            Some(CacheCategory::ToolHash)
+        );
+        assert_eq!(
+            CacheCategory::from_str("toolhash"),
+            Some(CacheCategory::ToolHash)
+        );
+        assert_eq!(
+            CacheCategory::from_str("ai_response"),
+            Some(CacheCategory::AiResponse)
+        );
+        assert_eq!(
+            CacheCategory::from_str("ai_responses"),
+            Some(CacheCategory::AiResponse)
+        );
+        assert_eq!(
+            CacheCategory::from_str("airesponse"),
+            Some(CacheCategory::AiResponse)
+        );
+    }
+
+    #[test]
+    fn category_all() {
+        let all = CacheCategory::all();
+        assert_eq!(all.len(), 6);
+        assert!(all.contains(&CacheCategory::Schema));
+        assert!(all.contains(&CacheCategory::ScanResult));
+        assert!(all.contains(&CacheCategory::Validation));
+        assert!(all.contains(&CacheCategory::Corpus));
+        assert!(all.contains(&CacheCategory::ToolHash));
+        assert!(all.contains(&CacheCategory::AiResponse));
+    }
+
+    #[test]
+    fn category_display() {
+        assert_eq!(CacheCategory::Schema.to_string(), "schemas");
+        assert_eq!(CacheCategory::ScanResult.to_string(), "scan_results");
+        assert_eq!(CacheCategory::Validation.to_string(), "validation");
+        assert_eq!(CacheCategory::Corpus.to_string(), "corpus");
+        assert_eq!(CacheCategory::ToolHash.to_string(), "tool_hashes");
+        assert_eq!(CacheCategory::AiResponse.to_string(), "ai_responses");
+    }
+
+    #[test]
+    fn cache_key_new() {
+        let key = CacheKey::new(CacheCategory::Schema, "test-identifier");
+        assert_eq!(key.category, CacheCategory::Schema);
+        assert_eq!(key.identifier, "test-identifier");
+    }
+
+    #[test]
+    fn cache_key_corpus() {
+        let key = CacheKey::corpus("my-server");
+        assert_eq!(key.category, CacheCategory::Corpus);
+        assert_eq!(key.identifier, "my-server");
+    }
+
+    #[test]
+    fn cache_key_tool_hash() {
+        let key = CacheKey::tool_hash("server-id");
+        assert_eq!(key.category, CacheCategory::ToolHash);
+        assert_eq!(key.identifier, "server-id");
+    }
+
+    #[test]
+    fn cache_key_ai_response() {
+        let key = CacheKey::ai_response("query-hash-123");
+        assert_eq!(key.category, CacheCategory::AiResponse);
+        assert_eq!(key.identifier, "query-hash-123");
+    }
+
+    #[test]
+    fn cache_key_hash_equality() {
+        use std::collections::HashSet;
+        let key1 = CacheKey::schema("abc");
+        let key2 = CacheKey::schema("abc");
+        let key3 = CacheKey::schema("xyz");
+
+        let mut set = HashSet::new();
+        set.insert(key1.clone());
+        assert!(set.contains(&key2));
+        assert!(!set.contains(&key3));
+    }
+
+    #[test]
+    fn cache_key_display_all_categories() {
+        assert_eq!(CacheKey::schema("test").to_string(), "schemas:test");
+        assert_eq!(CacheKey::corpus("test").to_string(), "corpus:test");
+        assert_eq!(CacheKey::tool_hash("test").to_string(), "tool_hashes:test");
+        assert_eq!(
+            CacheKey::ai_response("test").to_string(),
+            "ai_responses:test"
+        );
+    }
 }

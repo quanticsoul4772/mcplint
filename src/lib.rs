@@ -36,6 +36,7 @@ pub mod ai;
 pub mod baseline;
 pub mod cache;
 pub mod client;
+pub mod fingerprinting;
 pub mod fuzzer;
 pub mod protocol;
 pub mod reporter;
@@ -48,5 +49,9 @@ pub mod validator;
 pub use ai::{AiConfig, ExplainEngine, ExplanationResponse};
 pub use baseline::{Baseline, DiffEngine, DiffResult};
 pub use cache::{CacheConfig, CacheManager};
+pub use fingerprinting::{
+    ChangeSeverity, ChangeType, FingerprintComparator, FingerprintDiff, FingerprintHasher,
+    FingerprintMetadata, NormalizedSchema, SchemaNormalizer, ToolFingerprint,
+};
 pub use scanner::{ScanEngine, ScanResults};
 pub use validator::ValidationEngine;

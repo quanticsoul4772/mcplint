@@ -330,4 +330,184 @@ mod tests {
         assert!(method_cov.contains_key("tools/list"));
         assert!(method_cov.contains_key("resources/list"));
     }
+
+    #[test]
+    fn tracker_default() {
+        let tracker = CoverageTracker::default();
+        assert_eq!(tracker.unique_paths(), 0);
+        assert_eq!(tracker.total_inputs(), 0);
+    }
+
+    #[test]
+    fn tracker_reset() {
+        let mut tracker = CoverageTracker::new();
+        let input = FuzzInput::tools_list();
+        let response = FuzzResponse::success(serde_json::json!({}));
+
+        tracker.record(&input, &response);
+        assert_eq!(tracker.unique_paths(), 1);
+        assert_eq!(tracker.total_inputs(), 1);
+
+        tracker.reset();
+        assert_eq!(tracker.unique_paths(), 0);
+        assert_eq!(tracker.total_inputs(), 0);
+    }
+
+    #[test]
+    fn has_seen() {
+        let mut tracker = CoverageTracker::new();
+        let input = FuzzInput::tools_list();
+        let response = FuzzResponse::success(serde_json::json!({}));
+
+        let hash = tracker.hash_response(&input, &response);
+        assert!(!tracker.has_seen(hash));
+
+        tracker.record(&input, &response);
+        assert!(tracker.has_seen(hash));
+    }
+
+    #[test]
+    fn hit_count() {
+        let mut tracker = CoverageTracker::new();
+        let input = FuzzInput::tools_list();
+        let response = FuzzResponse::success(serde_json::json!({}));
+
+        let hash = tracker.hash_response(&input, &response);
+
+        tracker.record(&input, &response);
+        assert_eq!(tracker.hit_count(hash), 1);
+
+        tracker.record(&input, &response);
+        assert_eq!(tracker.hit_count(hash), 2);
+    }
+
+    #[test]
+    fn hit_count_unknown_hash() {
+        let tracker = CoverageTracker::new();
+        assert_eq!(tracker.hit_count(12345), 0);
+    }
+
+    #[test]
+    fn hash_timeout_response() {
+        let tracker = CoverageTracker::new();
+        let input = FuzzInput::tools_list();
+        let response = FuzzResponse::timeout();
+
+        let hash = tracker.hash_response(&input, &response);
+        assert!(hash > 0);
+    }
+
+    #[test]
+    fn hash_connection_lost_response() {
+        let tracker = CoverageTracker::new();
+        let input = FuzzInput::tools_list();
+        let response = FuzzResponse::connection_lost("connection reset");
+
+        let hash = tracker.hash_response(&input, &response);
+        assert!(hash > 0);
+    }
+
+    #[test]
+    fn hash_process_exit_response() {
+        let tracker = CoverageTracker::new();
+        let input = FuzzInput::tools_list();
+        let response = FuzzResponse::process_exit(1);
+
+        let hash = tracker.hash_response(&input, &response);
+        assert!(hash > 0);
+    }
+
+    #[test]
+    fn hash_error_response() {
+        let tracker = CoverageTracker::new();
+        let input = FuzzInput::tools_list();
+        let response = FuzzResponse::error(-32601, "Method not found");
+
+        let hash = tracker.hash_response(&input, &response);
+        assert!(hash > 0);
+    }
+
+    #[test]
+    fn hash_different_error_codes() {
+        let tracker = CoverageTracker::new();
+        let input = FuzzInput::tools_list();
+
+        let err1 = FuzzResponse::error(-32601, "Method not found");
+        let err2 = FuzzResponse::error(-32602, "Invalid params");
+
+        let hash1 = tracker.hash_response(&input, &err1);
+        let hash2 = tracker.hash_response(&input, &err2);
+
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn hash_json_structure_array() {
+        let mut tracker = CoverageTracker::new();
+        let input = FuzzInput::tools_list();
+
+        let response1 = FuzzResponse::success(serde_json::json!({"items": [1, 2, 3]}));
+        let response2 = FuzzResponse::success(serde_json::json!({"items": [4, 5, 6]}));
+
+        // Same structure different values should have same hash
+        tracker.record(&input, &response1);
+        let is_new = tracker.record(&input, &response2);
+        // Should not be new because structure is same
+        assert!(!is_new);
+    }
+
+    #[test]
+    fn coverage_stats_default() {
+        let stats = CoverageStats::default();
+        assert_eq!(stats.paths_explored, 0);
+        assert_eq!(stats.edge_coverage, 0.0);
+        assert_eq!(stats.new_coverage_rate, 0.0);
+    }
+
+    #[test]
+    fn response_time_affects_hash() {
+        let tracker = CoverageTracker::new();
+        let input = FuzzInput::tools_list();
+
+        let response1 = FuzzResponse::success(serde_json::json!({})).with_time(50);
+        let response2 = FuzzResponse::success(serde_json::json!({})).with_time(150);
+
+        let hash1 = tracker.hash_response(&input, &response1);
+        let hash2 = tracker.hash_response(&input, &response2);
+
+        // Different time buckets should produce different hashes
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn hash_nested_objects() {
+        let tracker = CoverageTracker::new();
+        let input = FuzzInput::tools_list();
+
+        let response = FuzzResponse::success(serde_json::json!({
+            "level1": {
+                "level2": {
+                    "value": 123
+                }
+            }
+        }));
+
+        let hash = tracker.hash_response(&input, &response);
+        assert!(hash > 0);
+    }
+
+    #[test]
+    fn edge_coverage_capped_at_one() {
+        let mut tracker = CoverageTracker::new();
+        let input = FuzzInput::tools_list();
+
+        // Record many unique paths to exceed 100
+        for i in 0..150 {
+            let response = FuzzResponse::success(serde_json::json!({"index": i}));
+            tracker.record(&input, &response);
+        }
+
+        let stats = tracker.stats();
+        assert!(stats.edge_coverage <= 1.0);
+    }
 }
