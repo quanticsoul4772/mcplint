@@ -39,7 +39,32 @@ jobs:
       - name: Install Ollama (Linux)
         if: runner.os == 'Linux'
         run: |
-          curl -fsSL https://ollama.com/install.sh | sh
+          # Install Ollama with retry logic for transient 503 errors
+          install_ollama() {
+            local max_retries=5
+            local retry=0
+            local delay=5
+
+            while [ $retry -lt $max_retries ]; do
+              echo "Attempting Ollama installation (attempt $((retry + 1))/$max_retries)..."
+              if curl -fsSL --retry 3 --retry-delay 5 https://ollama.com/install.sh | sh; then
+                echo "Ollama installation successful!"
+                return 0
+              fi
+
+              retry=$((retry + 1))
+              if [ $retry -lt $max_retries ]; then
+                echo "Installation failed, retrying in ${delay}s..."
+                sleep $delay
+                delay=$((delay * 2))  # Exponential backoff
+              fi
+            done
+
+            echo "ERROR: Ollama installation failed after $max_retries attempts"
+            return 1
+          }
+
+          install_ollama
           OLLAMA_KEEP_ALIVE=60m ollama serve &
           # Wait for server to be ready
           for i in {1..30}; do
