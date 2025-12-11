@@ -12,12 +12,16 @@ use serde::{Deserialize, Serialize};
 use crate::scanner::Finding;
 
 use super::super::config::ExplanationContext;
-use super::super::prompt::{PromptBuilder, SYSTEM_PROMPT};
+#[allow(unused_imports)]
+use super::super::prompt::PromptBuilder;
 use super::super::response::{
     CodeExample, EducationalContext, ExplanationMetadata, ExplanationResponse, Likelihood,
     RemediationGuide, ResourceCategory, ResourceLink, VulnerabilityExplanation, WeaknessInfo,
 };
 use super::{AiProvider, AiProviderError};
+
+/// Simplified system prompt for Ollama (local models need shorter context)
+const OLLAMA_SYSTEM_PROMPT: &str = "You are a security expert. Analyze vulnerabilities and respond with JSON containing: explanation (summary, technical_details, attack_scenario, impact, likelihood) and remediation (immediate_actions, permanent_fix).";
 
 /// Ollama local model provider
 pub struct OllamaProvider {
@@ -234,16 +238,26 @@ impl AiProvider for OllamaProvider {
     async fn explain_finding(
         &self,
         finding: &Finding,
-        context: &ExplanationContext,
+        _context: &ExplanationContext,
     ) -> Result<ExplanationResponse> {
         let start = Instant::now();
 
-        let prompt = PromptBuilder::new()
-            .with_finding(finding.clone())
-            .with_context(context.clone())
-            .build_finding_prompt();
+        // Use a simplified prompt for Ollama - local models perform better with shorter context
+        // The full PromptBuilder creates a very long prompt that causes timeouts on CPU inference
+        let prompt = format!(
+            r#"Analyze this security vulnerability and respond with JSON:
 
-        let response = self.make_request(&prompt, Some(SYSTEM_PROMPT)).await?;
+Rule: {} | Severity: {} | {}
+Description: {}
+
+Respond with this JSON structure:
+{{"explanation":{{"summary":"brief summary","technical_details":"details","attack_scenario":"how to exploit","impact":"what happens","likelihood":"low|medium|high"}},"remediation":{{"immediate_actions":["step1"],"permanent_fix":"fix description"}}}}"#,
+            finding.rule_id, finding.severity, finding.title, finding.description
+        );
+
+        let response = self
+            .make_request(&prompt, Some(OLLAMA_SYSTEM_PROMPT))
+            .await?;
         let response_time_ms = start.elapsed().as_millis() as u64;
 
         self.parse_response(finding, &response.response, response_time_ms)
@@ -267,7 +281,9 @@ impl AiProvider for OllamaProvider {
             question,
         );
 
-        let response = self.make_request(&prompt, Some(SYSTEM_PROMPT)).await?;
+        let response = self
+            .make_request(&prompt, Some(OLLAMA_SYSTEM_PROMPT))
+            .await?;
 
         Ok(response.response)
     }

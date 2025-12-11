@@ -460,10 +460,11 @@ async fn test_ollama_explain_finding() {
     let base_url =
         std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
+    // Use longer timeout - CPU inference on CI can be very slow for complex prompts
     let provider = OllamaProvider::new(
         base_url.clone(),
         "llama3.2".to_string(),
-        Duration::from_secs(120), // 2 minutes - model should be pre-loaded in CI
+        Duration::from_secs(300), // 5 minutes - CPU inference is slow on CI
     );
 
     // First check if Ollama is available
@@ -479,11 +480,12 @@ async fn test_ollama_explain_finding() {
     let context = ExplanationContext::new("test-server").with_audience(AudienceLevel::Intermediate);
 
     // Use retry logic to handle occasional LLM response parsing failures
-    let response = with_retry(3, || async {
+    // Only 2 retries to keep total time reasonable (max 600s)
+    let response = with_retry(2, || async {
         provider.explain_finding(&finding, &context).await
     })
     .await
-    .expect("Ollama explain_finding failed after 3 retries");
+    .expect("Ollama explain_finding failed after 2 retries");
 
     // Verify we got a real response
     assert!(
@@ -610,13 +612,13 @@ async fn test_all_providers_explain_same_finding() {
         panic!("OPENAI_API_KEY not set");
     }
 
-    // Ollama
+    // Ollama - use longer timeout for CPU inference on CI
     let base_url =
         std::env::var("OLLAMA_BASE_URL").unwrap_or_else(|_| "http://localhost:11434".to_string());
     let ollama = OllamaProvider::new(
         base_url.clone(),
         "llama3.2".to_string(),
-        Duration::from_secs(120), // 2 minutes - model should be pre-loaded in CI
+        Duration::from_secs(300), // 5 minutes - CPU inference is slow on CI
     );
 
     assert!(
@@ -626,11 +628,12 @@ async fn test_all_providers_explain_same_finding() {
     );
 
     // Use retry logic to handle occasional LLM response parsing failures
-    let response = with_retry(3, || async {
+    // Only 2 retries to keep total time reasonable
+    let response = with_retry(2, || async {
         ollama.explain_finding(&finding, &context).await
     })
     .await
-    .expect("Ollama failed to explain finding after 3 retries");
+    .expect("Ollama failed to explain finding after 2 retries");
     assert!(
         !response.explanation.summary.is_empty(),
         "Ollama: empty summary"
