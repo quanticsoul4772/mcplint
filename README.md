@@ -7,6 +7,7 @@ Security testing tool for Model Context Protocol (MCP) servers.
 - Protocol validation - verify MCP compliance
 - Security scanning - detect vulnerabilities
 - Coverage-guided fuzzing - find crashes and edge cases
+- Tool fingerprinting - detect schema changes and breaking API updates
 - AI-powered explanations - understand findings with remediation guidance
 - CI/CD integration - SARIF, JUnit, GitLab output formats
 - Config file support - reads Claude Desktop config to find servers
@@ -57,6 +58,10 @@ mcplint doctor
 # Cache management
 mcplint cache stats
 mcplint cache clear
+
+# Tool fingerprinting
+mcplint fingerprint generate <server>
+mcplint fingerprint compare <server> --baseline baseline.json
 
 # Generate config
 mcplint init
@@ -127,6 +132,34 @@ AI providers require environment variables:
 - Anthropic: ANTHROPIC_API_KEY
 - OpenAI: OPENAI_API_KEY
 - Ollama: runs locally, no key needed
+
+### fingerprint
+
+Generate and compare tool definition fingerprints to detect schema changes.
+
+```bash
+# Generate fingerprints
+mcplint fingerprint generate <server> [options]
+
+Options:
+  -o, --output <path>        Save fingerprints to file
+  -t, --timeout <seconds>    Timeout [default: 30]
+  -f, --format <format>      Output format: text, json
+
+# Compare against baseline
+mcplint fingerprint compare <server> --baseline <path> [options]
+
+Options:
+  -b, --baseline <path>      Baseline file for comparison (required)
+  -t, --timeout <seconds>    Timeout [default: 30]
+```
+
+Exit codes for compare:
+- 0: No changes or minor/patch changes
+- 1: Breaking changes detected
+- 2: Major changes detected
+
+See [docs/fingerprinting.md](docs/fingerprinting.md) for detailed documentation.
 
 ### servers
 
