@@ -468,4 +468,401 @@ mod tests {
     fn mock_transport_default() {
         let _transport = MockTransport::default();
     }
+
+    #[tokio::test]
+    async fn mock_transport_send_records_message() {
+        let mut transport = MockTransport::new();
+
+        let request = crate::protocol::JsonRpcRequest::new(
+            RequestId::Number(42),
+            "test.method",
+            Some(json!({"param": "value"})),
+        );
+        let message = JsonRpcMessage::Request(request);
+
+        transport.send(&message).await.unwrap();
+
+        let sent = transport.get_sent_messages().await;
+        assert_eq!(sent.len(), 1);
+        if let JsonRpcMessage::Request(req) = &sent[0] {
+            assert_eq!(req.method, "test.method");
+        } else {
+            panic!("Expected Request message");
+        }
+    }
+
+    #[tokio::test]
+    async fn mock_transport_send_multiple_messages() {
+        let mut transport = MockTransport::new();
+
+        for i in 0..5 {
+            let request = crate::protocol::JsonRpcRequest::new(
+                RequestId::Number(i),
+                format!("method_{}", i),
+                None,
+            );
+            transport
+                .send(&JsonRpcMessage::Request(request))
+                .await
+                .unwrap();
+        }
+
+        let sent = transport.get_sent_messages().await;
+        assert_eq!(sent.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn mock_transport_recv_returns_none() {
+        let mut transport = MockTransport::new();
+
+        let result = transport.recv().await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn mock_transport_recv_always_none() {
+        let mut transport = MockTransport::new();
+
+        // Call multiple times
+        for _ in 0..3 {
+            let result = transport.recv().await.unwrap();
+            assert!(result.is_none());
+        }
+    }
+
+    #[tokio::test]
+    async fn mock_transport_clear_responses_empties_queue() {
+        let mut transport = MockTransport::new();
+
+        transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!({"n": 1})),
+                MockTransport::success_response(RequestId::Number(2), json!({"n": 2})),
+            ])
+            .await;
+
+        transport.clear_responses().await;
+
+        // Should return error since no responses queued
+        let result = transport.request("test", None).await.unwrap();
+        assert!(result.error.is_some());
+    }
+
+    #[tokio::test]
+    async fn mock_transport_clear_sent_empties_messages() {
+        let mut transport = MockTransport::new();
+
+        transport
+            .queue_response(MockTransport::success_response(
+                RequestId::Number(1),
+                json!({}),
+            ))
+            .await;
+
+        transport.request("method1", None).await.unwrap();
+        transport.notify("notif1", None).await.unwrap();
+
+        assert_eq!(transport.get_sent_messages().await.len(), 1);
+        assert_eq!(transport.get_sent_notifications().await.len(), 1);
+
+        transport.clear_sent().await;
+
+        assert_eq!(transport.get_sent_messages().await.len(), 0);
+        assert_eq!(transport.get_sent_notifications().await.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn mock_transport_request_id_incrementing() {
+        let mut transport = MockTransport::new();
+
+        transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!({})),
+                MockTransport::success_response(RequestId::Number(2), json!({})),
+                MockTransport::success_response(RequestId::Number(3), json!({})),
+            ])
+            .await;
+
+        let r1 = transport.request("m1", None).await.unwrap();
+        let r2 = transport.request("m2", None).await.unwrap();
+        let r3 = transport.request("m3", None).await.unwrap();
+
+        assert_eq!(r1.id, RequestId::Number(1));
+        assert_eq!(r2.id, RequestId::Number(2));
+        assert_eq!(r3.id, RequestId::Number(3));
+    }
+
+    #[tokio::test]
+    async fn mock_transport_request_id_counter_persists() {
+        let mut transport = MockTransport::new();
+
+        transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!({})),
+                MockTransport::success_response(RequestId::Number(2), json!({})),
+            ])
+            .await;
+
+        transport.request("method1", None).await.unwrap();
+
+        transport.clear_responses().await;
+        transport
+            .queue_response(MockTransport::success_response(
+                RequestId::Number(2),
+                json!({}),
+            ))
+            .await;
+
+        let r2 = transport.request("method2", None).await.unwrap();
+        assert_eq!(r2.id, RequestId::Number(2));
+    }
+
+    #[tokio::test]
+    async fn mock_transport_string_id_in_response() {
+        let mut transport = MockTransport::new();
+
+        transport
+            .queue_response(MockTransport::success_response(
+                RequestId::String("custom-id".to_string()),
+                json!({"data": "test"}),
+            ))
+            .await;
+
+        // Request will override the ID, but let's verify the response structure
+        let result = transport.request("test", None).await.unwrap();
+        assert!(result.result.is_some());
+        // ID will be overridden to match request ID (Number)
+        assert!(matches!(result.id, RequestId::Number(_)));
+    }
+
+    #[tokio::test]
+    async fn mock_transport_notification_with_none_params() {
+        let mut transport = MockTransport::new();
+
+        transport.notify("test.event", None).await.unwrap();
+
+        let notifications = transport.get_sent_notifications().await;
+        assert_eq!(notifications.len(), 1);
+        assert_eq!(notifications[0].0, "test.event");
+        assert!(notifications[0].1.is_none());
+    }
+
+    #[tokio::test]
+    async fn mock_transport_multiple_notifications() {
+        let mut transport = MockTransport::new();
+
+        transport
+            .notify("event1", Some(json!({"n": 1})))
+            .await
+            .unwrap();
+        transport
+            .notify("event2", Some(json!({"n": 2})))
+            .await
+            .unwrap();
+        transport.notify("event3", None).await.unwrap();
+
+        let notifications = transport.get_sent_notifications().await;
+        assert_eq!(notifications.len(), 3);
+        assert_eq!(notifications[0].0, "event1");
+        assert_eq!(notifications[1].0, "event2");
+        assert_eq!(notifications[2].0, "event3");
+        assert!(notifications[2].1.is_none());
+    }
+
+    #[tokio::test]
+    async fn mock_transport_message_tracking_after_clear() {
+        let mut transport = MockTransport::new();
+
+        transport
+            .queue_response(MockTransport::success_response(
+                RequestId::Number(1),
+                json!({}),
+            ))
+            .await;
+        transport.request("method1", None).await.unwrap();
+
+        transport.clear_sent().await;
+
+        transport
+            .queue_response(MockTransport::success_response(
+                RequestId::Number(2),
+                json!({}),
+            ))
+            .await;
+        transport.request("method2", None).await.unwrap();
+
+        let messages = transport.get_sent_messages().await;
+        assert_eq!(messages.len(), 1);
+        if let JsonRpcMessage::Request(req) = &messages[0] {
+            assert_eq!(req.method, "method2");
+        }
+    }
+
+    #[tokio::test]
+    async fn mock_transport_response_queue_fifo_order() {
+        let mut transport = MockTransport::new();
+
+        transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!({"order": "first"})),
+                MockTransport::success_response(RequestId::Number(2), json!({"order": "second"})),
+                MockTransport::success_response(RequestId::Number(3), json!({"order": "third"})),
+            ])
+            .await;
+
+        let r1 = transport.request("m", None).await.unwrap();
+        let r2 = transport.request("m", None).await.unwrap();
+        let r3 = transport.request("m", None).await.unwrap();
+
+        assert_eq!(r1.result.unwrap()["order"], "first");
+        assert_eq!(r2.result.unwrap()["order"], "second");
+        assert_eq!(r3.result.unwrap()["order"], "third");
+    }
+
+    #[tokio::test]
+    async fn mock_transport_mixed_response_types() {
+        let mut transport = MockTransport::new();
+
+        transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!({"status": "ok"})),
+                MockTransport::error_response(RequestId::Number(2), -32600, "Invalid request"),
+                MockTransport::success_response(RequestId::Number(3), json!({"status": "ok2"})),
+            ])
+            .await;
+
+        let r1 = transport.request("m1", None).await.unwrap();
+        assert!(r1.result.is_some());
+
+        let r2 = transport.request("m2", None).await.unwrap();
+        assert!(r2.error.is_some());
+
+        let r3 = transport.request("m3", None).await.unwrap();
+        assert!(r3.result.is_some());
+    }
+
+    #[test]
+    fn default_transport_factory_default_trait() {
+        let factory1 = DefaultTransportFactory;
+        let factory2 = DefaultTransportFactory::new();
+        // Both should be usable
+        assert_eq!(
+            std::mem::size_of_val(&factory1),
+            std::mem::size_of_val(&factory2)
+        );
+    }
+
+    #[tokio::test]
+    async fn mock_factory_with_pre_configured_responses() {
+        let transport = MockTransport::new();
+        transport
+            .queue_response(MockTransport::success_response(
+                RequestId::Number(1),
+                json!({"configured": true}),
+            ))
+            .await;
+
+        let factory = MockTransportFactory::new(transport);
+
+        let mut t = factory
+            .create(
+                "test",
+                &[],
+                TransportConfig::default(),
+                TransportType::Stdio,
+            )
+            .await
+            .unwrap();
+
+        let result = t.request("test", None).await.unwrap();
+        assert_eq!(result.result.unwrap()["configured"], true);
+    }
+
+    #[tokio::test]
+    async fn mock_factory_error_message_on_second_use() {
+        let transport = MockTransport::new();
+        let factory = MockTransportFactory::new(transport);
+
+        factory
+            .create(
+                "test",
+                &[],
+                TransportConfig::default(),
+                TransportType::Stdio,
+            )
+            .await
+            .unwrap();
+
+        let result = factory
+            .create(
+                "test2",
+                &[],
+                TransportConfig::default(),
+                TransportType::StreamableHttp,
+            )
+            .await;
+
+        assert!(result.is_err());
+        let err_msg = result.err().unwrap().to_string();
+        assert!(err_msg.contains("transport already consumed"));
+    }
+
+    #[tokio::test]
+    async fn mock_transport_request_with_params() {
+        let mut transport = MockTransport::new();
+
+        transport
+            .queue_response(MockTransport::success_response(
+                RequestId::Number(1),
+                json!({"received": true}),
+            ))
+            .await;
+
+        let params = json!({"key": "value", "number": 42});
+        transport.request("method", Some(params)).await.unwrap();
+
+        let messages = transport.get_sent_messages().await;
+        assert_eq!(messages.len(), 1);
+
+        if let JsonRpcMessage::Request(req) = &messages[0] {
+            assert!(req.params.is_some());
+            let p = req.params.as_ref().unwrap();
+            assert_eq!(p["key"], "value");
+            assert_eq!(p["number"], 42);
+        } else {
+            panic!("Expected Request message");
+        }
+    }
+
+    #[tokio::test]
+    async fn mock_transport_clone_shares_state() {
+        let mut transport1 = MockTransport::new();
+
+        transport1
+            .queue_response(MockTransport::success_response(
+                RequestId::Number(1),
+                json!({}),
+            ))
+            .await;
+        transport1.request("method1", None).await.unwrap();
+
+        let transport2 = transport1.clone();
+
+        // Both share the same sent messages
+        let messages1 = transport1.get_sent_messages().await;
+        let messages2 = transport2.get_sent_messages().await;
+        assert_eq!(messages1.len(), messages2.len());
+    }
+
+    #[tokio::test]
+    async fn mock_transport_close_multiple_times() {
+        let mut transport = MockTransport::new();
+
+        transport.close().await.unwrap();
+        assert!(transport.is_closed().await);
+
+        // Should be idempotent
+        transport.close().await.unwrap();
+        assert!(transport.is_closed().await);
+    }
 }

@@ -389,8 +389,10 @@ mod tests {
 
     #[test]
     fn fuzz_options_with_seed() {
-        let mut opts = FuzzOptions::default();
-        opts.seed = Some(12345);
+        let opts = FuzzOptions {
+            seed: Some(12345),
+            ..FuzzOptions::default()
+        };
         assert_eq!(opts.seed, Some(12345));
     }
 

@@ -383,4 +383,504 @@ mod tests {
         assert!(ctx.server_capabilities().is_none());
         assert_eq!(ctx.pending_request_count(), 0);
     }
+
+    // ConnectionState Display trait tests
+    #[test]
+    fn connection_state_display_disconnected() {
+        let state = ConnectionState::Disconnected;
+        assert_eq!(state.to_string(), "Disconnected");
+    }
+
+    #[test]
+    fn connection_state_display_connecting() {
+        let state = ConnectionState::Connecting;
+        assert_eq!(state.to_string(), "Connecting");
+    }
+
+    #[test]
+    fn connection_state_display_initializing() {
+        let state = ConnectionState::Initializing;
+        assert_eq!(state.to_string(), "Initializing");
+    }
+
+    #[test]
+    fn connection_state_display_ready() {
+        let state = ConnectionState::Ready;
+        assert_eq!(state.to_string(), "Ready");
+    }
+
+    #[test]
+    fn connection_state_display_shutting_down() {
+        let state = ConnectionState::ShuttingDown;
+        assert_eq!(state.to_string(), "ShuttingDown");
+    }
+
+    // StateTransitionError Display trait test
+    #[test]
+    fn state_transition_error_display() {
+        let error = StateTransitionError {
+            from: ConnectionState::Disconnected,
+            to: ConnectionState::Ready,
+        };
+        assert_eq!(
+            error.to_string(),
+            "Invalid state transition from Disconnected to Ready"
+        );
+    }
+
+    // PendingRequest tests
+    #[test]
+    fn pending_request_new() {
+        let req = PendingRequest::new("test_method");
+        assert_eq!(req.method, "test_method");
+        assert!(req.elapsed_secs() >= 0.0);
+    }
+
+    #[test]
+    fn pending_request_elapsed_secs() {
+        let req = PendingRequest::new("method");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        let elapsed = req.elapsed_secs();
+        assert!(elapsed >= 0.01); // At least 10ms
+        assert!(elapsed < 1.0); // But less than 1 second
+    }
+
+    // ConnectionContext::with_capabilities test
+    #[test]
+    fn connection_context_with_capabilities() {
+        let capabilities = ClientCapabilities {
+            experimental: Some(serde_json::json!({"test": true})),
+            ..Default::default()
+        };
+        let ctx = ConnectionContext::with_capabilities(capabilities.clone());
+
+        assert_eq!(ctx.state(), ConnectionState::Disconnected);
+        assert_eq!(
+            ctx.client_capabilities().experimental,
+            capabilities.experimental
+        );
+    }
+
+    // State query methods tests
+    #[test]
+    fn state_queries_in_connecting() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+
+        assert_eq!(ctx.state(), ConnectionState::Connecting);
+        assert!(!ctx.is_ready());
+        assert!(ctx.is_connected());
+        assert!(!ctx.can_send_request());
+        assert!(ctx.can_initialize());
+    }
+
+    #[test]
+    fn state_queries_in_initializing() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+        ctx.set_initializing().unwrap();
+
+        assert_eq!(ctx.state(), ConnectionState::Initializing);
+        assert!(!ctx.is_ready());
+        assert!(ctx.is_connected());
+        assert!(!ctx.can_send_request());
+        assert!(!ctx.can_initialize());
+    }
+
+    #[test]
+    fn state_queries_in_ready() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+        ctx.set_initializing().unwrap();
+        ctx.set_ready(
+            "2025-03-26".to_string(),
+            ServerCapabilities::default(),
+            "server".to_string(),
+            "1.0".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(ctx.state(), ConnectionState::Ready);
+        assert!(ctx.is_ready());
+        assert!(ctx.is_connected());
+        assert!(ctx.can_send_request());
+        assert!(!ctx.can_initialize());
+    }
+
+    #[test]
+    fn state_queries_in_shutting_down() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+        ctx.set_initializing().unwrap();
+        ctx.set_ready(
+            "2025-03-26".to_string(),
+            ServerCapabilities::default(),
+            "server".to_string(),
+            "1.0".to_string(),
+        )
+        .unwrap();
+        ctx.set_shutting_down().unwrap();
+
+        assert_eq!(ctx.state(), ConnectionState::ShuttingDown);
+        assert!(!ctx.is_ready());
+        assert!(ctx.is_connected());
+        assert!(!ctx.can_send_request());
+        assert!(!ctx.can_initialize());
+    }
+
+    // Invalid state transitions tests
+    #[test]
+    fn invalid_transition_connecting_to_ready() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+
+        let result = ctx.transition_to(ConnectionState::Ready);
+        assert!(result.is_err());
+        assert_eq!(ctx.state(), ConnectionState::Connecting);
+    }
+
+    #[test]
+    fn invalid_transition_initializing_to_connecting() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+        ctx.set_initializing().unwrap();
+
+        let result = ctx.transition_to(ConnectionState::Connecting);
+        assert!(result.is_err());
+        assert_eq!(ctx.state(), ConnectionState::Initializing);
+    }
+
+    #[test]
+    fn invalid_transition_ready_to_connecting() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+        ctx.set_initializing().unwrap();
+        ctx.set_ready(
+            "2025-03-26".to_string(),
+            ServerCapabilities::default(),
+            "server".to_string(),
+            "1.0".to_string(),
+        )
+        .unwrap();
+
+        let result = ctx.transition_to(ConnectionState::Connecting);
+        assert!(result.is_err());
+        assert_eq!(ctx.state(), ConnectionState::Ready);
+    }
+
+    #[test]
+    fn invalid_transition_shutting_down_to_ready() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+        ctx.set_initializing().unwrap();
+        ctx.set_ready(
+            "2025-03-26".to_string(),
+            ServerCapabilities::default(),
+            "server".to_string(),
+            "1.0".to_string(),
+        )
+        .unwrap();
+        ctx.set_shutting_down().unwrap();
+
+        let result = ctx.transition_to(ConnectionState::Ready);
+        assert!(result.is_err());
+        assert_eq!(ctx.state(), ConnectionState::ShuttingDown);
+    }
+
+    // Same state transitions (should be no-op)
+    #[test]
+    fn same_state_transition_disconnected() {
+        let mut ctx = ConnectionContext::new();
+
+        let result = ctx.transition_to(ConnectionState::Disconnected);
+        assert!(result.is_ok());
+        assert_eq!(ctx.state(), ConnectionState::Disconnected);
+    }
+
+    #[test]
+    fn same_state_transition_connecting() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+
+        let result = ctx.transition_to(ConnectionState::Connecting);
+        assert!(result.is_ok());
+        assert_eq!(ctx.state(), ConnectionState::Connecting);
+    }
+
+    #[test]
+    fn same_state_transition_ready() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+        ctx.set_initializing().unwrap();
+        ctx.set_ready(
+            "2025-03-26".to_string(),
+            ServerCapabilities::default(),
+            "server".to_string(),
+            "1.0".to_string(),
+        )
+        .unwrap();
+
+        let result = ctx.transition_to(ConnectionState::Ready);
+        assert!(result.is_ok());
+        assert_eq!(ctx.state(), ConnectionState::Ready);
+    }
+
+    // set_shutting_down test
+    #[test]
+    fn set_shutting_down_from_ready() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+        ctx.set_initializing().unwrap();
+        ctx.set_ready(
+            "2025-03-26".to_string(),
+            ServerCapabilities::default(),
+            "server".to_string(),
+            "1.0".to_string(),
+        )
+        .unwrap();
+
+        let result = ctx.set_shutting_down();
+        assert!(result.is_ok());
+        assert_eq!(ctx.state(), ConnectionState::ShuttingDown);
+    }
+
+    #[test]
+    fn set_shutting_down_from_invalid_state() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+
+        let result = ctx.set_shutting_down();
+        assert!(result.is_err());
+        assert_eq!(ctx.state(), ConnectionState::Connecting);
+    }
+
+    // Capability accessor tests
+    #[test]
+    fn client_capabilities_accessor() {
+        let capabilities = ClientCapabilities {
+            experimental: Some(serde_json::json!({"key": "value"})),
+            ..Default::default()
+        };
+        let ctx = ConnectionContext::with_capabilities(capabilities.clone());
+
+        assert_eq!(
+            ctx.client_capabilities().experimental,
+            capabilities.experimental
+        );
+    }
+
+    #[test]
+    fn server_capabilities_none_initially() {
+        let ctx = ConnectionContext::new();
+        assert!(ctx.server_capabilities().is_none());
+    }
+
+    #[test]
+    fn server_capabilities_after_ready() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+        ctx.set_initializing().unwrap();
+
+        let caps = ServerCapabilities {
+            tools: Some(Default::default()),
+            ..Default::default()
+        };
+        ctx.set_ready(
+            "2025-03-26".to_string(),
+            caps.clone(),
+            "server".to_string(),
+            "1.0".to_string(),
+        )
+        .unwrap();
+
+        assert!(ctx.server_capabilities().is_some());
+        assert!(ctx.server_capabilities().unwrap().tools.is_some());
+    }
+
+    #[test]
+    fn protocol_version_accessor() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+        ctx.set_initializing().unwrap();
+        ctx.set_ready(
+            "2025-03-26".to_string(),
+            ServerCapabilities::default(),
+            "server".to_string(),
+            "1.0".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(ctx.protocol_version(), Some("2025-03-26"));
+    }
+
+    #[test]
+    fn server_info_accessor() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+        ctx.set_initializing().unwrap();
+        ctx.set_ready(
+            "2025-03-26".to_string(),
+            ServerCapabilities::default(),
+            "test-server".to_string(),
+            "2.3.4".to_string(),
+        )
+        .unwrap();
+
+        assert_eq!(ctx.server_info(), Some(("test-server", "2.3.4")));
+    }
+
+    // Server capability checks when None
+    #[test]
+    fn server_has_tools_when_none() {
+        let ctx = ConnectionContext::new();
+        assert!(!ctx.server_has_tools());
+    }
+
+    #[test]
+    fn server_has_resources_when_none() {
+        let ctx = ConnectionContext::new();
+        assert!(!ctx.server_has_resources());
+    }
+
+    #[test]
+    fn server_has_prompts_when_none() {
+        let ctx = ConnectionContext::new();
+        assert!(!ctx.server_has_prompts());
+    }
+
+    #[test]
+    fn server_has_tools_when_present() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+        ctx.set_initializing().unwrap();
+        ctx.set_ready(
+            "2025-03-26".to_string(),
+            ServerCapabilities {
+                tools: Some(Default::default()),
+                ..Default::default()
+            },
+            "server".to_string(),
+            "1.0".to_string(),
+        )
+        .unwrap();
+
+        assert!(ctx.server_has_tools());
+        assert!(!ctx.server_has_resources());
+        assert!(!ctx.server_has_prompts());
+    }
+
+    #[test]
+    fn server_has_resources_when_present() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+        ctx.set_initializing().unwrap();
+        ctx.set_ready(
+            "2025-03-26".to_string(),
+            ServerCapabilities {
+                resources: Some(Default::default()),
+                ..Default::default()
+            },
+            "server".to_string(),
+            "1.0".to_string(),
+        )
+        .unwrap();
+
+        assert!(!ctx.server_has_tools());
+        assert!(ctx.server_has_resources());
+        assert!(!ctx.server_has_prompts());
+    }
+
+    #[test]
+    fn server_has_prompts_when_present() {
+        let mut ctx = ConnectionContext::new();
+        ctx.set_connected();
+        ctx.set_initializing().unwrap();
+        ctx.set_ready(
+            "2025-03-26".to_string(),
+            ServerCapabilities {
+                prompts: Some(Default::default()),
+                ..Default::default()
+            },
+            "server".to_string(),
+            "1.0".to_string(),
+        )
+        .unwrap();
+
+        assert!(!ctx.server_has_tools());
+        assert!(!ctx.server_has_resources());
+        assert!(ctx.server_has_prompts());
+    }
+
+    // Timeout tests
+    #[test]
+    fn get_timed_out_requests_with_no_timeouts() {
+        let mut ctx = ConnectionContext::new();
+        ctx.add_pending_request(RequestId::Number(1), "method1");
+        ctx.add_pending_request(RequestId::Number(2), "method2");
+
+        // Very high timeout - nothing should be timed out
+        let timed_out = ctx.get_timed_out_requests(1000.0);
+        assert!(timed_out.is_empty());
+    }
+
+    #[test]
+    fn get_timed_out_requests_with_some_timed_out() {
+        let mut ctx = ConnectionContext::new();
+        ctx.add_pending_request(RequestId::Number(1), "method1");
+
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        ctx.add_pending_request(RequestId::Number(2), "method2");
+
+        // First request should be timed out, second should not
+        let timed_out = ctx.get_timed_out_requests(0.03);
+        assert_eq!(timed_out.len(), 1);
+        assert!(timed_out.contains(&RequestId::Number(1)));
+    }
+
+    // Multiple pending requests tests
+    #[test]
+    fn multiple_pending_requests() {
+        let mut ctx = ConnectionContext::new();
+
+        ctx.add_pending_request(RequestId::Number(1), "method1");
+        ctx.add_pending_request(RequestId::Number(2), "method2");
+        ctx.add_pending_request(RequestId::String("abc".to_string()), "method3");
+
+        assert_eq!(ctx.pending_request_count(), 3);
+        assert!(ctx.has_pending_request(&RequestId::Number(1)));
+        assert!(ctx.has_pending_request(&RequestId::Number(2)));
+        assert!(ctx.has_pending_request(&RequestId::String("abc".to_string())));
+
+        ctx.remove_pending_request(&RequestId::Number(1));
+        assert_eq!(ctx.pending_request_count(), 2);
+        assert!(!ctx.has_pending_request(&RequestId::Number(1)));
+    }
+
+    // Edge case: empty pending requests
+    #[test]
+    fn empty_pending_requests() {
+        let ctx = ConnectionContext::new();
+
+        assert_eq!(ctx.pending_request_count(), 0);
+        assert!(!ctx.has_pending_request(&RequestId::Number(1)));
+        assert!(ctx.get_timed_out_requests(0.0).is_empty());
+    }
+
+    #[test]
+    fn remove_nonexistent_pending_request() {
+        let mut ctx = ConnectionContext::new();
+        ctx.add_pending_request(RequestId::Number(1), "method");
+
+        let removed = ctx.remove_pending_request(&RequestId::Number(999));
+        assert!(removed.is_none());
+        assert_eq!(ctx.pending_request_count(), 1);
+    }
+
+    #[test]
+    fn connection_context_default() {
+        let ctx = ConnectionContext::default();
+        assert_eq!(ctx.state(), ConnectionState::Disconnected);
+        assert_eq!(ctx.pending_request_count(), 0);
+    }
 }

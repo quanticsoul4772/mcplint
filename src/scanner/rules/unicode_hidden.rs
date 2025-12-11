@@ -515,4 +515,551 @@ mod tests {
         assert!(!suspicious.is_empty());
         assert_eq!(suspicious[0].category, UnicodeCategory::Homoglyph);
     }
+
+    // Test 1: UnicodeHiddenDetector creation
+    #[test]
+    fn test_detector_creation() {
+        let detector = UnicodeHiddenDetector::new();
+        let detector_default = UnicodeHiddenDetector;
+
+        let text = "normal text";
+        assert!(detector.detect_suspicious_unicode(text).is_empty());
+        assert!(detector_default.detect_suspicious_unicode(text).is_empty());
+    }
+
+    // Test 2: check_tools with safe tools
+    #[test]
+    fn test_check_tools_with_safe_tools() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![
+            make_tool("safe_tool", Some("This is a safe description")),
+            make_tool("another_tool", Some("No hidden characters here")),
+            make_tool("third_tool", None),
+        ];
+
+        let findings = detector.check_tools(&tools);
+        assert!(findings.is_empty());
+    }
+
+    // Test 3: Detection of Left-to-Right Mark
+    #[test]
+    fn test_detect_ltr_mark() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "hello\u{200E}world"; // LTR mark
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 1);
+        assert_eq!(suspicious[0].category, UnicodeCategory::Bidirectional);
+        assert_eq!(suspicious[0].codepoint, 0x200E);
+    }
+
+    // Test 4: Detection of Right-to-Left Mark
+    #[test]
+    fn test_detect_rtl_mark() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "hello\u{200F}world"; // RTL mark
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 1);
+        assert_eq!(suspicious[0].category, UnicodeCategory::Bidirectional);
+        assert_eq!(suspicious[0].codepoint, 0x200F);
+    }
+
+    // Test 5: Detection of Left-to-Right Embedding
+    #[test]
+    fn test_detect_ltr_embedding() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "test\u{202A}content"; // LTR embedding
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 1);
+        assert_eq!(suspicious[0].category, UnicodeCategory::Bidirectional);
+    }
+
+    // Test 6: Detection of Right-to-Left Embedding
+    #[test]
+    fn test_detect_rtl_embedding() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "test\u{202B}content"; // RTL embedding
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 1);
+        assert_eq!(suspicious[0].category, UnicodeCategory::Bidirectional);
+    }
+
+    // Test 7: Detection of Zero Width Non-Joiner
+    #[test]
+    fn test_detect_zero_width_non_joiner() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "hello\u{200C}world"; // ZWNJ
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 1);
+        assert_eq!(suspicious[0].category, UnicodeCategory::ZeroWidth);
+        assert_eq!(suspicious[0].codepoint, 0x200C);
+    }
+
+    // Test 8: Detection of Zero Width Joiner
+    #[test]
+    fn test_detect_zero_width_joiner() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "hello\u{200D}world"; // ZWJ
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 1);
+        assert_eq!(suspicious[0].category, UnicodeCategory::ZeroWidth);
+        assert_eq!(suspicious[0].codepoint, 0x200D);
+    }
+
+    // Test 9: Detection of Byte Order Mark
+    #[test]
+    fn test_detect_byte_order_mark() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "hello\u{FEFF}world"; // BOM
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 1);
+        assert_eq!(suspicious[0].category, UnicodeCategory::ZeroWidth);
+    }
+
+    // Test 10: Detection of Greek homoglyphs
+    #[test]
+    fn test_detect_greek_homoglyphs() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "helloΑworld"; // Greek capital Alpha
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 1);
+        assert_eq!(suspicious[0].category, UnicodeCategory::Homoglyph);
+    }
+
+    // Test 11: Detection of mathematical alphanumeric symbols
+    #[test]
+    fn test_detect_mathematical_symbols() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "hello𝐀world"; // Mathematical bold A
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 1);
+        assert_eq!(suspicious[0].category, UnicodeCategory::Homoglyph);
+    }
+
+    // Test 12: Detection of invisible characters
+    #[test]
+    fn test_detect_word_joiner() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "hello\u{2060}world"; // Word joiner
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 1);
+        assert_eq!(suspicious[0].category, UnicodeCategory::ZeroWidth);
+    }
+
+    // Test 13: Multiple tools with mixed findings
+    #[test]
+    fn test_multiple_tools_mixed_findings() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![
+            make_tool("safe_tool", Some("Normal description")),
+            make_tool("bad\u{200B}tool", Some("Also\u{202E}bad")),
+            make_tool("another_safe", Some("Clean text")),
+        ];
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 2); // Only the bad tool has findings
+        assert!(findings
+            .iter()
+            .all(|f| f.location.identifier == "bad\u{200B}tool"));
+    }
+
+    // Test 14: Nested unicode characters
+    #[test]
+    fn test_nested_unicode_in_description() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "start\u{200B}middle\u{202E}end\u{200C}finish";
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 3);
+        assert_eq!(suspicious[0].category, UnicodeCategory::ZeroWidth);
+        assert_eq!(suspicious[1].category, UnicodeCategory::Bidirectional);
+        assert_eq!(suspicious[2].category, UnicodeCategory::ZeroWidth);
+    }
+
+    // Test 15: Unicode in tool input schemas
+    #[test]
+    fn test_unicode_in_input_schema_string() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![Tool {
+            name: "test_tool".to_string(),
+            description: None,
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "field": {
+                        "type": "string",
+                        "description": "Field with\u{200B}hidden char"
+                    }
+                }
+            }),
+        }];
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].description.contains("test_tool"));
+    }
+
+    // Test 16: Unicode in schema keys
+    #[test]
+    fn test_unicode_in_schema_keys() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![Tool {
+            name: "test_tool".to_string(),
+            description: None,
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "bad\u{200B}key": {
+                        "type": "string"
+                    }
+                }
+            }),
+        }];
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].description.contains("test_tool"));
+    }
+
+    // Test 17: Empty string edge case
+    #[test]
+    fn test_empty_string() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "";
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert!(suspicious.is_empty());
+    }
+
+    // Test 18: ASCII-only text
+    #[test]
+    fn test_ascii_only_text() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "The quick brown fox jumps over the lazy dog. 1234567890!@#$%^&*()";
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert!(suspicious.is_empty());
+    }
+
+    // Test 19: Finding severity for bidirectional is critical
+    #[test]
+    fn test_finding_severity_critical_for_bidirectional() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![make_tool("tool", Some("text\u{202E}rtl"))];
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Critical);
+    }
+
+    // Test 20: Finding severity for zero-width is high
+    #[test]
+    fn test_finding_severity_high_for_zero_width() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![make_tool("tool", Some("text\u{200B}space"))];
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::High);
+    }
+
+    // Test 21: Finding severity for tag characters is high
+    #[test]
+    fn test_finding_severity_high_for_tag() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![make_tool("tool", Some("text\u{E0001}tag"))];
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::High);
+    }
+
+    // Test 22: Finding severity for homoglyphs is high
+    #[test]
+    fn test_finding_severity_high_for_homoglyph() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![make_tool("tool", Some("tеxt"))]; // Cyrillic е
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::High);
+    }
+
+    // Test 23: Finding location validation for tool name
+    #[test]
+    fn test_finding_location_for_tool_name() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![make_tool("bad\u{200B}tool", None)];
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].location.identifier, "bad\u{200B}tool");
+        assert!(findings[0]
+            .location
+            .context
+            .as_ref()
+            .unwrap()
+            .contains("name"));
+    }
+
+    // Test 24: Finding location validation for description
+    #[test]
+    fn test_finding_location_for_description() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![make_tool("tool", Some("bad\u{200B}desc"))];
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].location.identifier, "tool");
+        assert!(findings[0]
+            .location
+            .context
+            .as_ref()
+            .unwrap()
+            .contains("description"));
+    }
+
+    // Test 25: Private use area detection
+    #[test]
+    fn test_detect_private_use_area() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "hello\u{E000}world"; // Private use area
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 1);
+        assert_eq!(suspicious[0].category, UnicodeCategory::PrivateUse);
+        assert_eq!(suspicious[0].codepoint, 0xE000);
+    }
+
+    // Test 26: Deprecated format characters
+    #[test]
+    fn test_detect_deprecated_format() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "hello\u{206A}world"; // Deprecated format char
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 1);
+        assert_eq!(suspicious[0].category, UnicodeCategory::DeprecatedFormat);
+    }
+
+    // Test 27: Combining marks (excessive)
+    #[test]
+    fn test_detect_excessive_combining() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "e\u{0301}\u{0302}\u{0303}\u{0304}"; // e with 4 combining marks
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert!(!suspicious.is_empty());
+        assert_eq!(suspicious[0].category, UnicodeCategory::Combining);
+    }
+
+    // Test 28: Normal combining marks (not excessive)
+    #[test]
+    fn test_normal_combining_not_detected() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "café"; // e with acute accent (single combining mark)
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        // Should not detect single or double combining marks
+        assert!(suspicious.is_empty() || suspicious.len() < 2);
+    }
+
+    // Test 29: Schema with nested objects
+    #[test]
+    fn test_schema_nested_objects() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![Tool {
+            name: "test_tool".to_string(),
+            description: None,
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "outer": {
+                        "type": "object",
+                        "properties": {
+                            "inner": {
+                                "type": "string",
+                                "default": "value\u{200B}hidden"
+                            }
+                        }
+                    }
+                }
+            }),
+        }];
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0]
+            .location
+            .context
+            .as_ref()
+            .unwrap()
+            .contains("schema"));
+    }
+
+    // Test 30: Schema with arrays
+    #[test]
+    fn test_schema_with_arrays() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![Tool {
+            name: "test_tool".to_string(),
+            description: None,
+            input_schema: json!({
+                "type": "array",
+                "items": [
+                    "clean",
+                    "bad\u{200B}item",
+                    "also_clean"
+                ]
+            }),
+        }];
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+    }
+
+    // Test 31: Position tracking in suspicious chars
+    #[test]
+    fn test_position_tracking() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "abc\u{200B}def\u{202E}ghi";
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 2);
+        assert_eq!(suspicious[0].position, 3); // Position after "abc"
+        assert_eq!(suspicious[1].position, 9); // Position after "abc\u{200B}def" (3 + 3 + 3 bytes for UTF-8)
+    }
+
+    // Test 32: Finding evidence contains character details
+    #[test]
+    fn test_finding_evidence_details() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![make_tool("tool", Some("test\u{200B}text"))];
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+        assert!(!findings[0].evidence.is_empty());
+        assert!(findings[0].evidence[0].data.contains("U+200B"));
+    }
+
+    // Test 33: Finding remediation is present
+    #[test]
+    fn test_finding_remediation_present() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![make_tool("tool", Some("test\u{200B}text"))];
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+        assert!(!findings[0].remediation.is_empty());
+        assert!(findings[0].remediation.contains("ASCII"));
+    }
+
+    // Test 34: Finding CWE reference is set
+    #[test]
+    fn test_finding_cwe_set() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![make_tool("tool", Some("test\u{200B}text"))];
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0].references.iter().any(|r| r.id.contains("116")));
+    }
+
+    // Test 35: Finding rule ID is correct
+    #[test]
+    fn test_finding_rule_id() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![make_tool("tool", Some("test\u{200B}text"))];
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].rule_id, "MCP-SEC-044");
+    }
+
+    // Test 36: UnicodeCategory Display trait
+    #[test]
+    fn test_unicode_category_display() {
+        assert_eq!(format!("{}", UnicodeCategory::ZeroWidth), "zero-width");
+        assert_eq!(
+            format!("{}", UnicodeCategory::Bidirectional),
+            "bidirectional-control"
+        );
+        assert_eq!(format!("{}", UnicodeCategory::Tag), "tag-character");
+        assert_eq!(format!("{}", UnicodeCategory::Homoglyph), "homoglyph");
+        assert_eq!(format!("{}", UnicodeCategory::Combining), "combining");
+        assert_eq!(format!("{}", UnicodeCategory::PrivateUse), "private-use");
+        assert_eq!(
+            format!("{}", UnicodeCategory::DeprecatedFormat),
+            "deprecated-format"
+        );
+    }
+
+    // Test 37: Multiple unicode categories in one text
+    #[test]
+    fn test_multiple_categories_severity() {
+        let detector = UnicodeHiddenDetector::new();
+
+        // Test that bidirectional takes precedence
+        assert_eq!(
+            detector.assess_severity(&[
+                UnicodeCategory::ZeroWidth,
+                UnicodeCategory::Bidirectional,
+                UnicodeCategory::PrivateUse
+            ]),
+            Severity::Critical
+        );
+
+        // Test that zero-width takes precedence over others (except bidirectional)
+        assert_eq!(
+            detector.assess_severity(&[UnicodeCategory::ZeroWidth, UnicodeCategory::PrivateUse]),
+            Severity::High
+        );
+    }
+
+    // Test 38: Tool with only name having unicode
+    #[test]
+    fn test_tool_name_only_unicode() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![make_tool("bad\u{200B}name", None)];
+
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+        assert!(findings[0]
+            .location
+            .context
+            .as_ref()
+            .unwrap()
+            .contains("name"));
+    }
+
+    // Test 39: Dotless i and j homoglyphs
+    #[test]
+    fn test_dotless_homoglyphs() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "admın"; // Dotless i
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 1);
+        assert_eq!(suspicious[0].category, UnicodeCategory::Homoglyph);
+    }
+
+    // Test 40: Roman numeral homoglyphs
+    #[test]
+    fn test_roman_numeral_homoglyphs() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "testⅠdata"; // Roman numeral I
+
+        let suspicious = detector.detect_suspicious_unicode(text);
+        assert_eq!(suspicious.len(), 1);
+        assert_eq!(suspicious[0].category, UnicodeCategory::Homoglyph);
+    }
 }

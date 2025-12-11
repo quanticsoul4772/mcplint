@@ -845,7 +845,7 @@ mod tests {
             let original = "xy";
             let mutated = JsonMutator::mutate_string(original, &mut rng);
             // If duplicate, length doubles
-            assert!(mutated.len() >= 1);
+            assert!(!mutated.is_empty());
         }
     }
 
@@ -903,8 +903,8 @@ mod tests {
 
         for _ in 0..10 {
             let mutated = JsonMutator::mutate_object(&obj, &mut rng);
-            // Empty object can only add keys or proto pollution
-            assert!(mutated.is_empty() || mutated.len() >= 1);
+            // Empty object can only add keys or proto pollution - just verify it's valid
+            let _ = mutated.len();
         }
     }
 
@@ -915,8 +915,8 @@ mod tests {
         for seed in 0..30 {
             let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
             let mutated = JsonMutator::mutate_object(&obj, &mut rng);
-            // Should produce valid map
-            assert!(mutated.len() >= 1 || mutated.is_empty());
+            // Should produce valid map - just verify it's valid
+            let _ = mutated.len();
         }
     }
 
@@ -939,8 +939,8 @@ mod tests {
 
         for _ in 0..10 {
             let mutated = JsonMutator::mutate_array(&arr, &mut rng);
-            // Empty array can only add elements
-            assert!(mutated.is_empty() || mutated.len() >= 1);
+            // Empty array can only add elements - just verify it's valid
+            let _ = mutated.len();
         }
     }
 

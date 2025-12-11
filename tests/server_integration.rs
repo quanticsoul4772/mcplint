@@ -864,3 +864,571 @@ mod concurrency_tests {
         assert!(!r2.results.is_empty());
     }
 }
+
+// =============================================================================
+// Scanner Tests - Test security scanning with real servers
+// =============================================================================
+
+mod scanner_tests {
+    use super::*;
+    use mcplint::scanner::{ScanConfig, ScanEngine, ScanProfile};
+
+    #[tokio::test]
+    async fn scan_filesystem_server() {
+        if !filesystem_server_available() {
+            eprintln!("Skipping: filesystem server not available");
+            return;
+        }
+
+        let config = ScanConfig {
+            profile: ScanProfile::Standard,
+            timeout_secs: 60,
+            ..Default::default()
+        };
+        let engine = ScanEngine::new(config);
+
+        let command = "C:\\Program Files\\nodejs\\node.exe";
+        let args = vec![
+            "C:\\npm-global\\node_modules\\@modelcontextprotocol\\server-filesystem\\dist\\index.js"
+                .to_string(),
+            "C:\\Development".to_string(),
+        ];
+
+        let results = engine
+            .scan(command, &args, Some(TransportType::Stdio))
+            .await;
+
+        match results {
+            Ok(r) => {
+                // Should have run some checks
+                assert!(r.total_checks > 0);
+                // Duration should be recorded
+                assert!(r.duration_ms > 0);
+                // Profile should be recorded
+                assert_eq!(r.profile, "standard");
+
+                eprintln!(
+                    "Scan: {} checks, {} findings (C:{} H:{} M:{} L:{} I:{})",
+                    r.total_checks,
+                    r.total_findings(),
+                    r.summary.critical,
+                    r.summary.high,
+                    r.summary.medium,
+                    r.summary.low,
+                    r.summary.info
+                );
+            }
+            Err(e) => {
+                panic!("Scan failed: {}", e);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn scan_with_quick_profile() {
+        if !filesystem_server_available() {
+            eprintln!("Skipping: filesystem server not available");
+            return;
+        }
+
+        let config = ScanConfig {
+            profile: ScanProfile::Quick,
+            timeout_secs: 30,
+            ..Default::default()
+        };
+        let engine = ScanEngine::new(config);
+
+        let command = "C:\\Program Files\\nodejs\\node.exe";
+        let args = vec![
+            "C:\\npm-global\\node_modules\\@modelcontextprotocol\\server-filesystem\\dist\\index.js"
+                .to_string(),
+            "C:\\Development".to_string(),
+        ];
+
+        let results = engine
+            .scan(command, &args, Some(TransportType::Stdio))
+            .await
+            .expect("Scan should succeed");
+
+        assert_eq!(results.profile, "quick");
+    }
+
+    #[tokio::test]
+    async fn scan_with_deep_profile() {
+        if !filesystem_server_available() {
+            eprintln!("Skipping: filesystem server not available");
+            return;
+        }
+
+        let config = ScanConfig {
+            profile: ScanProfile::Full,
+            timeout_secs: 120,
+            ..Default::default()
+        };
+        let engine = ScanEngine::new(config);
+
+        let command = "C:\\Program Files\\nodejs\\node.exe";
+        let args = vec![
+            "C:\\npm-global\\node_modules\\@modelcontextprotocol\\server-filesystem\\dist\\index.js"
+                .to_string(),
+            "C:\\Development".to_string(),
+        ];
+
+        let results = engine
+            .scan(command, &args, Some(TransportType::Stdio))
+            .await
+            .expect("Scan should succeed");
+
+        assert_eq!(results.profile, "full");
+        // Full scan should run more checks
+        assert!(results.total_checks > 0);
+    }
+
+    #[tokio::test]
+    async fn scan_findings_have_proper_structure() {
+        if !filesystem_server_available() {
+            eprintln!("Skipping: filesystem server not available");
+            return;
+        }
+
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let command = "C:\\Program Files\\nodejs\\node.exe";
+        let args = vec![
+            "C:\\npm-global\\node_modules\\@modelcontextprotocol\\server-filesystem\\dist\\index.js"
+                .to_string(),
+            "C:\\Development".to_string(),
+        ];
+
+        let results = engine
+            .scan(command, &args, Some(TransportType::Stdio))
+            .await
+            .expect("Scan should succeed");
+
+        // If there are any findings, verify their structure
+        for finding in &results.findings {
+            assert!(!finding.rule_id.is_empty());
+            assert!(!finding.title.is_empty());
+            assert!(!finding.description.is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn scan_results_summary_matches_findings() {
+        if !filesystem_server_available() {
+            eprintln!("Skipping: filesystem server not available");
+            return;
+        }
+
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let command = "C:\\Program Files\\nodejs\\node.exe";
+        let args = vec![
+            "C:\\npm-global\\node_modules\\@modelcontextprotocol\\server-filesystem\\dist\\index.js"
+                .to_string(),
+            "C:\\Development".to_string(),
+        ];
+
+        let results = engine
+            .scan(command, &args, Some(TransportType::Stdio))
+            .await
+            .expect("Scan should succeed");
+
+        // Count findings by severity
+        let critical = results
+            .findings
+            .iter()
+            .filter(|f| matches!(f.severity, mcplint::scanner::Severity::Critical))
+            .count();
+        let high = results
+            .findings
+            .iter()
+            .filter(|f| matches!(f.severity, mcplint::scanner::Severity::High))
+            .count();
+        let medium = results
+            .findings
+            .iter()
+            .filter(|f| matches!(f.severity, mcplint::scanner::Severity::Medium))
+            .count();
+        let low = results
+            .findings
+            .iter()
+            .filter(|f| matches!(f.severity, mcplint::scanner::Severity::Low))
+            .count();
+        let info = results
+            .findings
+            .iter()
+            .filter(|f| matches!(f.severity, mcplint::scanner::Severity::Info))
+            .count();
+
+        assert_eq!(results.summary.critical, critical);
+        assert_eq!(results.summary.high, high);
+        assert_eq!(results.summary.medium, medium);
+        assert_eq!(results.summary.low, low);
+        assert_eq!(results.summary.info, info);
+    }
+
+    #[tokio::test]
+    async fn scan_memory_server() {
+        if !memory_server_available() {
+            eprintln!("Skipping: memory server not available");
+            return;
+        }
+
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let command = "C:\\Program Files\\nodejs\\node.exe";
+        let args = vec!["C:\\Users\\rbsmi\\mcp-memory-server\\dist\\index.js".to_string()];
+
+        let results = engine
+            .scan(command, &args, Some(TransportType::Stdio))
+            .await;
+
+        match results {
+            Ok(r) => {
+                assert!(r.total_checks > 0);
+                eprintln!(
+                    "Memory server scan: {} checks, {} findings",
+                    r.total_checks,
+                    r.total_findings()
+                );
+            }
+            Err(e) => {
+                eprintln!("Memory server scan failed: {}", e);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn scan_with_nonexistent_server() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let result = engine
+            .scan("nonexistent-command-12345", &[], Some(TransportType::Stdio))
+            .await;
+
+        // Should fail to connect
+        assert!(result.is_err());
+    }
+}
+
+// =============================================================================
+// Transport Direct Tests - Test transport layer directly
+// =============================================================================
+
+mod transport_direct_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn stdio_transport_initialization() {
+        if !filesystem_server_available() {
+            eprintln!("Skipping: filesystem server not available");
+            return;
+        }
+
+        let config = TransportConfig {
+            timeout_secs: 30,
+            ..Default::default()
+        };
+
+        let command = "C:\\Program Files\\nodejs\\node.exe";
+        let args = vec![
+            "C:\\npm-global\\node_modules\\@modelcontextprotocol\\server-filesystem\\dist\\index.js"
+                .to_string(),
+            "C:\\Development".to_string(),
+        ];
+
+        let mut transport = connect_with_type(
+            command,
+            &args,
+            &HashMap::new(),
+            config,
+            TransportType::Stdio,
+        )
+        .await
+        .expect("Should connect");
+
+        // Should report stdio type
+        assert_eq!(transport.transport_type(), "stdio");
+
+        // Should be able to close cleanly
+        let close_result = transport.close().await;
+        assert!(close_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn transport_handles_multiple_requests() {
+        if !filesystem_server_available() {
+            eprintln!("Skipping: filesystem server not available");
+            return;
+        }
+
+        let config = TransportConfig {
+            timeout_secs: 30,
+            ..Default::default()
+        };
+
+        let command = "C:\\Program Files\\nodejs\\node.exe";
+        let args = vec![
+            "C:\\npm-global\\node_modules\\@modelcontextprotocol\\server-filesystem\\dist\\index.js"
+                .to_string(),
+            "C:\\Development".to_string(),
+        ];
+
+        let mut transport = connect_with_type(
+            command,
+            &args,
+            &HashMap::new(),
+            config,
+            TransportType::Stdio,
+        )
+        .await
+        .expect("Should connect");
+
+        // Initialize
+        let params = serde_json::json!({
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "clientInfo": {
+                "name": "mcplint-test",
+                "version": "1.0.0"
+            }
+        });
+        let _ = transport.request("initialize", Some(params)).await;
+        let _ = transport.notify("notifications/initialized", None).await;
+
+        // Make multiple sequential requests
+        for _ in 0..3 {
+            let response = transport.request("tools/list", None).await;
+            assert!(response.is_ok());
+        }
+
+        let _ = transport.close().await;
+    }
+
+    #[tokio::test]
+    async fn transport_with_environment_variables() {
+        if !filesystem_server_available() {
+            eprintln!("Skipping: filesystem server not available");
+            return;
+        }
+
+        let config = TransportConfig {
+            timeout_secs: 30,
+            ..Default::default()
+        };
+
+        let command = "C:\\Program Files\\nodejs\\node.exe";
+        let args = vec![
+            "C:\\npm-global\\node_modules\\@modelcontextprotocol\\server-filesystem\\dist\\index.js"
+                .to_string(),
+            "C:\\Development".to_string(),
+        ];
+
+        // Pass custom environment variables
+        let mut env = HashMap::new();
+        env.insert("MCPLINT_TEST_VAR".to_string(), "test_value".to_string());
+        env.insert("NODE_ENV".to_string(), "test".to_string());
+
+        let result = connect_with_type(command, &args, &env, config, TransportType::Stdio).await;
+
+        // Should succeed with env vars
+        assert!(result.is_ok());
+
+        if let Ok(mut transport) = result {
+            let _ = transport.close().await;
+        }
+    }
+}
+
+// =============================================================================
+// Client Tests - Test MCP client functionality
+// =============================================================================
+
+mod client_tests {
+    use super::*;
+    use mcplint::client::McpClient;
+    use mcplint::protocol::Implementation;
+
+    #[tokio::test]
+    async fn client_full_lifecycle() {
+        if !filesystem_server_available() {
+            eprintln!("Skipping: filesystem server not available");
+            return;
+        }
+
+        let config = TransportConfig {
+            timeout_secs: 30,
+            ..Default::default()
+        };
+
+        let command = "C:\\Program Files\\nodejs\\node.exe";
+        let args = vec![
+            "C:\\npm-global\\node_modules\\@modelcontextprotocol\\server-filesystem\\dist\\index.js"
+                .to_string(),
+            "C:\\Development".to_string(),
+        ];
+
+        let transport = connect_with_type(
+            command,
+            &args,
+            &HashMap::new(),
+            config,
+            TransportType::Stdio,
+        )
+        .await
+        .expect("Should connect");
+
+        let client_info = Implementation::new("mcplint-test", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+
+        // Initialize
+        let init_result = client.initialize().await;
+        assert!(init_result.is_ok());
+
+        let init = init_result.unwrap();
+        assert!(!init.protocol_version.is_empty());
+        assert!(!init.server_info.name.is_empty());
+
+        // List tools
+        if init.capabilities.has_tools() {
+            let tools = client.list_tools().await;
+            assert!(tools.is_ok());
+            let tools = tools.unwrap();
+            assert!(!tools.is_empty());
+
+            // Filesystem server should have these tools
+            let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+            assert!(
+                tool_names.contains(&"read_file") || tool_names.contains(&"list_directory"),
+                "Expected filesystem tools"
+            );
+        }
+
+        // List resources
+        if init.capabilities.has_resources() {
+            let resources = client.list_resources().await;
+            assert!(resources.is_ok());
+        }
+
+        // Close
+        let close_result = client.close().await;
+        assert!(close_result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn client_call_tool() {
+        if !filesystem_server_available() {
+            eprintln!("Skipping: filesystem server not available");
+            return;
+        }
+
+        let config = TransportConfig {
+            timeout_secs: 30,
+            ..Default::default()
+        };
+
+        let command = "C:\\Program Files\\nodejs\\node.exe";
+        let args = vec![
+            "C:\\npm-global\\node_modules\\@modelcontextprotocol\\server-filesystem\\dist\\index.js"
+                .to_string(),
+            "C:\\Development".to_string(),
+        ];
+
+        let transport = connect_with_type(
+            command,
+            &args,
+            &HashMap::new(),
+            config,
+            TransportType::Stdio,
+        )
+        .await
+        .expect("Should connect");
+
+        let client_info = Implementation::new("mcplint-test", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+
+        let _ = client.initialize().await.expect("Initialize should work");
+
+        // Call list_directory tool
+        let tool_args = serde_json::json!({
+            "path": "C:\\Development"
+        });
+
+        let result = client.call_tool("list_directory", Some(tool_args)).await;
+
+        match result {
+            Ok(response) => {
+                // Should get content back
+                assert!(!response.content.is_empty());
+            }
+            Err(e) => {
+                // Some errors are acceptable (e.g., permission denied)
+                eprintln!("Tool call error (may be expected): {}", e);
+            }
+        }
+
+        let _ = client.close().await;
+    }
+
+    #[tokio::test]
+    async fn client_read_resource() {
+        if !filesystem_server_available() {
+            eprintln!("Skipping: filesystem server not available");
+            return;
+        }
+
+        let config = TransportConfig {
+            timeout_secs: 30,
+            ..Default::default()
+        };
+
+        let command = "C:\\Program Files\\nodejs\\node.exe";
+        let args = vec![
+            "C:\\npm-global\\node_modules\\@modelcontextprotocol\\server-filesystem\\dist\\index.js"
+                .to_string(),
+            "C:\\Development".to_string(),
+        ];
+
+        let transport = connect_with_type(
+            command,
+            &args,
+            &HashMap::new(),
+            config,
+            TransportType::Stdio,
+        )
+        .await
+        .expect("Should connect");
+
+        let client_info = Implementation::new("mcplint-test", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+
+        let init = client.initialize().await.expect("Initialize should work");
+
+        if init.capabilities.has_resources() {
+            let resources = client.list_resources().await.expect("List should work");
+            if !resources.is_empty() {
+                // Try to read the first resource
+                let result = client.read_resource(&resources[0].uri).await;
+                // Result may succeed or fail depending on the resource
+                match result {
+                    Ok(contents) => {
+                        assert!(!contents.contents.is_empty());
+                    }
+                    Err(_) => {
+                        // Some resources may not be readable
+                    }
+                }
+            }
+        }
+
+        let _ = client.close().await;
+    }
+}

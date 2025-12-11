@@ -598,8 +598,10 @@ mod tests {
 
     #[tokio::test]
     async fn mock_client_with_capabilities() {
-        let mut caps = ServerCapabilities::default();
-        caps.tools = Some(ToolsCapability::default());
+        let caps = ServerCapabilities {
+            tools: Some(ToolsCapability::default()),
+            ..ServerCapabilities::default()
+        };
 
         let mut client = MockMcpClient::with_capabilities(caps);
         client.initialize().await.unwrap();
@@ -919,10 +921,12 @@ mod tests {
 
     #[tokio::test]
     async fn mock_client_capabilities_access() {
-        let mut caps = ServerCapabilities::default();
-        caps.tools = Some(ToolsCapability::default());
-        caps.resources = Some(ResourcesCapability::default());
-        caps.prompts = Some(PromptsCapability::default());
+        let caps = ServerCapabilities {
+            tools: Some(ToolsCapability::default()),
+            resources: Some(ResourcesCapability::default()),
+            prompts: Some(PromptsCapability::default()),
+            ..ServerCapabilities::default()
+        };
 
         let mut client = MockMcpClient::with_capabilities(caps);
 

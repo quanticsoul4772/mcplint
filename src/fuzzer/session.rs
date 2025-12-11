@@ -570,9 +570,11 @@ mod tests {
 
     #[test]
     fn stop_conditions() {
-        let mut config = FuzzConfig::default();
-        config.duration_secs = 0;
-        config.max_iterations = 100;
+        let config = FuzzConfig {
+            duration_secs: 0,
+            max_iterations: 100,
+            ..FuzzConfig::default()
+        };
 
         let mut session = FuzzSession::new("test", &[], config);
         session.start_time = Some(Instant::now());
@@ -586,9 +588,11 @@ mod tests {
 
     #[test]
     fn stop_conditions_no_start_time() {
-        let mut config = FuzzConfig::default();
-        config.duration_secs = 10;
-        config.max_iterations = 100;
+        let config = FuzzConfig {
+            duration_secs: 10,
+            max_iterations: 100,
+            ..FuzzConfig::default()
+        };
 
         let mut session = FuzzSession::new("test", &[], config);
         // No start_time set
@@ -597,9 +601,11 @@ mod tests {
 
     #[test]
     fn stop_conditions_duration() {
-        let mut config = FuzzConfig::default();
-        config.duration_secs = 0; // 0 seconds = immediate stop
-        config.max_iterations = 0;
+        let config = FuzzConfig {
+            duration_secs: 0, // 0 seconds = immediate stop
+            max_iterations: 0,
+            ..FuzzConfig::default()
+        };
 
         let mut session = FuzzSession::new("test", &[], config);
         session.start_time = Some(Instant::now() - Duration::from_secs(1));
@@ -690,9 +696,11 @@ mod tests {
 
     #[test]
     fn create_progress_bar_with_iterations() {
-        let mut config = FuzzConfig::default();
-        config.max_iterations = 1000;
-        config.duration_secs = 0;
+        let config = FuzzConfig {
+            max_iterations: 1000,
+            duration_secs: 0,
+            ..FuzzConfig::default()
+        };
 
         let session = FuzzSession::new("test", &[], config);
         let pb = session.create_progress_bar();
@@ -703,9 +711,11 @@ mod tests {
 
     #[test]
     fn create_progress_bar_with_duration() {
-        let mut config = FuzzConfig::default();
-        config.max_iterations = 0;
-        config.duration_secs = 60;
+        let config = FuzzConfig {
+            max_iterations: 0,
+            duration_secs: 60,
+            ..FuzzConfig::default()
+        };
 
         let session = FuzzSession::new("test", &[], config);
         let pb = session.create_progress_bar();
@@ -716,13 +726,438 @@ mod tests {
 
     #[test]
     fn create_progress_bar_unlimited() {
-        let mut config = FuzzConfig::default();
-        config.max_iterations = 0;
-        config.duration_secs = 0;
+        let config = FuzzConfig {
+            max_iterations: 0,
+            duration_secs: 0,
+            ..FuzzConfig::default()
+        };
 
         let session = FuzzSession::new("test", &[], config);
         let pb = session.create_progress_bar();
 
         assert_eq!(pb.length(), Some(u64::MAX));
+    }
+
+    #[test]
+    fn fuzz_config_default_values() {
+        let config = FuzzConfig::default();
+
+        // Just verify these fields exist and are initialized
+        let _duration = config.duration_secs;
+        let _iterations = config.max_iterations;
+        assert!(config.request_timeout_ms > 0);
+        assert!(config.corpus_path.is_none());
+        assert!(config.seed.is_none());
+    }
+
+    #[test]
+    fn fuzz_config_quick_profile() {
+        let config = FuzzConfig::with_profile(FuzzProfile::Quick);
+
+        assert_eq!(config.profile, FuzzProfile::Quick);
+        assert!(config.duration_secs > 0 || config.max_iterations > 0);
+    }
+
+    #[test]
+    fn fuzz_config_standard_profile() {
+        let config = FuzzConfig::with_profile(FuzzProfile::Standard);
+
+        assert_eq!(config.profile, FuzzProfile::Standard);
+    }
+
+    #[test]
+    fn fuzz_config_intensive_profile() {
+        let config = FuzzConfig::with_profile(FuzzProfile::Intensive);
+
+        assert_eq!(config.profile, FuzzProfile::Intensive);
+    }
+
+    #[test]
+    fn fuzz_config_with_seed() {
+        let config = FuzzConfig {
+            seed: Some(999),
+            ..FuzzConfig::default()
+        };
+
+        assert_eq!(config.seed, Some(999));
+    }
+
+    #[test]
+    fn fuzz_config_with_corpus_path() {
+        let mut config = FuzzConfig::default();
+        let path = std::path::PathBuf::from("/test/corpus");
+        config.corpus_path = Some(path.clone());
+
+        assert_eq!(config.corpus_path, Some(path));
+    }
+
+    #[test]
+    fn fuzz_config_request_timeout() {
+        let config = FuzzConfig {
+            request_timeout_ms: 5000,
+            ..FuzzConfig::default()
+        };
+
+        assert_eq!(config.request_timeout_ms, 5000);
+    }
+
+    #[test]
+    fn fuzz_config_save_interesting() {
+        let config_false = FuzzConfig {
+            save_interesting: false,
+            ..FuzzConfig::default()
+        };
+
+        assert!(!config_false.save_interesting);
+
+        let config_true = FuzzConfig {
+            save_interesting: true,
+            ..FuzzConfig::default()
+        };
+        assert!(config_true.save_interesting);
+    }
+
+    #[test]
+    fn session_with_empty_args() {
+        let config = FuzzConfig::default();
+        let session = FuzzSession::new("test-server", &[], config);
+
+        assert!(session.args.is_empty());
+    }
+
+    #[test]
+    fn session_with_multiple_args() {
+        let config = FuzzConfig::default();
+        let args = vec![
+            "--arg1".to_string(),
+            "value1".to_string(),
+            "--arg2".to_string(),
+            "value2".to_string(),
+        ];
+        let session = FuzzSession::new("test", &args, config);
+
+        assert_eq!(session.args.len(), 4);
+        assert_eq!(session.args[0], "--arg1");
+        assert_eq!(session.args[1], "value1");
+        assert_eq!(session.args[2], "--arg2");
+        assert_eq!(session.args[3], "value2");
+    }
+
+    #[test]
+    fn session_iterations_tracking() {
+        let config = FuzzConfig::default();
+        let mut session = FuzzSession::new("test", &[], config);
+
+        assert_eq!(session.iterations, 0);
+
+        session.iterations = 50;
+        assert_eq!(session.iterations, 50);
+
+        session.iterations += 1;
+        assert_eq!(session.iterations, 51);
+    }
+
+    #[test]
+    fn session_tools_empty_initially() {
+        let config = FuzzConfig::default();
+        let session = FuzzSession::new("test", &[], config);
+
+        assert!(session.tools.is_empty());
+        assert_eq!(session.tools.len(), 0);
+    }
+
+    #[test]
+    fn session_connection_failures_tracking() {
+        let config = FuzzConfig::default();
+        let mut session = FuzzSession::new("test", &[], config);
+
+        assert_eq!(session.connection_failures, 0);
+
+        session.connection_failures += 1;
+        assert_eq!(session.connection_failures, 1);
+
+        session.connection_failures = 3;
+        assert_eq!(session.connection_failures, 3);
+    }
+
+    #[test]
+    fn session_restarts_tracking() {
+        let config = FuzzConfig::default();
+        let mut session = FuzzSession::new("test", &[], config);
+
+        assert_eq!(session.restarts, 0);
+
+        session.restarts = 5;
+        assert_eq!(session.restarts, 5);
+    }
+
+    #[test]
+    fn session_stop_reason_initially_none() {
+        let config = FuzzConfig::default();
+        let session = FuzzSession::new("test", &[], config);
+
+        assert!(session.stop_reason.is_none());
+    }
+
+    #[test]
+    fn stop_conditions_with_zero_limits() {
+        let config = FuzzConfig {
+            duration_secs: 0,
+            max_iterations: 0,
+            ..FuzzConfig::default()
+        };
+
+        let mut session = FuzzSession::new("test", &[], config);
+        session.start_time = Some(Instant::now());
+        session.iterations = 1000;
+
+        // With both limits at 0, should not stop
+        assert!(!session.should_stop());
+    }
+
+    #[test]
+    fn stop_conditions_at_exact_iteration_limit() {
+        let config = FuzzConfig {
+            max_iterations: 100,
+            duration_secs: 0,
+            ..FuzzConfig::default()
+        };
+
+        let mut session = FuzzSession::new("test", &[], config);
+        session.start_time = Some(Instant::now());
+        session.iterations = 99;
+
+        assert!(!session.should_stop());
+
+        session.iterations = 100;
+        assert!(session.should_stop());
+    }
+
+    #[test]
+    fn stop_conditions_exceed_iteration_limit() {
+        let config = FuzzConfig {
+            max_iterations: 50,
+            duration_secs: 0,
+            ..FuzzConfig::default()
+        };
+
+        let mut session = FuzzSession::new("test", &[], config);
+        session.start_time = Some(Instant::now());
+        session.iterations = 100;
+
+        assert!(session.should_stop());
+    }
+
+    #[test]
+    fn stop_conditions_duration_elapsed() {
+        let config = FuzzConfig {
+            duration_secs: 1,
+            max_iterations: 0,
+            ..FuzzConfig::default()
+        };
+
+        let mut session = FuzzSession::new("test", &[], config);
+        // Set start time to 2 seconds ago
+        session.start_time = Some(Instant::now() - Duration::from_secs(2));
+
+        assert!(session.should_stop());
+    }
+
+    #[test]
+    fn stop_conditions_duration_not_elapsed() {
+        let config = FuzzConfig {
+            duration_secs: 10,
+            max_iterations: 0,
+            ..FuzzConfig::default()
+        };
+
+        let mut session = FuzzSession::new("test", &[], config);
+        session.start_time = Some(Instant::now());
+
+        assert!(!session.should_stop());
+    }
+
+    #[test]
+    fn get_fuzz_stats_with_corpus() {
+        let config = FuzzConfig::default();
+        let mut session = FuzzSession::new("test", &[], config);
+
+        session.iterations = 200;
+        session.restarts = 7;
+
+        let stats = session.get_fuzz_stats();
+
+        assert_eq!(stats.executions, 200);
+        assert_eq!(stats.restarts, 7);
+        // corpus_size is usize, just verify it's initialized
+        let _size = stats.corpus_size;
+    }
+
+    #[test]
+    fn generate_results_with_duration() {
+        let config = FuzzConfig::default();
+        let mut session = FuzzSession::new("my-server", &[], config);
+
+        // Set start time to 3 seconds ago
+        session.start_time = Some(Instant::now() - Duration::from_secs(3));
+        session.iterations = 42;
+
+        let results = session.generate_results().unwrap();
+
+        assert_eq!(results.server, "my-server");
+        assert_eq!(results.iterations, 42);
+        assert!(results.duration_secs >= 3);
+        assert!(results.crashes.is_empty());
+    }
+
+    #[test]
+    fn generate_results_server_name() {
+        let config = FuzzConfig::default();
+        let session = FuzzSession::new("test-server-123", &[], config);
+
+        let results = session.generate_results().unwrap();
+
+        assert_eq!(results.server, "test-server-123");
+    }
+
+    #[test]
+    fn fuzz_stats_new() {
+        let stats = FuzzStats {
+            executions: 100,
+            corpus_size: 50,
+            restarts: 3,
+        };
+
+        assert_eq!(stats.executions, 100);
+        assert_eq!(stats.corpus_size, 50);
+        assert_eq!(stats.restarts, 3);
+    }
+
+    #[test]
+    fn fuzz_stats_zero_values() {
+        let stats = FuzzStats {
+            executions: 0,
+            corpus_size: 0,
+            restarts: 0,
+        };
+
+        assert_eq!(stats.executions, 0);
+        assert_eq!(stats.corpus_size, 0);
+        assert_eq!(stats.restarts, 0);
+    }
+
+    #[test]
+    fn fuzz_stats_large_values() {
+        let stats = FuzzStats {
+            executions: 1_000_000,
+            corpus_size: 10_000,
+            restarts: 500,
+        };
+
+        assert_eq!(stats.executions, 1_000_000);
+        assert_eq!(stats.corpus_size, 10_000);
+        assert_eq!(stats.restarts, 500);
+    }
+
+    #[test]
+    fn session_client_initially_none() {
+        let config = FuzzConfig::default();
+        let session = FuzzSession::new("test", &[], config);
+
+        assert!(session.client.is_none());
+    }
+
+    #[test]
+    fn session_config_retention() {
+        let config = FuzzConfig {
+            duration_secs: 123,
+            max_iterations: 456,
+            request_timeout_ms: 7890,
+            ..FuzzConfig::default()
+        };
+
+        let session = FuzzSession::new("test", &[], config);
+
+        assert_eq!(session.config.duration_secs, 123);
+        assert_eq!(session.config.max_iterations, 456);
+        assert_eq!(session.config.request_timeout_ms, 7890);
+    }
+
+    #[test]
+    fn session_server_name_preserved() {
+        let config = FuzzConfig::default();
+        let server_name = "node /path/to/server.js";
+        let session = FuzzSession::new(server_name, &[], config);
+
+        assert_eq!(session.server, server_name);
+    }
+
+    #[test]
+    fn session_with_special_characters_in_server() {
+        let config = FuzzConfig::default();
+        let server = "python3 -m server --arg=\"value with spaces\"";
+        let session = FuzzSession::new(server, &[], config);
+
+        assert_eq!(session.server, server);
+    }
+
+    #[test]
+    fn create_progress_bar_prefers_iterations() {
+        let config = FuzzConfig {
+            max_iterations: 500,
+            duration_secs: 60,
+            ..FuzzConfig::default()
+        };
+
+        let session = FuzzSession::new("test", &[], config);
+        let pb = session.create_progress_bar();
+
+        // Should use max_iterations when both are set
+        assert_eq!(pb.length(), Some(500));
+    }
+
+    #[test]
+    fn create_progress_bar_duration_estimation() {
+        let config = FuzzConfig {
+            max_iterations: 0,
+            duration_secs: 120,
+            ..FuzzConfig::default()
+        };
+
+        let session = FuzzSession::new("test", &[], config);
+        let pb = session.create_progress_bar();
+
+        // Should estimate 50 iterations/sec
+        assert_eq!(pb.length(), Some(120 * 50));
+    }
+
+    #[test]
+    fn session_max_connection_failures_default() {
+        let config = FuzzConfig::default();
+        let session = FuzzSession::new("test", &[], config);
+
+        assert_eq!(session.max_connection_failures, 5);
+    }
+
+    #[test]
+    fn fuzz_config_profiles_are_distinct() {
+        let quick = FuzzConfig::with_profile(FuzzProfile::Quick);
+        let standard = FuzzConfig::with_profile(FuzzProfile::Standard);
+        let intensive = FuzzConfig::with_profile(FuzzProfile::Intensive);
+
+        assert_ne!(quick.profile, standard.profile);
+        assert_ne!(standard.profile, intensive.profile);
+        assert_ne!(quick.profile, intensive.profile);
+    }
+
+    #[test]
+    fn session_args_cloned_correctly() {
+        let config = FuzzConfig::default();
+        let original_args = vec!["--flag".to_string(), "value".to_string()];
+        let session = FuzzSession::new("test", &original_args, config);
+
+        // Verify args are cloned, not moved
+        assert_eq!(session.args, original_args);
+        assert_eq!(original_args.len(), 2);
     }
 }

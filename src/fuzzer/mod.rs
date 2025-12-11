@@ -383,4 +383,398 @@ mod tests {
         assert_eq!(sarif["version"], "2.1.0");
         assert!(!sarif["runs"][0]["results"].as_array().unwrap().is_empty());
     }
+
+    #[test]
+    fn engine_with_config() {
+        let config = FuzzConfig::with_profile(FuzzProfile::Quick);
+        let engine = FuzzEngine::with_config("test-server", &[], config);
+        assert_eq!(engine.server, "test-server");
+        assert_eq!(engine.config.profile, FuzzProfile::Quick);
+    }
+
+    #[test]
+    fn engine_with_args() {
+        let args = vec!["--port".to_string(), "8080".to_string()];
+        let engine = FuzzEngine::new("node server.js", &args, 2);
+        assert_eq!(engine.server, "node server.js");
+        assert_eq!(engine.args.len(), 2);
+        assert_eq!(engine.config.workers, 2);
+    }
+
+    #[test]
+    fn results_with_crashes() {
+        let results = FuzzResults {
+            server: "test".to_string(),
+            duration_secs: 10,
+            iterations: 100,
+            crashes: vec![
+                FuzzCrash {
+                    id: "crash-1".to_string(),
+                    crash_type: "panic".to_string(),
+                    input: "{}".to_string(),
+                    error: "panic error".to_string(),
+                    iteration: 10,
+                    timestamp: "2024-01-01T00:00:00Z".to_string(),
+                },
+                FuzzCrash {
+                    id: "crash-2".to_string(),
+                    crash_type: "segfault".to_string(),
+                    input: "{\"test\": 1}".to_string(),
+                    error: "segfault error".to_string(),
+                    iteration: 50,
+                    timestamp: "2024-01-01T00:01:00Z".to_string(),
+                },
+            ],
+            coverage: CoverageStats::default(),
+            interesting_inputs: 3,
+        };
+
+        assert!(results.has_crashes());
+        assert_eq!(results.crash_count(), 2);
+    }
+
+    #[test]
+    fn results_json_format() {
+        let results = FuzzResults {
+            server: "test-server".to_string(),
+            duration_secs: 30,
+            iterations: 500,
+            crashes: vec![],
+            coverage: CoverageStats::default(),
+            interesting_inputs: 10,
+        };
+
+        let json_result = results.print_json();
+        assert!(json_result.is_ok());
+    }
+
+    #[test]
+    fn results_sarif_format() {
+        let results = FuzzResults {
+            server: "test-server".to_string(),
+            duration_secs: 30,
+            iterations: 500,
+            crashes: vec![],
+            coverage: CoverageStats::default(),
+            interesting_inputs: 10,
+        };
+
+        let sarif_result = results.print_sarif();
+        assert!(sarif_result.is_ok());
+    }
+
+    #[test]
+    fn fuzz_crash_structure() {
+        let crash = FuzzCrash {
+            id: "unique-id".to_string(),
+            crash_type: "connection_drop".to_string(),
+            input: "{\"method\": \"test\"}".to_string(),
+            error: "Connection lost".to_string(),
+            iteration: 123,
+            timestamp: "2024-12-11T10:00:00Z".to_string(),
+        };
+
+        assert_eq!(crash.id, "unique-id");
+        assert_eq!(crash.crash_type, "connection_drop");
+        assert_eq!(crash.iteration, 123);
+    }
+
+    #[test]
+    fn results_sarif_with_multiple_crashes() {
+        let results = FuzzResults {
+            server: "test".to_string(),
+            duration_secs: 60,
+            iterations: 1000,
+            crashes: vec![
+                FuzzCrash {
+                    id: "1".to_string(),
+                    crash_type: "panic".to_string(),
+                    input: "{}".to_string(),
+                    error: "error 1".to_string(),
+                    iteration: 10,
+                    timestamp: "2024-01-01T00:00:00Z".to_string(),
+                },
+                FuzzCrash {
+                    id: "2".to_string(),
+                    crash_type: "panic".to_string(),
+                    input: "{}".to_string(),
+                    error: "error 2".to_string(),
+                    iteration: 20,
+                    timestamp: "2024-01-01T00:01:00Z".to_string(),
+                },
+                FuzzCrash {
+                    id: "3".to_string(),
+                    crash_type: "timeout".to_string(),
+                    input: "{}".to_string(),
+                    error: "timeout error".to_string(),
+                    iteration: 30,
+                    timestamp: "2024-01-01T00:02:00Z".to_string(),
+                },
+            ],
+            coverage: CoverageStats::default(),
+            interesting_inputs: 5,
+        };
+
+        let sarif = results.to_sarif();
+
+        // Should have 2 unique rules (panic and timeout)
+        let rules = sarif["runs"][0]["tool"]["driver"]["rules"]
+            .as_array()
+            .unwrap();
+        assert_eq!(rules.len(), 2);
+
+        // Should have 3 results
+        let sarif_results = sarif["runs"][0]["results"].as_array().unwrap();
+        assert_eq!(sarif_results.len(), 3);
+    }
+
+    #[test]
+    fn results_sarif_rule_deduplication() {
+        let results = FuzzResults {
+            server: "test".to_string(),
+            duration_secs: 10,
+            iterations: 100,
+            crashes: vec![
+                FuzzCrash {
+                    id: "1".to_string(),
+                    crash_type: "panic".to_string(),
+                    input: "{}".to_string(),
+                    error: "error 1".to_string(),
+                    iteration: 1,
+                    timestamp: "2024-01-01T00:00:00Z".to_string(),
+                },
+                FuzzCrash {
+                    id: "2".to_string(),
+                    crash_type: "panic".to_string(),
+                    input: "{}".to_string(),
+                    error: "error 2".to_string(),
+                    iteration: 2,
+                    timestamp: "2024-01-01T00:00:01Z".to_string(),
+                },
+            ],
+            coverage: CoverageStats::default(),
+            interesting_inputs: 0,
+        };
+
+        let sarif = results.to_sarif();
+
+        // Should only have 1 unique rule despite 2 crashes of same type
+        let rules = sarif["runs"][0]["tool"]["driver"]["rules"]
+            .as_array()
+            .unwrap();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0]["id"], "FUZZ-PANIC");
+    }
+
+    #[test]
+    fn results_sarif_invocations() {
+        let results = FuzzResults {
+            server: "test".to_string(),
+            duration_secs: 120,
+            iterations: 5000,
+            crashes: vec![],
+            coverage: CoverageStats::default(),
+            interesting_inputs: 25,
+        };
+
+        let sarif = results.to_sarif();
+        let invocations = &sarif["runs"][0]["invocations"][0];
+
+        assert_eq!(invocations["executionSuccessful"], true);
+        assert_eq!(invocations["properties"]["iterations"], 5000);
+        assert_eq!(invocations["properties"]["duration_secs"], 120);
+        assert_eq!(invocations["properties"]["interesting_inputs"], 25);
+    }
+
+    #[test]
+    fn results_sarif_schema_version() {
+        let results = FuzzResults {
+            server: "test".to_string(),
+            duration_secs: 1,
+            iterations: 1,
+            crashes: vec![],
+            coverage: CoverageStats::default(),
+            interesting_inputs: 0,
+        };
+
+        let sarif = results.to_sarif();
+        assert_eq!(sarif["$schema"], "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json");
+        assert_eq!(sarif["version"], "2.1.0");
+    }
+
+    #[test]
+    fn results_sarif_tool_driver() {
+        let results = FuzzResults {
+            server: "test".to_string(),
+            duration_secs: 1,
+            iterations: 1,
+            crashes: vec![],
+            coverage: CoverageStats::default(),
+            interesting_inputs: 0,
+        };
+
+        let sarif = results.to_sarif();
+        let driver = &sarif["runs"][0]["tool"]["driver"];
+
+        assert_eq!(driver["name"], "mcplint-fuzzer");
+        assert!(driver["version"].is_string());
+        assert_eq!(
+            driver["informationUri"],
+            "https://github.com/quanticsoul4772/mcplint"
+        );
+    }
+
+    #[test]
+    fn fuzz_crash_clone() {
+        let crash = FuzzCrash {
+            id: "id".to_string(),
+            crash_type: "panic".to_string(),
+            input: "{}".to_string(),
+            error: "error".to_string(),
+            iteration: 1,
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+        };
+
+        let cloned = crash.clone();
+        assert_eq!(crash.id, cloned.id);
+        assert_eq!(crash.crash_type, cloned.crash_type);
+        assert_eq!(crash.iteration, cloned.iteration);
+    }
+
+    #[test]
+    fn fuzz_results_clone() {
+        let results = FuzzResults {
+            server: "test".to_string(),
+            duration_secs: 10,
+            iterations: 100,
+            crashes: vec![],
+            coverage: CoverageStats::default(),
+            interesting_inputs: 5,
+        };
+
+        let cloned = results.clone();
+        assert_eq!(results.server, cloned.server);
+        assert_eq!(results.duration_secs, cloned.duration_secs);
+        assert_eq!(results.iterations, cloned.iterations);
+    }
+
+    #[test]
+    fn engine_default_workers() {
+        let engine = FuzzEngine::new("test", &[], 1);
+        assert_eq!(engine.config.workers, 1);
+    }
+
+    #[test]
+    fn engine_multiple_workers() {
+        let engine = FuzzEngine::new("test", &[], 4);
+        assert_eq!(engine.config.workers, 4);
+    }
+
+    #[test]
+    fn results_empty_crashes() {
+        let results = FuzzResults {
+            server: "test".to_string(),
+            duration_secs: 10,
+            iterations: 100,
+            crashes: vec![],
+            coverage: CoverageStats::default(),
+            interesting_inputs: 0,
+        };
+
+        assert!(!results.has_crashes());
+        assert_eq!(results.crash_count(), 0);
+        assert!(results.crashes.is_empty());
+    }
+
+    #[test]
+    fn results_server_name() {
+        let results = FuzzResults {
+            server: "my-test-server".to_string(),
+            duration_secs: 1,
+            iterations: 1,
+            crashes: vec![],
+            coverage: CoverageStats::default(),
+            interesting_inputs: 0,
+        };
+
+        assert_eq!(results.server, "my-test-server");
+    }
+
+    #[test]
+    fn results_duration_and_iterations() {
+        let results = FuzzResults {
+            server: "test".to_string(),
+            duration_secs: 300,
+            iterations: 5000,
+            crashes: vec![],
+            coverage: CoverageStats::default(),
+            interesting_inputs: 15,
+        };
+
+        assert_eq!(results.duration_secs, 300);
+        assert_eq!(results.iterations, 5000);
+        assert_eq!(results.interesting_inputs, 15);
+    }
+
+    #[test]
+    fn crash_input_truncation_display() {
+        // Test that long inputs would be truncated in display
+        let long_input = "x".repeat(150);
+        let crash = FuzzCrash {
+            id: "id".to_string(),
+            crash_type: "panic".to_string(),
+            input: long_input.clone(),
+            error: "error".to_string(),
+            iteration: 1,
+            timestamp: "2024-01-01T00:00:00Z".to_string(),
+        };
+
+        // The input is stored fully
+        assert_eq!(crash.input.len(), 150);
+    }
+
+    #[test]
+    fn sarif_result_properties() {
+        let results = FuzzResults {
+            server: "test".to_string(),
+            duration_secs: 10,
+            iterations: 100,
+            crashes: vec![FuzzCrash {
+                id: "test-id".to_string(),
+                crash_type: "panic".to_string(),
+                input: "{\"test\": true}".to_string(),
+                error: "test error".to_string(),
+                iteration: 42,
+                timestamp: "2024-01-01T00:00:00Z".to_string(),
+            }],
+            coverage: CoverageStats::default(),
+            interesting_inputs: 5,
+        };
+
+        let sarif = results.to_sarif();
+        let result = &sarif["runs"][0]["results"][0];
+
+        assert_eq!(result["properties"]["iteration"], 42);
+        assert_eq!(result["properties"]["timestamp"], "2024-01-01T00:00:00Z");
+        assert_eq!(result["properties"]["input"], "{\"test\": true}");
+    }
+
+    #[test]
+    fn engine_empty_args() {
+        let engine = FuzzEngine::new("test-server", &[], 1);
+        assert!(engine.args.is_empty());
+    }
+
+    #[test]
+    fn engine_config_preserved() {
+        let config = FuzzConfig {
+            duration_secs: 999,
+            max_iterations: 777,
+            ..FuzzConfig::default()
+        };
+
+        let engine = FuzzEngine::with_config("test", &[], config);
+        assert_eq!(engine.config.duration_secs, 999);
+        assert_eq!(engine.config.max_iterations, 777);
+    }
 }

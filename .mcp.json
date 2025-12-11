@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "unified-thinking": {
+      "type": "stdio",
+      "command": "C:\\Development\\Projects\\MCP\\project-root\\mcp-servers\\unified-thinking\\bin\\unified-thinking.exe",
+      "args": [],
+      "env": {}
+    }
+  }
+}

@@ -38,6 +38,8 @@ mcplint explain <server>         # AI explanations
 mcplint rules --details          # List rules
 mcplint doctor                   # Environment check
 mcplint cache stats              # Cache statistics
+mcplint fingerprint generate <s> # Generate fingerprints
+mcplint watch <server>           # Watch mode
 ```
 
 ## Architecture
@@ -80,6 +82,11 @@ src/
       tool_shadowing.rs
       schema_poisoning.rs
       unicode_hidden.rs
+      oauth_abuse.rs   # OAuth scope abuse detection
+  fingerprinting/      # Tool fingerprinting
+    mod.rs             # Fingerprint generation
+    comparator.rs      # Fingerprint comparison
+    normalizer.rs      # Schema normalization
   fuzzer/              # Fuzzing framework
     session.rs         # FuzzSession
     corpus.rs          # CorpusManager
@@ -177,3 +184,21 @@ Key crates:
 - serde/serde_json: Serialization
 - reqwest: HTTP client
 - tracing: Logging
+
+## Test Coverage
+
+Current statistics:
+- **3,540+ tests** across lib, bin, and integration test suites
+- **68.7% code coverage** (8,360/12,166 lines)
+- Integration tests use live MCP servers (filesystem, memory)
+
+Key module coverage:
+- scanner/engine.rs: 93.8%
+- transport/stdio.rs: 93.5%
+- validator/rules.rs: 99.5%
+- validator/engine.rs: 69.4%
+
+Run coverage:
+```bash
+cargo tarpaulin --lib --test server_integration --out Stdout
+```

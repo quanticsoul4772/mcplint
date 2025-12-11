@@ -405,7 +405,7 @@ mod tests {
         let dict = Dictionary::mcp_default();
         let engine = MutationEngine::all_strategies().with_dictionary(dict);
         // Just verify dictionary was set (Dictionary doesn't have public unicode_chars)
-        assert!(engine.strategies.len() > 0);
+        assert!(!engine.strategies.is_empty());
     }
 
     #[test]
