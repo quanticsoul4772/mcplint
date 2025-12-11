@@ -176,11 +176,13 @@ impl ScanConfig {
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_include_categories(mut self, categories: Vec<String>) -> Self {
         self.include_categories = categories;
         self
     }
 
+    #[allow(dead_code)]
     pub fn with_exclude_categories(mut self, categories: Vec<String>) -> Self {
         self.exclude_categories = categories;
         self

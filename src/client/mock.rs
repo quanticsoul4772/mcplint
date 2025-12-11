@@ -3,6 +3,8 @@
 //! Provides mock implementations of McpClient for unit testing without
 //! spawning actual MCP server processes.
 
+#![allow(dead_code)] // Testing infrastructure - used by test consumers
+
 use std::sync::Arc;
 
 use anyhow::Result;

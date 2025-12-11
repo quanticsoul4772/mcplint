@@ -1,8 +1,9 @@
 //! Scan command - Security vulnerability scanning
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use colored::Colorize;
 use tracing::{debug, info};
 
@@ -11,9 +12,138 @@ use crate::baseline::{Baseline, DiffEngine};
 use crate::cache::{CacheConfig, CacheManager};
 use crate::cli::commands::explain::build_ai_config;
 use crate::cli::config::{AiExplainConfig, ScanCommandConfig};
+use crate::cli::server::resolve_server;
 use crate::reporter::{generate_gitlab, generate_junit};
-use crate::scanner::{ScanConfig, ScanEngine, ScanProfile, Severity};
+use crate::scanner::{ScanConfig, ScanProfile, Severity};
 use crate::OutputFormat;
+
+/// Run a security scan using resolved server specification
+///
+/// This function connects to the MCP server and performs security scanning
+/// using the resolved command, args, and environment variables.
+async fn run_resolved_scan(
+    name: &str,
+    command: &str,
+    args: &[String],
+    env: &HashMap<String, String>,
+    scan_config: ScanConfig,
+    timeout: u64,
+) -> Result<crate::scanner::ScanResults> {
+    use crate::client::McpClient;
+    use crate::protocol::Implementation;
+    use crate::scanner::context::ServerContext;
+    use crate::scanner::rules::{
+        OAuthAbuseDetector, SchemaPoisoningDetector, ToolInjectionDetector, ToolShadowingDetector,
+        UnicodeHiddenDetector,
+    };
+    use crate::scanner::ScanResults;
+    use crate::transport::{connect_with_type, TransportConfig, TransportType};
+    use std::time::Instant;
+
+    let start = Instant::now();
+    let mut results = ScanResults::new(name, scan_config.profile.clone());
+
+    // Determine transport type and connect
+    let transport_type = if command.starts_with("http://") || command.starts_with("https://") {
+        TransportType::StreamableHttp
+    } else {
+        TransportType::Stdio
+    };
+
+    let transport_config = TransportConfig {
+        timeout_secs: timeout,
+        ..Default::default()
+    };
+
+    tracing::info!("Connecting to server: {} via {:?}", name, transport_type);
+    let transport_box = connect_with_type(command, args, env, transport_config, transport_type)
+        .await
+        .context("Failed to connect to server")?;
+
+    // Create and initialize client
+    let client_info = Implementation::new("mcplint-scanner", env!("CARGO_PKG_VERSION"));
+    let mut client = McpClient::new(transport_box, client_info);
+    client.mark_connected(); // Mark as connected since transport is established
+
+    let init_result = client.initialize().await?;
+
+    // Build server context
+    let mut ctx = ServerContext::new(
+        &init_result.server_info.name,
+        &init_result.server_info.version,
+        &init_result.protocol_version,
+        init_result.capabilities.clone(),
+    )
+    .with_transport(transport_type.to_string())
+    .with_target(name);
+
+    // Collect tools, resources, prompts
+    if init_result.capabilities.has_tools() {
+        if let Ok(tools) = client.list_tools().await {
+            ctx = ctx.with_tools(tools);
+        }
+    }
+
+    if init_result.capabilities.has_resources() {
+        if let Ok(resources) = client.list_resources().await {
+            ctx = ctx.with_resources(resources);
+        }
+    }
+
+    if init_result.capabilities.has_prompts() {
+        if let Ok(prompts) = client.list_prompts().await {
+            ctx = ctx.with_prompts(prompts);
+        }
+    }
+
+    // Run M6 advanced security checks
+    // MCP-SEC-040: Enhanced Tool Description Injection
+    results.total_checks += 1;
+    let detector = ToolInjectionDetector::new();
+    let findings = detector.check_tools(&ctx.tools);
+    for finding in findings {
+        results.add_finding(finding);
+    }
+
+    // MCP-SEC-041: Cross-Server Tool Shadowing
+    results.total_checks += 1;
+    let detector = ToolShadowingDetector::new();
+    let server_name = Some(ctx.server_name.as_str());
+    let findings = detector.check_tools(&ctx.tools, server_name);
+    for finding in findings {
+        results.add_finding(finding);
+    }
+
+    // MCP-SEC-043: OAuth Scope Abuse
+    results.total_checks += 1;
+    let detector = OAuthAbuseDetector::new();
+    let findings = detector.check_tools(&ctx.tools);
+    for finding in findings {
+        results.add_finding(finding);
+    }
+
+    // MCP-SEC-044: Unicode Hidden Instructions
+    results.total_checks += 1;
+    let detector = UnicodeHiddenDetector::new();
+    let findings = detector.check_tools(&ctx.tools);
+    for finding in findings {
+        results.add_finding(finding);
+    }
+
+    // MCP-SEC-045: Schema Poisoning
+    results.total_checks += 1;
+    let detector = SchemaPoisoningDetector::new();
+    let findings = detector.check_tools(&ctx.tools);
+    for finding in findings {
+        results.add_finding(finding);
+    }
+
+    // Cleanup
+    let _ = client.close().await;
+
+    results.duration_ms = start.elapsed().as_millis() as u64;
+    Ok(results)
+}
 
 /// Run the scan command with the given configuration
 pub async fn run(config: ScanCommandConfig) -> Result<()> {
@@ -30,13 +160,24 @@ pub async fn run(config: ScanCommandConfig) -> Result<()> {
         run.profile, run.include, run.exclude, run.timeout, ai.enabled
     );
 
+    // Resolve server to get command, args, and env
+    let (name, command, resolved_args, env) =
+        resolve_server(&run.server, run.config_path.as_deref())?;
+
+    // Combine resolved args with any additional args provided
+    let mut full_args = resolved_args;
+    full_args.extend(run.args.iter().cloned());
+
+    debug!("Resolved server '{}': {} {:?}", name, command, full_args);
+
     let profile_name = run.profile.as_str();
     let scan_profile: ScanProfile = run.profile.into();
 
     // Only show banner for text output
     if matches!(output.format, OutputFormat::Text) {
         println!("{}", "Starting security scan...".cyan());
-        println!("  Server: {}", run.server.yellow());
+        println!("  Server: {}", name.yellow());
+        println!("  Command: {} {}", command, full_args.join(" ").dimmed());
         println!("  Profile: {}", profile_name.green());
         if let Some(ref path) = baseline.baseline_path {
             println!("  Baseline: {}", path.display().to_string().yellow());
@@ -48,21 +189,13 @@ pub async fn run(config: ScanCommandConfig) -> Result<()> {
     }
 
     // Build scan configuration
-    let mut scan_config = ScanConfig::default()
+    let scan_config = ScanConfig::default()
         .with_profile(scan_profile)
         .with_timeout(run.timeout);
 
-    if let Some(inc) = run.include.clone() {
-        scan_config = scan_config.with_include_categories(inc);
-    }
-
-    if let Some(exc) = run.exclude.clone() {
-        scan_config = scan_config.with_exclude_categories(exc);
-    }
-
-    // Create engine and run scan
-    let engine = ScanEngine::new(scan_config);
-    let results = engine.scan(&run.server, &run.args, None).await?;
+    // Run scan using resolved server specification
+    let results =
+        run_resolved_scan(&name, &command, &full_args, &env, scan_config, run.timeout).await?;
 
     // Load baseline if provided
     let loaded_baseline = if let Some(ref path) = baseline.baseline_path {

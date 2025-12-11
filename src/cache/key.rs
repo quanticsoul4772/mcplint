@@ -139,10 +139,26 @@ impl CacheKey {
     }
 
     /// Get the filesystem path components
+    ///
+    /// Sanitizes the identifier to be safe for use as a filename on all platforms.
+    /// Replaces characters that are invalid in Windows filenames: < > : " / \ | ? *
     pub fn to_path_components(&self) -> (String, String) {
+        // Replace characters invalid in Windows/Unix filenames
+        let safe_identifier = self
+            .identifier
+            .replace(':', "_")
+            .replace('<', "_")
+            .replace('>', "_")
+            .replace('"', "_")
+            .replace('/', "_")
+            .replace('\\', "_")
+            .replace('|', "_")
+            .replace('?', "_")
+            .replace('*', "_");
+
         (
             self.category.to_string(),
-            format!("{}.json", self.identifier),
+            format!("{}.json", safe_identifier),
         )
     }
 }
@@ -176,6 +192,23 @@ mod tests {
         let (dir, file) = key.to_path_components();
         assert_eq!(dir, "validation");
         assert_eq!(file, "server_2024-11-05.json");
+    }
+
+    #[test]
+    fn path_components_sanitizes_colons() {
+        // Test that colons (invalid on Windows) are replaced with underscores
+        let key = CacheKey::new(CacheCategory::AiResponse, "1:model:uuid:rule:audience");
+        let (dir, file) = key.to_path_components();
+        assert_eq!(dir, "ai_responses");
+        assert_eq!(file, "1_model_uuid_rule_audience.json");
+    }
+
+    #[test]
+    fn path_components_sanitizes_all_invalid_chars() {
+        // Test all Windows-invalid characters: < > : " / \ | ? *
+        let key = CacheKey::new(CacheCategory::Schema, "a<b>c:d\"e/f\\g|h?i*j");
+        let (_, file) = key.to_path_components();
+        assert_eq!(file, "a_b_c_d_e_f_g_h_i_j.json");
     }
 
     #[test]

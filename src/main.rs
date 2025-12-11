@@ -3,6 +3,8 @@
 //! A comprehensive security and quality assurance tool for Model Context Protocol servers.
 //! Provides protocol validation, security scanning, and coverage-guided fuzzing.
 
+use std::path::PathBuf;
+
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
@@ -95,7 +97,7 @@ enum Commands {
 
     /// Scan MCP server for security vulnerabilities
     Scan {
-        /// Path to MCP server executable or command
+        /// Server name (from config) or path to MCP server executable
         #[arg(required = true)]
         server: String,
 
@@ -150,6 +152,10 @@ enum Commands {
         /// Fail only on specified severities (e.g., critical,high)
         #[arg(long, value_delimiter = ',')]
         fail_on: Option<Vec<Severity>>,
+
+        /// Path to MCP config file (defaults to Claude Desktop config)
+        #[arg(short, long)]
+        config: Option<PathBuf>,
     },
 
     /// Fuzz MCP server with generated inputs
@@ -249,7 +255,7 @@ enum Commands {
 
     /// Get AI-powered explanations for security findings
     Explain {
-        /// Path to MCP server executable or command
+        /// Server name (from config) or path to MCP server executable
         #[arg(required = true)]
         server: String,
 
@@ -288,6 +294,10 @@ enum Commands {
         /// Timeout for server operations (seconds)
         #[arg(short, long, default_value = "120")]
         timeout: u64,
+
+        /// Path to MCP config file (defaults to Claude Desktop config)
+        #[arg(short, long)]
+        config: Option<PathBuf>,
     },
 
     /// Watch files and rescan on changes
@@ -546,6 +556,7 @@ async fn main() -> Result<()> {
             update_baseline,
             diff_only,
             fail_on,
+            config,
         } => {
             // Build run configuration
             let mut run_config = ScanRunConfig::new(server, profile)
@@ -556,6 +567,9 @@ async fn main() -> Result<()> {
             }
             if let Some(exc) = exclude {
                 run_config.exclude = Some(exc);
+            }
+            if let Some(path) = config {
+                run_config = run_config.with_config_path(path);
             }
 
             // Build baseline configuration
@@ -669,6 +683,7 @@ async fn main() -> Result<()> {
             no_cache,
             interactive,
             timeout,
+            config,
         } => {
             commands::explain::run_scan(
                 &server,
@@ -682,6 +697,7 @@ async fn main() -> Result<()> {
                 no_cache,
                 interactive,
                 timeout,
+                config.as_deref(),
             )
             .await?;
         }

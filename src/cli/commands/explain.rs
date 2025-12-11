@@ -2,7 +2,9 @@
 //!
 //! Provides detailed AI-generated explanations for security findings.
 
+use std::collections::HashMap;
 use std::io::{self, BufRead, Write};
+use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -14,7 +16,9 @@ use crate::ai::{
     ExplanationResponse,
 };
 use crate::cache::{CacheConfig, CacheManager};
-use crate::scanner::{Finding, ScanConfig, ScanEngine, ScanProfile, Severity};
+use crate::cli::server::resolve_server;
+use crate::scanner::{Finding, ScanProfile, Severity};
+use crate::transport::TransportConfig;
 use crate::OutputFormat;
 
 /// AI provider selection for CLI
@@ -87,6 +91,133 @@ pub async fn run_finding(
     Ok(())
 }
 
+/// Run a security scan using resolved server specification
+///
+/// This function connects to the MCP server and performs security scanning
+/// using the resolved command, args, and environment variables.
+async fn run_resolved_scan(
+    name: &str,
+    command: &str,
+    args: &[String],
+    env: &HashMap<String, String>,
+    timeout: u64,
+) -> Result<crate::scanner::ScanResults> {
+    use crate::client::McpClient;
+    use crate::protocol::Implementation;
+    use crate::scanner::rules::{
+        OAuthAbuseDetector, SchemaPoisoningDetector, ToolInjectionDetector, ToolShadowingDetector,
+        UnicodeHiddenDetector,
+    };
+    use crate::scanner::{ScanResults, ServerContext};
+    use crate::transport::{connect_with_type, TransportType};
+    use std::time::Instant;
+
+    let start = Instant::now();
+    let scan_profile = ScanProfile::Standard;
+    let mut results = ScanResults::new(name, scan_profile);
+
+    // Determine transport type and connect
+    let transport_type = if command.starts_with("http://") || command.starts_with("https://") {
+        TransportType::StreamableHttp
+    } else {
+        TransportType::Stdio
+    };
+
+    let transport_config = TransportConfig {
+        timeout_secs: timeout,
+        ..Default::default()
+    };
+
+    tracing::info!("Connecting to server: {} via {:?}", name, transport_type);
+    let transport_box = connect_with_type(command, args, env, transport_config, transport_type)
+        .await
+        .context("Failed to connect to server")?;
+
+    // Create and initialize client
+    let client_info = Implementation::new("mcplint-scanner", env!("CARGO_PKG_VERSION"));
+    let mut client = McpClient::new(transport_box, client_info);
+    client.mark_connected(); // Mark as connected since transport is established
+
+    let init_result = client.initialize().await?;
+
+    // Build server context
+    let mut ctx = ServerContext::new(
+        &init_result.server_info.name,
+        &init_result.server_info.version,
+        &init_result.protocol_version,
+        init_result.capabilities.clone(),
+    )
+    .with_transport(transport_type.to_string())
+    .with_target(name);
+
+    // Collect tools, resources, prompts
+    if init_result.capabilities.has_tools() {
+        if let Ok(tools) = client.list_tools().await {
+            ctx = ctx.with_tools(tools);
+        }
+    }
+
+    if init_result.capabilities.has_resources() {
+        if let Ok(resources) = client.list_resources().await {
+            ctx = ctx.with_resources(resources);
+        }
+    }
+
+    if init_result.capabilities.has_prompts() {
+        if let Ok(prompts) = client.list_prompts().await {
+            ctx = ctx.with_prompts(prompts);
+        }
+    }
+
+    // Run M6 advanced security checks (the main ones we care about for explain)
+    // MCP-SEC-040: Enhanced Tool Description Injection
+    results.total_checks += 1;
+    let detector = ToolInjectionDetector::new();
+    let findings = detector.check_tools(&ctx.tools);
+    for finding in findings {
+        results.add_finding(finding);
+    }
+
+    // MCP-SEC-041: Cross-Server Tool Shadowing
+    results.total_checks += 1;
+    let detector = ToolShadowingDetector::new();
+    let server_name = Some(ctx.server_name.as_str());
+    let findings = detector.check_tools(&ctx.tools, server_name);
+    for finding in findings {
+        results.add_finding(finding);
+    }
+
+    // MCP-SEC-043: OAuth Scope Abuse
+    results.total_checks += 1;
+    let detector = OAuthAbuseDetector::new();
+    let findings = detector.check_tools(&ctx.tools);
+    for finding in findings {
+        results.add_finding(finding);
+    }
+
+    // MCP-SEC-044: Unicode Hidden Instructions
+    results.total_checks += 1;
+    let detector = UnicodeHiddenDetector::new();
+    let findings = detector.check_tools(&ctx.tools);
+    for finding in findings {
+        results.add_finding(finding);
+    }
+
+    // MCP-SEC-045: Schema Poisoning
+    results.total_checks += 1;
+    let detector = SchemaPoisoningDetector::new();
+    let findings = detector.check_tools(&ctx.tools);
+    for finding in findings {
+        results.add_finding(finding);
+    }
+
+    // Cleanup
+    let _ = client.close().await;
+
+    results.duration_ms = start.elapsed().as_millis() as u64;
+    Ok(results)
+}
+
 /// Run explain after scanning a server
 #[allow(clippy::too_many_arguments)]
 pub async fn run_scan(
@@ -101,22 +232,27 @@ pub async fn run_scan(
     no_cache: bool,
     interactive: bool,
     timeout: u64,
+    config_path: Option<&Path>,
 ) -> Result<()> {
     info!("Scanning and explaining: {}", server);
 
+    // Resolve server to get command, args, and env
+    let (name, command, resolved_args, env) = resolve_server(server, config_path)?;
+
+    // Combine resolved args with any additional args provided
+    let mut full_args = resolved_args;
+    full_args.extend(args.iter().cloned());
+
+    debug!("Resolved server '{}': {} {:?}", name, command, full_args);
+
     // First, run a security scan
     println!("{}", "Step 1: Scanning for security issues...".cyan());
+    println!("  Server: {}", name.yellow());
+    println!("  Command: {} {}", command, full_args.join(" ").dimmed());
     println!();
 
-    let scan_config = ScanConfig::default()
-        .with_profile(ScanProfile::Standard)
-        .with_timeout(timeout);
-
-    let scan_engine = ScanEngine::new(scan_config);
-    let scan_results = scan_engine
-        .scan(server, args, None)
-        .await
-        .context("Failed to scan server")?;
+    // Run scan using resolved server specification
+    let scan_results = run_resolved_scan(&name, &command, &full_args, &env, timeout).await?;
 
     // Filter findings by severity if specified
     let mut findings: Vec<&Finding> = scan_results.findings.iter().collect();
@@ -250,6 +386,7 @@ pub fn build_ai_config(
 
     // Apply CLI overrides
     let provider_type: AiProviderType = provider.into();
+    let original_provider = config.provider;
 
     // CLI provider always overrides config file
     config.provider = provider_type;
@@ -257,7 +394,7 @@ pub fn build_ai_config(
     // CLI model overrides config file, or use provider default
     if let Some(m) = model {
         config.model = m;
-    } else if config.provider != provider_type {
+    } else if original_provider != provider_type {
         // Provider changed, use new provider's default model
         config.model = provider_type.default_model().to_string();
     }

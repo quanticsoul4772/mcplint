@@ -4,14 +4,14 @@
 //! It scans MCP servers for security vulnerabilities using pattern-based detection.
 
 mod checks;
-mod context;
+pub mod context;
 mod engine;
 mod finding;
 mod helpers;
 mod results;
 pub mod rules;
 
-pub use context::{ScanConfig, ScanProfile};
+pub use context::{ScanConfig, ScanProfile, ServerContext};
 // Re-exports for public API - used by external consumers and tests
 #[allow(unused_imports)]
 pub use engine::{ScanEngine, ScanResults, ScanSummary};
