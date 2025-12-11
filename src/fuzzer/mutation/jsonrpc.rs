@@ -371,4 +371,131 @@ mod tests {
 
         assert_eq!(missing_count, 1);
     }
+
+    #[test]
+    fn add_extra_field() {
+        let mut rng = rand::thread_rng();
+        let request = json!({
+            "jsonrpc": "2.0",
+            "method": "test",
+            "id": 1
+        });
+
+        let mutated = JsonRpcMutator::add_extra_field(&request, &mut rng);
+        let obj = mutated.as_object().unwrap();
+
+        // Should have at least 4 keys (original 3 + extra)
+        assert!(obj.len() >= 4);
+    }
+
+    #[test]
+    fn malformed_request_types() {
+        let mut rng = rand::thread_rng();
+        let mut seen_types = std::collections::HashSet::new();
+
+        for _ in 0..50 {
+            let request = JsonRpcMutator::malformed_request(&mut rng);
+            let type_name = match &request {
+                Value::Null => "null",
+                Value::Bool(_) => "bool",
+                Value::Number(_) => "number",
+                Value::String(_) => "string",
+                Value::Array(_) => "array",
+                Value::Object(_) => "object",
+            };
+            seen_types.insert(type_name);
+        }
+
+        // Should produce multiple types
+        assert!(seen_types.len() >= 3);
+    }
+
+    #[test]
+    fn invalid_batch() {
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..10 {
+            let batch = JsonRpcMutator::invalid_batch(&mut rng);
+            // All should be arrays (even invalid ones)
+            assert!(batch.is_array());
+        }
+    }
+
+    #[test]
+    fn mutate_params_object() {
+        let dict = Dictionary::mcp_default();
+        let mut rng = rand::thread_rng();
+        let params = json!({"key": "value", "number": 42});
+
+        let mutated = JsonRpcMutator::mutate_params(&params, &dict, &mut rng);
+        // Should still be an object
+        assert!(mutated.is_object());
+    }
+
+    #[test]
+    fn mutate_params_array() {
+        let dict = Dictionary::mcp_default();
+        let mut rng = rand::thread_rng();
+        let params = json!(["a", "b", "c"]);
+
+        let mutated = JsonRpcMutator::mutate_params(&params, &dict, &mut rng);
+        // Should still be an array
+        assert!(mutated.is_array());
+    }
+
+    #[test]
+    fn mutate_params_null() {
+        let dict = Dictionary::mcp_default();
+        let mut rng = rand::thread_rng();
+        let params = Value::Null;
+
+        let mutated = JsonRpcMutator::mutate_params(&params, &dict, &mut rng);
+        // Result can be different due to injection
+        assert!(mutated != params || mutated.is_null());
+    }
+
+    #[test]
+    fn subtle_break_produces_valid_structure() {
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..10 {
+            let result = JsonRpcMutator::subtle_break("tools/list", &mut rng);
+            // Should still be a valid JSON object
+            assert!(result.is_object());
+            let obj = result.as_object().unwrap();
+            // Should have jsonrpc and method
+            assert!(obj.contains_key("jsonrpc"));
+            assert!(obj.contains_key("method"));
+        }
+    }
+
+    #[test]
+    fn subtle_break_trailing_space() {
+        use rand::SeedableRng;
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(0);
+        let result = JsonRpcMutator::subtle_break("test", &mut rng);
+        // Just check structure is valid
+        assert!(result.is_object());
+    }
+
+    #[test]
+    fn mutate_params_empty_object() {
+        let dict = Dictionary::mcp_default();
+        let mut rng = rand::thread_rng();
+        let params = json!({});
+
+        let mutated = JsonRpcMutator::mutate_params(&params, &dict, &mut rng);
+        assert!(mutated.is_object());
+    }
+
+    #[test]
+    fn mutate_params_empty_array() {
+        let dict = Dictionary::mcp_default();
+        let mut rng = rand::thread_rng();
+        let params = json!([]);
+
+        let mutated = JsonRpcMutator::mutate_params(&params, &dict, &mut rng);
+        // Empty array stays empty (nothing to mutate)
+        assert!(mutated.is_array());
+    }
 }

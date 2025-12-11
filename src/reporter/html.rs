@@ -735,4 +735,216 @@ mod tests {
         assert!(chart.contains("bar-segment medium"));
         assert!(chart.contains("bar-segment low"));
     }
+
+    #[test]
+    fn severity_chart_empty() {
+        let data = SeverityData {
+            critical: 0,
+            high: 0,
+            medium: 0,
+            low: 0,
+            info: 0,
+            total: 0,
+        };
+
+        let chart = generate_severity_chart(&data);
+        assert!(chart.contains("No findings"));
+    }
+
+    #[test]
+    fn severity_chart_info_only() {
+        let data = SeverityData {
+            critical: 0,
+            high: 0,
+            medium: 0,
+            low: 0,
+            info: 5,
+            total: 5,
+        };
+
+        let chart = generate_severity_chart(&data);
+        assert!(chart.contains("bar-segment info"));
+    }
+
+    #[test]
+    fn html_escape_special_chars() {
+        assert_eq!(html_escape("&"), "&amp;");
+        assert_eq!(html_escape("<"), "&lt;");
+        assert_eq!(html_escape(">"), "&gt;");
+        assert_eq!(html_escape("\""), "&quot;");
+        assert_eq!(html_escape("'"), "&#39;");
+    }
+
+    #[test]
+    fn html_escape_combined() {
+        let input = "<script>alert('XSS & stuff')</script>";
+        let escaped = html_escape(input);
+        assert!(!escaped.contains('<'));
+        assert!(!escaped.contains('>'));
+        // Verify single quotes and ampersands were escaped
+        assert!(escaped.contains("&#39;"));
+        assert!(escaped.contains("&amp;"));
+    }
+
+    #[test]
+    fn generate_summary_html_all_severities() {
+        let mut results = ScanResults::new("test", ScanProfile::Standard);
+        results.summary.critical = 1;
+        results.summary.high = 2;
+        results.summary.medium = 3;
+        results.summary.low = 4;
+        results.summary.info = 5;
+
+        let summary = generate_summary_html(&results);
+        assert!(summary.contains("Critical"));
+        assert!(summary.contains("High"));
+        assert!(summary.contains("Medium"));
+        assert!(summary.contains("Low"));
+        assert!(summary.contains("Info"));
+    }
+
+    #[test]
+    fn generate_findings_html_with_location() {
+        use crate::scanner::FindingLocation;
+
+        let mut results = ScanResults::new("test", ScanProfile::Standard);
+        let mut finding = Finding::new(
+            "TEST-001",
+            Severity::High,
+            "Test Finding",
+            "Test description",
+        );
+        finding.location = FindingLocation {
+            component: "test_component".to_string(),
+            identifier: "test_id".to_string(),
+            context: None,
+        };
+        results.add_finding(finding);
+
+        let html = generate_findings_html(&results);
+        assert!(html.contains("test_component"));
+        assert!(html.contains("test_id"));
+    }
+
+    #[test]
+    fn generate_findings_html_with_remediation() {
+        let mut results = ScanResults::new("test", ScanProfile::Standard);
+        let mut finding = Finding::new("TEST-001", Severity::Medium, "Test Finding", "Description");
+        finding.remediation = "Fix the issue by doing X".to_string();
+        results.add_finding(finding);
+
+        let html = generate_findings_html(&results);
+        assert!(html.contains("Fix the issue by doing X"));
+        assert!(html.contains("Remediation"));
+    }
+
+    #[test]
+    fn generate_findings_html_with_evidence() {
+        use crate::scanner::{Evidence, EvidenceKind};
+
+        let mut results = ScanResults::new("test", ScanProfile::Standard);
+        let mut finding = Finding::new("TEST-001", Severity::Low, "Test Finding", "Description");
+        finding.evidence.push(Evidence {
+            kind: EvidenceKind::Observation,
+            data: "code here".to_string(),
+            description: "Found vulnerable code".to_string(),
+        });
+        results.add_finding(finding);
+
+        let html = generate_findings_html(&results);
+        assert!(html.contains("Found vulnerable code"));
+    }
+
+    #[test]
+    fn generate_findings_html_sorted_by_severity() {
+        let mut results = ScanResults::new("test", ScanProfile::Standard);
+
+        results.add_finding(Finding::new(
+            "LOW-001",
+            Severity::Low,
+            "Low Finding",
+            "Low desc",
+        ));
+        results.add_finding(Finding::new(
+            "CRIT-001",
+            Severity::Critical,
+            "Critical Finding",
+            "Critical desc",
+        ));
+        results.add_finding(Finding::new(
+            "HIGH-001",
+            Severity::High,
+            "High Finding",
+            "High desc",
+        ));
+
+        let html = generate_findings_html(&results);
+        let crit_pos = html.find("Critical Finding").unwrap();
+        let high_pos = html.find("High Finding").unwrap();
+        let low_pos = html.find("Low Finding").unwrap();
+
+        assert!(crit_pos < high_pos);
+        assert!(high_pos < low_pos);
+    }
+
+    #[test]
+    fn full_report_contains_required_elements() {
+        let mut results = ScanResults::new("test-server", ScanProfile::Full);
+        results.duration_ms = 1500;
+        results.total_checks = 50;
+
+        let html = generate_html(&results);
+
+        assert!(html.contains("<!DOCTYPE html>"));
+        assert!(html.contains("MCPLint Security Report"));
+        assert!(html.contains("test-server"));
+        assert!(html.contains("full"));
+        assert!(html.contains("1500"));
+        assert!(html.contains("50"));
+    }
+
+    #[test]
+    fn get_severity_data_correct_counts() {
+        let mut results = ScanResults::new("test", ScanProfile::Standard);
+
+        // Add findings - add_finding automatically updates summary
+        for _ in 0..2 {
+            results.add_finding(Finding::new("C", Severity::Critical, "C", ""));
+        }
+        for _ in 0..3 {
+            results.add_finding(Finding::new("H", Severity::High, "H", ""));
+        }
+        for _ in 0..5 {
+            results.add_finding(Finding::new("M", Severity::Medium, "M", ""));
+        }
+        results.add_finding(Finding::new("L", Severity::Low, "L", ""));
+        for _ in 0..4 {
+            results.add_finding(Finding::new("I", Severity::Info, "I", ""));
+        }
+
+        let data = get_severity_data(&results);
+        assert_eq!(data.critical, 2);
+        assert_eq!(data.high, 3);
+        assert_eq!(data.medium, 5);
+        assert_eq!(data.low, 1);
+        assert_eq!(data.info, 4);
+        assert_eq!(data.total, 15); // findings.len()
+    }
+
+    #[test]
+    fn severity_badge_classes() {
+        let mut results = ScanResults::new("test", ScanProfile::Standard);
+        results.add_finding(Finding::new("C", Severity::Critical, "Critical", ""));
+        results.add_finding(Finding::new("H", Severity::High, "High", ""));
+        results.add_finding(Finding::new("M", Severity::Medium, "Medium", ""));
+        results.add_finding(Finding::new("L", Severity::Low, "Low", ""));
+        results.add_finding(Finding::new("I", Severity::Info, "Info", ""));
+
+        let html = generate_findings_html(&results);
+        assert!(html.contains("severity-badge critical"));
+        assert!(html.contains("severity-badge high"));
+        assert!(html.contains("severity-badge medium"));
+        assert!(html.contains("severity-badge low"));
+        assert!(html.contains("severity-badge info"));
+    }
 }

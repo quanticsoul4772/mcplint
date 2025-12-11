@@ -174,4 +174,96 @@ mod tests {
         assert_eq!(entry.get_metadata("version"), Some("1.0"));
         assert_eq!(entry.get_metadata("missing"), None);
     }
+
+    #[test]
+    fn entry_default() {
+        let entry = CacheEntry::default();
+        assert!(entry.data.is_empty());
+        assert_eq!(entry.ttl_secs, 3600);
+        assert!(!entry.is_expired());
+    }
+
+    #[test]
+    fn entry_touch_updates_last_accessed() {
+        let mut entry = CacheEntry::new(b"test".to_vec(), Duration::from_secs(3600));
+        let original = entry.last_accessed;
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        entry.touch();
+        assert!(entry.last_accessed > original);
+    }
+
+    #[test]
+    fn entry_ttl_returns_duration() {
+        let entry = CacheEntry::new(vec![], Duration::from_secs(7200));
+        assert_eq!(entry.ttl().as_secs(), 7200);
+    }
+
+    #[test]
+    fn entry_age_returns_valid_duration() {
+        let entry = CacheEntry::new(vec![], Duration::from_secs(3600));
+        // Just check that age returns a valid duration (doesn't panic)
+        let age = entry.age();
+        // Age should be very small for a just-created entry
+        assert!(age.as_secs() < 1);
+    }
+
+    #[test]
+    fn entry_idle_time_returns_valid_duration() {
+        let entry = CacheEntry::new(vec![], Duration::from_secs(3600));
+        // Just check that idle_time returns a valid duration (doesn't panic)
+        let idle = entry.idle_time();
+        // Idle time should be very small for a just-created entry
+        assert!(idle.as_secs() < 1);
+    }
+
+    #[test]
+    fn remaining_ttl_none_when_expired() {
+        let entry = CacheEntry::new(vec![], Duration::from_secs(0));
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        assert!(entry.remaining_ttl().is_none());
+    }
+
+    #[test]
+    fn from_value_with_complex_type() {
+        #[derive(Serialize, Deserialize, PartialEq, Debug)]
+        struct Complex {
+            items: Vec<String>,
+            count: u32,
+            nested: Option<Inner>,
+        }
+        #[derive(Serialize, Deserialize, PartialEq, Debug)]
+        struct Inner {
+            value: i64,
+        }
+
+        let original = Complex {
+            items: vec!["a".to_string(), "b".to_string()],
+            count: 42,
+            nested: Some(Inner { value: -100 }),
+        };
+
+        let entry = CacheEntry::from_value(&original, Duration::from_secs(3600)).unwrap();
+        let retrieved: Complex = entry.to_value().unwrap();
+        assert_eq!(original, retrieved);
+    }
+
+    #[test]
+    fn entry_size_matches_data_length() {
+        let data = vec![0u8; 1024];
+        let entry = CacheEntry::new(data.clone(), Duration::from_secs(3600));
+        assert_eq!(entry.size_bytes, data.len() as u64);
+    }
+
+    #[test]
+    fn metadata_chaining() {
+        let entry = CacheEntry::new(vec![], Duration::from_secs(3600))
+            .with_metadata("key1", "val1")
+            .with_metadata("key2", "val2")
+            .with_metadata("key3", "val3");
+
+        assert_eq!(entry.metadata.len(), 3);
+        assert_eq!(entry.get_metadata("key1"), Some("val1"));
+        assert_eq!(entry.get_metadata("key2"), Some("val2"));
+        assert_eq!(entry.get_metadata("key3"), Some("val3"));
+    }
 }

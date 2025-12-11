@@ -322,6 +322,35 @@ impl std::fmt::Display for ScanProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
+
+    // Helper to create a test tool
+    fn test_tool(name: &str, desc: &str) -> Tool {
+        Tool {
+            name: name.to_string(),
+            description: Some(desc.to_string()),
+            input_schema: json!({"type": "object"}),
+        }
+    }
+
+    // Helper to create a test resource
+    fn test_resource(uri: &str, name: &str) -> Resource {
+        Resource {
+            uri: uri.to_string(),
+            name: name.to_string(),
+            description: None,
+            mime_type: Some("text/plain".to_string()),
+        }
+    }
+
+    // Helper to create a test prompt
+    fn test_prompt(name: &str, desc: &str) -> Prompt {
+        Prompt {
+            name: name.to_string(),
+            description: Some(desc.to_string()),
+            arguments: None,
+        }
+    }
 
     #[test]
     fn profile_rules() {
@@ -347,5 +376,321 @@ mod tests {
 
         assert!(config.should_run_rule("MCP-INJ-001", "injection"));
         assert!(!config.should_run_rule("MCP-AUTH-001", "auth"));
+    }
+
+    // ServerContext tests
+    #[test]
+    fn server_context_new() {
+        let ctx = ServerContext::new(
+            "test-server",
+            "1.0.0",
+            "2024-11-05",
+            ServerCapabilities::default(),
+        );
+
+        assert_eq!(ctx.server_name, "test-server");
+        assert_eq!(ctx.server_version, "1.0.0");
+        assert_eq!(ctx.protocol_version, "2024-11-05");
+        assert!(ctx.transport_type.is_empty());
+        assert!(ctx.target.is_empty());
+        assert!(ctx.tools.is_empty());
+        assert!(ctx.resources.is_empty());
+        assert!(ctx.prompts.is_empty());
+    }
+
+    #[test]
+    fn server_context_for_test() {
+        let ctx = ServerContext::for_test("/path/to/server");
+
+        assert_eq!(ctx.server_name, "test-server");
+        assert_eq!(ctx.server_version, "1.0.0");
+        assert_eq!(ctx.target, "/path/to/server");
+        assert_eq!(ctx.transport_type, "stdio");
+    }
+
+    #[test]
+    fn server_context_with_transport() {
+        let ctx =
+            ServerContext::new("s", "v", "p", ServerCapabilities::default()).with_transport("sse");
+
+        assert_eq!(ctx.transport_type, "sse");
+    }
+
+    #[test]
+    fn server_context_with_target() {
+        let ctx = ServerContext::new("s", "v", "p", ServerCapabilities::default())
+            .with_target("https://example.com/mcp");
+
+        assert_eq!(ctx.target, "https://example.com/mcp");
+    }
+
+    #[test]
+    fn server_context_with_tools() {
+        let tools = vec![test_tool("tool1", "desc1"), test_tool("tool2", "desc2")];
+        let ctx =
+            ServerContext::new("s", "v", "p", ServerCapabilities::default()).with_tools(tools);
+
+        assert_eq!(ctx.tools.len(), 2);
+        assert!(ctx.has_tools());
+    }
+
+    #[test]
+    fn server_context_with_resources() {
+        let resources = vec![test_resource("file:///a.txt", "a")];
+        let ctx = ServerContext::new("s", "v", "p", ServerCapabilities::default())
+            .with_resources(resources);
+
+        assert_eq!(ctx.resources.len(), 1);
+        assert!(ctx.has_resources());
+    }
+
+    #[test]
+    fn server_context_with_prompts() {
+        let prompts = vec![test_prompt("p1", "desc1"), test_prompt("p2", "desc2")];
+        let ctx =
+            ServerContext::new("s", "v", "p", ServerCapabilities::default()).with_prompts(prompts);
+
+        assert_eq!(ctx.prompts.len(), 2);
+        assert!(ctx.has_prompts());
+    }
+
+    #[test]
+    fn server_context_uses_http() {
+        let ctx_sse = ServerContext::for_test("http://example.com");
+        let mut ctx_sse = ctx_sse;
+        ctx_sse.set_transport_type("sse");
+        assert!(ctx_sse.uses_http());
+
+        let ctx_http = ServerContext::for_test("http://example.com");
+        let mut ctx_http = ctx_http;
+        ctx_http.set_transport_type("streamable_http");
+        assert!(ctx_http.uses_http());
+
+        let ctx_stdio = ServerContext::for_test("/path/to/server");
+        assert!(!ctx_stdio.uses_http());
+    }
+
+    #[test]
+    fn server_context_uses_https() {
+        let ctx_https = ServerContext::new("s", "v", "p", ServerCapabilities::default())
+            .with_target("https://example.com/mcp");
+        assert!(ctx_https.uses_https());
+
+        let ctx_http = ServerContext::new("s", "v", "p", ServerCapabilities::default())
+            .with_target("http://example.com/mcp");
+        assert!(!ctx_http.uses_https());
+
+        let ctx_local = ServerContext::for_test("/path/to/server");
+        assert!(!ctx_local.uses_https());
+    }
+
+    #[test]
+    fn server_context_has_methods_empty() {
+        let ctx = ServerContext::new("s", "v", "p", ServerCapabilities::default());
+
+        assert!(!ctx.has_tools());
+        assert!(!ctx.has_resources());
+        assert!(!ctx.has_prompts());
+    }
+
+    #[test]
+    fn server_context_builder_chain() {
+        let ctx = ServerContext::new("server", "1.0", "2024-11-05", ServerCapabilities::default())
+            .with_transport("sse")
+            .with_target("https://example.com")
+            .with_tools(vec![test_tool("t", "d")])
+            .with_resources(vec![test_resource("file:///f", "f")])
+            .with_prompts(vec![test_prompt("p", "d")]);
+
+        assert_eq!(ctx.transport_type, "sse");
+        assert_eq!(ctx.target, "https://example.com");
+        assert!(ctx.has_tools());
+        assert!(ctx.has_resources());
+        assert!(ctx.has_prompts());
+    }
+
+    // ScanConfig tests
+    #[test]
+    fn scan_config_default() {
+        let config = ScanConfig::default();
+
+        assert_eq!(config.profile, ScanProfile::Standard);
+        assert_eq!(config.timeout_secs, 60);
+        assert!(config.include_categories.is_empty());
+        assert!(config.exclude_categories.is_empty());
+        assert!(config.include_rules.is_empty());
+        assert!(config.exclude_rules.is_empty());
+        assert!(config.parallel_checks);
+    }
+
+    #[test]
+    fn scan_config_with_profile() {
+        let config = ScanConfig::default().with_profile(ScanProfile::Full);
+        assert_eq!(config.profile, ScanProfile::Full);
+    }
+
+    #[test]
+    fn scan_config_with_timeout() {
+        let config = ScanConfig::default().with_timeout(120);
+        assert_eq!(config.timeout_secs, 120);
+    }
+
+    #[test]
+    fn scan_config_with_include_categories() {
+        let config = ScanConfig::default()
+            .with_include_categories(vec!["injection".to_string(), "auth".to_string()]);
+
+        assert_eq!(config.include_categories.len(), 2);
+        assert!(config.should_run_rule("MCP-INJ-001", "injection"));
+        assert!(config.should_run_rule("MCP-AUTH-001", "auth"));
+        assert!(!config.should_run_rule("MCP-DOS-001", "dos"));
+    }
+
+    #[test]
+    fn scan_config_with_exclude_categories() {
+        let config = ScanConfig::default().with_exclude_categories(vec!["dos".to_string()]);
+
+        assert!(!config.should_run_rule("MCP-DOS-001", "dos"));
+        assert!(config.should_run_rule("MCP-INJ-001", "injection"));
+    }
+
+    #[test]
+    fn scan_config_with_include_rules() {
+        let config = ScanConfig::default().with_include_rules(vec!["MCP-INJ-001".to_string()]);
+
+        assert!(config.should_run_rule("MCP-INJ-001", "injection"));
+        assert!(!config.should_run_rule("MCP-INJ-002", "injection"));
+    }
+
+    #[test]
+    fn scan_config_with_exclude_rules() {
+        let config = ScanConfig::default().with_exclude_rules(vec!["MCP-INJ-001".to_string()]);
+
+        assert!(!config.should_run_rule("MCP-INJ-001", "injection"));
+        assert!(config.should_run_rule("MCP-INJ-002", "injection"));
+    }
+
+    #[test]
+    fn scan_config_exclude_takes_precedence() {
+        // Exclude takes precedence over include
+        let config = ScanConfig::default()
+            .with_include_categories(vec!["injection".to_string()])
+            .with_exclude_rules(vec!["MCP-INJ-001".to_string()]);
+
+        assert!(!config.should_run_rule("MCP-INJ-001", "injection"));
+        assert!(config.should_run_rule("MCP-INJ-002", "injection"));
+    }
+
+    #[test]
+    fn scan_config_category_exclude_precedence() {
+        let config = ScanConfig::default()
+            .with_include_rules(vec!["MCP-INJ-001".to_string()])
+            .with_exclude_categories(vec!["injection".to_string()]);
+
+        // Category exclusion takes precedence
+        assert!(!config.should_run_rule("MCP-INJ-001", "injection"));
+    }
+
+    #[test]
+    fn scan_config_case_insensitive_categories() {
+        let config = ScanConfig::default().with_include_categories(vec!["INJECTION".to_string()]);
+
+        assert!(config.should_run_rule("MCP-INJ-001", "injection"));
+        assert!(config.should_run_rule("MCP-INJ-001", "Injection"));
+        assert!(config.should_run_rule("MCP-INJ-001", "INJECTION"));
+    }
+
+    #[test]
+    fn scan_config_builder_chain() {
+        let config = ScanConfig::default()
+            .with_profile(ScanProfile::Full)
+            .with_timeout(120)
+            .with_include_categories(vec!["injection".to_string()])
+            .with_exclude_rules(vec!["MCP-INJ-001".to_string()]);
+
+        assert_eq!(config.profile, ScanProfile::Full);
+        assert_eq!(config.timeout_secs, 120);
+        assert_eq!(config.include_categories.len(), 1);
+        assert_eq!(config.exclude_rules.len(), 1);
+    }
+
+    // ScanProfile tests
+    #[test]
+    fn scan_profile_quick_rules() {
+        let profile = ScanProfile::Quick;
+        let rules = profile.included_rules();
+
+        assert_eq!(rules.len(), 5);
+        assert!(rules.contains(&"MCP-INJ-001"));
+        assert!(rules.contains(&"MCP-TRANS-001"));
+        assert!(!rules.contains(&"MCP-DOS-001"));
+    }
+
+    #[test]
+    fn scan_profile_standard_rules() {
+        let profile = ScanProfile::Standard;
+        let rules = profile.included_rules();
+
+        assert!(rules.len() > 5);
+        assert!(rules.contains(&"MCP-INJ-001"));
+        assert!(rules.contains(&"MCP-SEC-040"));
+        assert!(!rules.contains(&"MCP-DOS-001"));
+    }
+
+    #[test]
+    fn scan_profile_full_rules() {
+        let profile = ScanProfile::Full;
+        let rules = profile.included_rules();
+
+        assert!(rules.len() > 15);
+        assert!(rules.contains(&"MCP-DOS-001"));
+        assert!(rules.contains(&"MCP-SEC-045"));
+    }
+
+    #[test]
+    fn scan_profile_enterprise_same_as_full() {
+        let full = ScanProfile::Full;
+        let enterprise = ScanProfile::Enterprise;
+
+        assert_eq!(full.included_rules(), enterprise.included_rules());
+    }
+
+    #[test]
+    fn scan_profile_as_str() {
+        assert_eq!(ScanProfile::Quick.as_str(), "quick");
+        assert_eq!(ScanProfile::Standard.as_str(), "standard");
+        assert_eq!(ScanProfile::Full.as_str(), "full");
+        assert_eq!(ScanProfile::Enterprise.as_str(), "enterprise");
+    }
+
+    #[test]
+    fn scan_profile_display() {
+        assert_eq!(format!("{}", ScanProfile::Quick), "quick");
+        assert_eq!(format!("{}", ScanProfile::Standard), "standard");
+        assert_eq!(format!("{}", ScanProfile::Full), "full");
+        assert_eq!(format!("{}", ScanProfile::Enterprise), "enterprise");
+    }
+
+    #[test]
+    fn scan_profile_default() {
+        let profile = ScanProfile::default();
+        assert_eq!(profile, ScanProfile::Standard);
+    }
+
+    #[test]
+    fn scan_profile_includes_rule() {
+        let quick = ScanProfile::Quick;
+        assert!(quick.includes_rule("MCP-INJ-001"));
+        assert!(!quick.includes_rule("NONEXISTENT-RULE"));
+
+        let full = ScanProfile::Full;
+        assert!(full.includes_rule("MCP-DOS-001"));
+        assert!(full.includes_rule("MCP-SEC-045"));
+    }
+
+    #[test]
+    fn scan_profile_equality() {
+        assert_eq!(ScanProfile::Quick, ScanProfile::Quick);
+        assert_ne!(ScanProfile::Quick, ScanProfile::Full);
     }
 }

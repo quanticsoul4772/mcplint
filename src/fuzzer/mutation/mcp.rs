@@ -349,6 +349,7 @@ impl McpMutator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
 
     #[test]
     fn tool_not_found_generation() {
@@ -357,6 +358,31 @@ mod tests {
 
         for _ in 0..10 {
             let input = McpMutator::tool_not_found(&[], &dict, &mut rng);
+            assert_eq!(input.method, "tools/call");
+        }
+    }
+
+    #[test]
+    fn tool_not_found_with_existing_tools() {
+        let dict = Dictionary::mcp_default();
+        let mut rng = rand::thread_rng();
+        let existing = vec!["get_weather".to_string(), "send_email".to_string()];
+
+        for _ in 0..10 {
+            let input = McpMutator::tool_not_found(&existing, &dict, &mut rng);
+            assert_eq!(input.method, "tools/call");
+        }
+    }
+
+    #[test]
+    fn tool_not_found_seeded() {
+        let dict = Dictionary::mcp_default();
+        let existing = vec!["tool1".to_string(), "tool2".to_string()];
+
+        // Test each branch with seeded rng
+        for seed in 0..20 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let input = McpMutator::tool_not_found(&existing, &dict, &mut rng);
             assert_eq!(input.method, "tools/call");
         }
     }
@@ -382,11 +408,119 @@ mod tests {
     }
 
     #[test]
+    fn schema_violations_no_schema() {
+        let dict = Dictionary::mcp_default();
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..10 {
+            let input = McpMutator::schema_violation("test_tool", None, &dict, &mut rng);
+            assert_eq!(input.method, "tools/call");
+        }
+    }
+
+    #[test]
+    fn schema_violations_seeded() {
+        let dict = Dictionary::mcp_default();
+        let schema = json!({
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+                "name": {"type": "string"},
+                "age": {"type": "integer"},
+                "active": {"type": "boolean"},
+                "tags": {"type": "array"},
+                "meta": {"type": "object"}
+            }
+        });
+
+        // Test each branch with seeded rng
+        for seed in 0..30 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let input = McpMutator::schema_violation("test", Some(&schema), &dict, &mut rng);
+            assert_eq!(input.method, "tools/call");
+        }
+    }
+
+    #[test]
+    fn schema_violations_no_schema_seeded() {
+        let dict = Dictionary::mcp_default();
+
+        // Test each branch with seeded rng
+        for seed in 0..30 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let input = McpMutator::schema_violation("test", None, &dict, &mut rng);
+            assert_eq!(input.method, "tools/call");
+        }
+    }
+
+    #[test]
+    fn schema_violations_empty_required() {
+        let dict = Dictionary::mcp_default();
+        let mut rng = rand::thread_rng();
+
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "optional": {"type": "string"}
+            }
+        });
+
+        for _ in 0..10 {
+            let input = McpMutator::schema_violation("test_tool", Some(&schema), &dict, &mut rng);
+            assert_eq!(input.method, "tools/call");
+        }
+    }
+
+    #[test]
     fn sequence_violations() {
         let mut rng = rand::thread_rng();
 
         let sequence = McpMutator::sequence_violation(&mut rng);
         assert!(!sequence.is_empty());
+    }
+
+    #[test]
+    fn sequence_violations_seeded() {
+        // Test all branches
+        for seed in 0..20 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let sequence = McpMutator::sequence_violation(&mut rng);
+            assert!(!sequence.is_empty());
+            assert!(sequence.len() <= 3);
+        }
+    }
+
+    #[test]
+    fn sequence_violations_tools_before_init() {
+        // Find the seed that gives tools/call before initialize
+        let mut found = false;
+        for seed in 0..50 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let sequence = McpMutator::sequence_violation(&mut rng);
+            if sequence.len() == 2
+                && sequence[0].method == "tools/call"
+                && sequence[1].method == "initialize"
+            {
+                found = true;
+                break;
+            }
+        }
+        assert!(found);
+    }
+
+    #[test]
+    fn sequence_violations_multiple_init() {
+        // Find the seed that gives multiple initializes
+        let mut found = false;
+        for seed in 0..50 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let sequence = McpMutator::sequence_violation(&mut rng);
+            if sequence.len() == 3 && sequence.iter().all(|s| s.method == "initialize") {
+                found = true;
+                break;
+            }
+        }
+        assert!(found);
     }
 
     #[test]
@@ -401,6 +535,309 @@ mod tests {
             if json_str.len() > 1000 {
                 return; // Success - found a large payload
             }
+        }
+    }
+
+    #[test]
+    fn resource_exhaustion_seeded() {
+        // Test each branch with seeded rng
+        for seed in 0..20 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let input = McpMutator::resource_exhaustion(&mut rng);
+            assert_eq!(input.method, "tools/call");
+        }
+    }
+
+    #[test]
+    fn resource_exhaustion_large_string() {
+        // Find the seed that gives large string in arguments
+        let mut found = false;
+        for seed in 0..20 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let input = McpMutator::resource_exhaustion(&mut rng);
+            if let Some(params) = &input.params {
+                // Arguments are nested under "arguments" key
+                if let Some(args) = params.get("arguments") {
+                    if let Some(data) = args.get("data").and_then(|v| v.as_str()) {
+                        if data.len() >= 1_000_000 {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(found);
+    }
+
+    #[test]
+    fn resource_exhaustion_deep_nesting() {
+        // Find the seed that gives deep nesting
+        let mut found = false;
+        for seed in 0..20 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let input = McpMutator::resource_exhaustion(&mut rng);
+            let json_str = serde_json::to_string(&input.params).unwrap();
+            if json_str.contains("level_") {
+                found = true;
+                break;
+            }
+        }
+        assert!(found);
+    }
+
+    #[test]
+    fn resource_exhaustion_many_params() {
+        // Find the seed that gives many parameters in arguments
+        let mut found = false;
+        for seed in 0..20 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let input = McpMutator::resource_exhaustion(&mut rng);
+            if let Some(params) = &input.params {
+                // Arguments are nested under "arguments" key
+                if let Some(args) = params.get("arguments") {
+                    if let Some(obj) = args.as_object() {
+                        if obj.len() >= 10000 {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(found);
+    }
+
+    #[test]
+    fn resource_exhaustion_large_array() {
+        // Find the seed that gives large array in arguments
+        let mut found = false;
+        for seed in 0..20 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let input = McpMutator::resource_exhaustion(&mut rng);
+            if let Some(params) = &input.params {
+                // Arguments are nested under "arguments" key
+                if let Some(args) = params.get("arguments") {
+                    if let Some(arr) = args.get("array").and_then(|v| v.as_array()) {
+                        if arr.len() >= 100000 {
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(found);
+    }
+
+    #[test]
+    fn capability_mismatch_generation() {
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..10 {
+            let input = McpMutator::capability_mismatch(&mut rng);
+            // Should be a request to unsupported method
+            assert!(!input.method.is_empty());
+        }
+    }
+
+    #[test]
+    fn capability_mismatch_seeded() {
+        for seed in 0..20 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let input = McpMutator::capability_mismatch(&mut rng);
+            let valid_methods = [
+                "sampling/createMessage",
+                "roots/list",
+                "elicitation/create",
+                "experimental/unknown",
+                "admin/shutdown",
+                "debug/evaluate",
+            ];
+            assert!(valid_methods.contains(&input.method.as_str()));
+        }
+    }
+
+    #[test]
+    fn invalid_pagination_generation() {
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..10 {
+            let input = McpMutator::invalid_pagination(&mut rng);
+            assert_eq!(input.method, "tools/list");
+            if let Some(params) = &input.params {
+                assert!(params.get("cursor").is_some());
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_pagination_seeded() {
+        for seed in 0..20 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let input = McpMutator::invalid_pagination(&mut rng);
+            assert_eq!(input.method, "tools/list");
+        }
+    }
+
+    #[test]
+    fn tool_poisoning_generation() {
+        let mut rng = rand::thread_rng();
+
+        for _ in 0..10 {
+            let input = McpMutator::tool_poisoning("target_tool", &mut rng);
+            assert_eq!(input.method, "tools/call");
+            // Should have poisoning payloads in params.arguments
+            if let Some(params) = &input.params {
+                if let Some(args) = params.get("arguments") {
+                    assert!(args.get("input").is_some() || args.get("data").is_some());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tool_poisoning_seeded() {
+        for seed in 0..20 {
+            let mut rng = rand::rngs::SmallRng::seed_from_u64(seed);
+            let input = McpMutator::tool_poisoning("test_tool", &mut rng);
+            assert_eq!(input.method, "tools/call");
+            // Verify payload contains injection attempt
+            let json_str = serde_json::to_string(&input.params).unwrap();
+            assert!(
+                json_str.contains("IMPORTANT")
+                    || json_str.contains("Human:")
+                    || json_str.contains("SYSTEM")
+                    || json_str.contains("Hidden")
+                    || json_str.contains("system")
+                    || json_str.contains("cat")
+            );
+        }
+    }
+
+    #[test]
+    fn wrong_type_for_schema_string() {
+        let mut rng = rand::thread_rng();
+        let schema = json!({"type": "string"});
+        let wrong = McpMutator::wrong_type_for_schema(&schema, &mut rng);
+        assert!(wrong.is_number());
+    }
+
+    #[test]
+    fn wrong_type_for_schema_number() {
+        let mut rng = rand::thread_rng();
+        let schema = json!({"type": "number"});
+        let wrong = McpMutator::wrong_type_for_schema(&schema, &mut rng);
+        assert!(wrong.is_string());
+    }
+
+    #[test]
+    fn wrong_type_for_schema_integer() {
+        let mut rng = rand::thread_rng();
+        let schema = json!({"type": "integer"});
+        let wrong = McpMutator::wrong_type_for_schema(&schema, &mut rng);
+        assert!(wrong.is_string());
+    }
+
+    #[test]
+    fn wrong_type_for_schema_boolean() {
+        let mut rng = rand::thread_rng();
+        let schema = json!({"type": "boolean"});
+        let wrong = McpMutator::wrong_type_for_schema(&schema, &mut rng);
+        assert!(wrong.is_string());
+    }
+
+    #[test]
+    fn wrong_type_for_schema_array() {
+        let mut rng = rand::thread_rng();
+        let schema = json!({"type": "array"});
+        let wrong = McpMutator::wrong_type_for_schema(&schema, &mut rng);
+        assert!(wrong.is_object());
+    }
+
+    #[test]
+    fn wrong_type_for_schema_object() {
+        let mut rng = rand::thread_rng();
+        let schema = json!({"type": "object"});
+        let wrong = McpMutator::wrong_type_for_schema(&schema, &mut rng);
+        assert!(wrong.is_array());
+    }
+
+    #[test]
+    fn wrong_type_for_schema_unknown() {
+        let mut rng = rand::thread_rng();
+        let schema = json!({"type": "custom"});
+        let wrong = McpMutator::wrong_type_for_schema(&schema, &mut rng);
+        assert!(wrong.is_null());
+    }
+
+    #[test]
+    fn default_for_type_string() {
+        let schema = json!({"type": "string"});
+        let default = McpMutator::default_for_type(&schema);
+        assert_eq!(default, json!("test"));
+    }
+
+    #[test]
+    fn default_for_type_number() {
+        let schema = json!({"type": "number"});
+        let default = McpMutator::default_for_type(&schema);
+        assert_eq!(default, json!(0.0));
+    }
+
+    #[test]
+    fn default_for_type_integer() {
+        let schema = json!({"type": "integer"});
+        let default = McpMutator::default_for_type(&schema);
+        assert_eq!(default, json!(0));
+    }
+
+    #[test]
+    fn default_for_type_boolean() {
+        let schema = json!({"type": "boolean"});
+        let default = McpMutator::default_for_type(&schema);
+        assert_eq!(default, json!(false));
+    }
+
+    #[test]
+    fn default_for_type_array() {
+        let schema = json!({"type": "array"});
+        let default = McpMutator::default_for_type(&schema);
+        assert_eq!(default, json!([]));
+    }
+
+    #[test]
+    fn default_for_type_object() {
+        let schema = json!({"type": "object"});
+        let default = McpMutator::default_for_type(&schema);
+        assert_eq!(default, json!({}));
+    }
+
+    #[test]
+    fn default_for_type_unknown() {
+        let schema = json!({"type": "custom"});
+        let default = McpMutator::default_for_type(&schema);
+        assert!(default.is_null());
+    }
+
+    #[test]
+    fn deep_nested_args_zero_depth() {
+        let args = McpMutator::deep_nested_args(0);
+        assert_eq!(args, json!({"leaf": "value"}));
+    }
+
+    #[test]
+    fn deep_nested_args_one_level() {
+        let args = McpMutator::deep_nested_args(1);
+        assert!(args.get("level_0").is_some());
+    }
+
+    #[test]
+    fn deep_nested_args_multiple_levels() {
+        let args = McpMutator::deep_nested_args(5);
+        let json_str = serde_json::to_string(&args).unwrap();
+        for i in 0..5 {
+            assert!(json_str.contains(&format!("level_{}", i)));
         }
     }
 }

@@ -239,4 +239,117 @@ mod tests {
         assert!(json["params"]["protocolVersion"].is_string());
         assert!(json["params"]["clientInfo"]["name"].is_string());
     }
+
+    #[test]
+    fn initialized_notification() {
+        let input = FuzzInput::initialized();
+        assert!(input.is_notification());
+        assert_eq!(input.method, "notifications/initialized");
+    }
+
+    #[test]
+    fn resources_list_format() {
+        let input = FuzzInput::resources_list();
+        let json = input.to_json_rpc();
+        assert_eq!(json["method"], "resources/list");
+    }
+
+    #[test]
+    fn resources_read_format() {
+        let input = FuzzInput::resources_read("file:///test/path.txt");
+        let json = input.to_json_rpc();
+        assert_eq!(json["method"], "resources/read");
+        assert_eq!(json["params"]["uri"], "file:///test/path.txt");
+    }
+
+    #[test]
+    fn prompts_list_format() {
+        let input = FuzzInput::prompts_list();
+        let json = input.to_json_rpc();
+        assert_eq!(json["method"], "prompts/list");
+    }
+
+    #[test]
+    fn prompts_get_without_arguments() {
+        let input = FuzzInput::prompts_get("my-prompt", None);
+        let json = input.to_json_rpc();
+        assert_eq!(json["method"], "prompts/get");
+        assert_eq!(json["params"]["name"], "my-prompt");
+        assert!(json["params"].get("arguments").is_none());
+    }
+
+    #[test]
+    fn prompts_get_with_arguments() {
+        let input = FuzzInput::prompts_get("my-prompt", Some(json!({"key": "value"})));
+        let json = input.to_json_rpc();
+        assert_eq!(json["params"]["arguments"]["key"], "value");
+    }
+
+    #[test]
+    fn ping_format() {
+        let input = FuzzInput::ping();
+        let json = input.to_json_rpc();
+        assert_eq!(json["method"], "ping");
+        assert!(json.get("params").is_none());
+    }
+
+    #[test]
+    fn with_strategy() {
+        let input = FuzzInput::tools_list().with_strategy(MutationStrategy::TypeConfusion);
+        // Strategy name is converted to snake_case by to_string()
+        assert_eq!(input.strategy_used, Some("type_confusion".to_string()));
+    }
+
+    #[test]
+    fn with_parent() {
+        let input = FuzzInput::tools_list().with_parent("parent-id-123");
+        assert_eq!(input.parent_id, Some("parent-id-123".to_string()));
+    }
+
+    #[test]
+    fn with_id_custom() {
+        let input = FuzzInput::tools_list().with_id(json!(42));
+        assert_eq!(input.id, json!(42));
+    }
+
+    #[test]
+    fn to_json_string() {
+        let input = FuzzInput::ping();
+        let json_str = input.to_json_string();
+        assert!(json_str.contains("\"method\":\"ping\""));
+        assert!(json_str.contains("\"jsonrpc\":\"2.0\""));
+    }
+
+    #[test]
+    fn empty_params() {
+        let input = FuzzInput::empty_params();
+        assert_eq!(input.method, "tools/list");
+        assert!(input.params.is_some());
+    }
+
+    #[test]
+    fn null_id() {
+        let input = FuzzInput::null_id();
+        assert!(input.is_notification());
+    }
+
+    #[test]
+    fn string_id() {
+        let input = FuzzInput::string_id("my-string-id");
+        assert_eq!(input.id, json!("my-string-id"));
+    }
+
+    #[test]
+    fn default_creates_unique_id() {
+        let input1 = FuzzInput::default();
+        let input2 = FuzzInput::default();
+        assert_ne!(input1.input_id, input2.input_id);
+    }
+
+    #[test]
+    fn request_helper() {
+        let input = FuzzInput::request("custom/method", Some(json!({"arg": 1})));
+        assert_eq!(input.method, "custom/method");
+        assert_eq!(input.params, Some(json!({"arg": 1})));
+    }
 }

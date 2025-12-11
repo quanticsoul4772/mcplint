@@ -1,6 +1,5 @@
 //! Scan command - Security vulnerability scanning
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -10,163 +9,60 @@ use tracing::{debug, info};
 use crate::ai::{ExplainEngine, ExplanationContext};
 use crate::baseline::{Baseline, DiffEngine};
 use crate::cache::{CacheConfig, CacheManager};
-use crate::cli::commands::explain::{build_ai_config, CliAiProvider};
+use crate::cli::commands::explain::build_ai_config;
+use crate::cli::config::{AiExplainConfig, ScanCommandConfig};
 use crate::reporter::{generate_gitlab, generate_junit};
 use crate::scanner::{ScanConfig, ScanEngine, ScanProfile, Severity};
-use crate::{OutputFormat, ScanProfile as CliScanProfile};
+use crate::OutputFormat;
 
-/// Arguments for the scan command
-pub struct ScanArgs {
-    /// Server executable path
-    pub server: String,
-    /// Arguments to pass to the server
-    pub args: Vec<String>,
-    /// Scan options
-    pub options: ScanOptions,
-    /// Output options
-    pub output: OutputOptions,
-    /// Baseline options
-    pub baseline: BaselineOptions,
-    /// AI explanation options
-    pub ai: AiOptions,
-}
-
-/// Scan configuration options
-pub struct ScanOptions {
-    /// Scan profile
-    pub profile: CliScanProfile,
-    /// Categories to include
-    pub include: Option<Vec<String>>,
-    /// Categories to exclude
-    pub exclude: Option<Vec<String>>,
-    /// Timeout in seconds
-    pub timeout: u64,
-}
-
-/// Output configuration options
-pub struct OutputOptions {
-    /// Output format
-    pub format: OutputFormat,
-    /// Severities to fail on
-    pub fail_on: Option<Vec<Severity>>,
-}
-
-/// Baseline comparison options
-pub struct BaselineOptions {
-    /// Path to baseline file for comparison
-    pub baseline_path: Option<PathBuf>,
-    /// Path to save new baseline
-    pub save_baseline: Option<PathBuf>,
-    /// Whether to update existing baseline
-    pub update_baseline: bool,
-    /// Show only diff summary
-    pub diff_only: bool,
-}
-
-/// AI explanation options
-pub struct AiOptions {
-    /// Whether to generate AI explanations
-    pub explain: bool,
-    /// AI provider
-    pub provider: CliAiProvider,
-    /// AI model
-    pub model: Option<String>,
-}
-
-impl ScanArgs {
-    /// Create ScanArgs from individual parameters (for CLI compatibility)
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        server: String,
-        args: Vec<String>,
-        profile: CliScanProfile,
-        include: Option<Vec<String>>,
-        exclude: Option<Vec<String>>,
-        timeout: u64,
-        format: OutputFormat,
-        explain: bool,
-        ai_provider: CliAiProvider,
-        ai_model: Option<String>,
-        baseline_path: Option<PathBuf>,
-        save_baseline: Option<PathBuf>,
-        update_baseline: bool,
-        diff_only: bool,
-        fail_on: Option<Vec<Severity>>,
-    ) -> Self {
-        Self {
-            server,
-            args,
-            options: ScanOptions {
-                profile,
-                include,
-                exclude,
-                timeout,
-            },
-            output: OutputOptions { format, fail_on },
-            baseline: BaselineOptions {
-                baseline_path,
-                save_baseline,
-                update_baseline,
-                diff_only,
-            },
-            ai: AiOptions {
-                explain,
-                provider: ai_provider,
-                model: ai_model,
-            },
-        }
-    }
-}
-
-/// Run the scan command with the given arguments
-pub async fn run(args: ScanArgs) -> Result<()> {
-    let ScanArgs {
-        server,
-        args: server_args,
-        options,
-        output,
+/// Run the scan command with the given configuration
+pub async fn run(config: ScanCommandConfig) -> Result<()> {
+    let ScanCommandConfig {
+        run,
         baseline,
         ai,
-    } = args;
-    info!("Scanning MCP server: {}", server);
+        output,
+    } = config;
+
+    info!("Scanning MCP server: {}", run.server);
     debug!(
         "Profile: {:?}, Include: {:?}, Exclude: {:?}, Timeout: {}s, Explain: {}",
-        options.profile, options.include, options.exclude, options.timeout, ai.explain
+        run.profile, run.include, run.exclude, run.timeout, ai.enabled
     );
 
-    let profile_name = options.profile.as_str();
-    let scan_profile: ScanProfile = options.profile.into();
+    let profile_name = run.profile.as_str();
+    let scan_profile: ScanProfile = run.profile.into();
 
     // Only show banner for text output
     if matches!(output.format, OutputFormat::Text) {
         println!("{}", "Starting security scan...".cyan());
-        println!("  Server: {}", server.yellow());
+        println!("  Server: {}", run.server.yellow());
         println!("  Profile: {}", profile_name.green());
         if let Some(ref path) = baseline.baseline_path {
             println!("  Baseline: {}", path.display().to_string().yellow());
         }
-        if ai.explain {
+        if ai.enabled {
             println!("  AI Explanations: {}", "Enabled".green());
         }
         println!();
     }
 
     // Build scan configuration
-    let mut config = ScanConfig::default()
+    let mut scan_config = ScanConfig::default()
         .with_profile(scan_profile)
-        .with_timeout(options.timeout);
+        .with_timeout(run.timeout);
 
-    if let Some(inc) = options.include {
-        config = config.with_include_categories(inc);
+    if let Some(inc) = run.include.clone() {
+        scan_config = scan_config.with_include_categories(inc);
     }
 
-    if let Some(exc) = options.exclude {
-        config = config.with_exclude_categories(exc);
+    if let Some(exc) = run.exclude.clone() {
+        scan_config = scan_config.with_exclude_categories(exc);
     }
 
     // Create engine and run scan
-    let engine = ScanEngine::new(config);
-    let results = engine.scan(&server, &server_args, None).await?;
+    let engine = ScanEngine::new(scan_config);
+    let results = engine.scan(&run.server, &run.args, None).await?;
 
     // Load baseline if provided
     let loaded_baseline = if let Some(ref path) = baseline.baseline_path {
@@ -262,12 +158,12 @@ pub async fn run(args: ScanArgs) -> Result<()> {
     }
 
     // Generate AI explanations if requested
-    if ai.explain && !results.findings.is_empty() {
-        generate_ai_explanations(&results, ai.provider, ai.model, &server).await?;
+    if ai.enabled && !results.findings.is_empty() {
+        generate_ai_explanations(&results, &ai, &run.server).await?;
     }
 
     // Determine exit code
-    let exit_code = determine_exit_code(&results, &diff_result, &output.fail_on);
+    let exit_code = determine_exit_code(&results, &diff_result, &baseline.fail_on);
     if exit_code != 0 {
         std::process::exit(exit_code);
     }
@@ -390,8 +286,7 @@ fn print_diff_text(results: &crate::scanner::ScanResults, diff: &crate::baseline
 /// Generate AI explanations for findings
 async fn generate_ai_explanations(
     results: &crate::scanner::ScanResults,
-    ai_provider: CliAiProvider,
-    ai_model: Option<String>,
+    ai_config: &AiExplainConfig,
     server: &str,
 ) -> Result<()> {
     println!();
@@ -399,7 +294,7 @@ async fn generate_ai_explanations(
     println!();
 
     // Build AI configuration using shared function
-    let ai_config = match build_ai_config(ai_provider, ai_model, 120) {
+    let config = match build_ai_config(ai_config.provider, ai_config.model.clone(), 120) {
         Ok(config) => config,
         Err(e) => {
             println!("{}", format!("Failed to build AI config: {}", e).red());
@@ -408,7 +303,7 @@ async fn generate_ai_explanations(
     };
 
     // Create explain engine
-    let mut explain_engine = match ExplainEngine::new(ai_config) {
+    let mut explain_engine = match ExplainEngine::new(config) {
         Ok(engine) => engine,
         Err(e) => {
             println!("{}", format!("Failed to initialize AI engine: {}", e).red());
@@ -523,55 +418,14 @@ fn determine_exit_code(
     }
 }
 
-/// Create default scan options
-impl Default for ScanOptions {
-    fn default() -> Self {
-        Self {
-            profile: CliScanProfile::Standard,
-            include: None,
-            exclude: None,
-            timeout: 30,
-        }
-    }
-}
-
-/// Create default output options
-impl Default for OutputOptions {
-    fn default() -> Self {
-        Self {
-            format: OutputFormat::Text,
-            fail_on: None,
-        }
-    }
-}
-
-/// Create default baseline options
-impl Default for BaselineOptions {
-    fn default() -> Self {
-        Self {
-            baseline_path: None,
-            save_baseline: None,
-            update_baseline: false,
-            diff_only: false,
-        }
-    }
-}
-
-/// Create default AI options
-impl Default for AiOptions {
-    fn default() -> Self {
-        Self {
-            explain: false,
-            provider: CliAiProvider::Ollama,
-            model: None,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cli::commands::explain::CliAiProvider;
+    use crate::cli::config::{BaselineConfig, OutputConfig, ScanRunConfig};
     use crate::scanner::{Finding, ScanResults, ScanSummary};
+    use crate::ScanProfile as CliScanProfile;
+    use std::path::PathBuf;
 
     fn create_test_results(findings: Vec<Finding>) -> ScanResults {
         let summary = ScanSummary {
@@ -616,68 +470,68 @@ mod tests {
     }
 
     #[test]
-    fn scan_options_default() {
-        let opts = ScanOptions::default();
-        assert!(matches!(opts.profile, CliScanProfile::Standard));
-        assert!(opts.include.is_none());
-        assert!(opts.exclude.is_none());
-        assert_eq!(opts.timeout, 30);
+    fn scan_run_config_builder() {
+        let config = ScanRunConfig::new("test-server", CliScanProfile::Standard)
+            .with_args(vec!["arg1".to_string()])
+            .with_timeout(30);
+
+        assert_eq!(config.server, "test-server");
+        assert_eq!(config.timeout, 30);
     }
 
     #[test]
-    fn output_options_default() {
-        let opts = OutputOptions::default();
-        assert!(matches!(opts.format, OutputFormat::Text));
-        assert!(opts.fail_on.is_none());
+    fn baseline_config_builder() {
+        let config = BaselineConfig::default()
+            .with_baseline(PathBuf::from("baseline.json"))
+            .with_diff_only(true);
+
+        assert!(config.baseline_path.is_some());
+        assert!(config.diff_only);
     }
 
     #[test]
-    fn baseline_options_default() {
-        let opts = BaselineOptions::default();
-        assert!(opts.baseline_path.is_none());
-        assert!(opts.save_baseline.is_none());
-        assert!(!opts.update_baseline);
-        assert!(!opts.diff_only);
+    fn ai_config_enabled() {
+        let config = AiExplainConfig::enabled(CliAiProvider::Anthropic).with_model("claude-3-opus");
+
+        assert!(config.enabled);
+        assert!(config.model.is_some());
     }
 
     #[test]
-    fn ai_options_default() {
-        let opts = AiOptions::default();
-        assert!(!opts.explain);
-        assert!(matches!(opts.provider, CliAiProvider::Ollama));
-        assert!(opts.model.is_none());
+    fn scan_command_config_new() {
+        let run_config = ScanRunConfig::new("server", CliScanProfile::Standard);
+        let config = ScanCommandConfig::new(run_config);
+
+        assert_eq!(config.run.server, "server");
+        assert!(!config.ai.enabled);
+        assert!(config.baseline.baseline_path.is_none());
     }
 
     #[test]
-    fn scan_args_new_creates_args() {
-        let args = ScanArgs::new(
-            "server".to_string(),
-            vec!["arg1".to_string()],
-            CliScanProfile::Full,
-            Some(vec!["injection".to_string()]),
-            Some(vec!["dos".to_string()]),
-            60,
-            OutputFormat::Json,
-            true,
-            CliAiProvider::Anthropic,
-            Some("claude-3".to_string()),
-            Some(PathBuf::from("baseline.json")),
-            None,
-            false,
-            false,
-            Some(vec![Severity::Critical]),
-        );
+    fn scan_command_config_full_builder() {
+        let run_config = ScanRunConfig::new("my-server", CliScanProfile::Full)
+            .with_args(vec!["--verbose".to_string()])
+            .with_timeout(120);
 
-        assert_eq!(args.server, "server");
-        assert_eq!(args.args.len(), 1);
-        assert!(matches!(args.options.profile, CliScanProfile::Full));
-        assert!(args.options.include.is_some());
-        assert!(args.options.exclude.is_some());
-        assert_eq!(args.options.timeout, 60);
-        assert!(matches!(args.output.format, OutputFormat::Json));
-        assert!(args.ai.explain);
-        assert!(matches!(args.ai.provider, CliAiProvider::Anthropic));
-        assert_eq!(args.ai.model, Some("claude-3".to_string()));
+        let baseline = BaselineConfig::default()
+            .with_baseline(PathBuf::from("baseline.json"))
+            .with_diff_only(true);
+
+        let ai = AiExplainConfig::enabled(CliAiProvider::Anthropic).with_model("claude-3-opus");
+
+        let output = OutputConfig::new(OutputFormat::Json);
+
+        let config = ScanCommandConfig::new(run_config)
+            .with_baseline(baseline)
+            .with_ai(ai)
+            .with_output(output);
+
+        assert_eq!(config.run.server, "my-server");
+        assert_eq!(config.run.timeout, 120);
+        assert!(config.baseline.diff_only);
+        assert!(config.ai.enabled);
+        assert_eq!(config.ai.model, Some("claude-3-opus".to_string()));
+        assert!(matches!(config.output.format, OutputFormat::Json));
     }
 
     #[test]
@@ -720,31 +574,5 @@ mod tests {
         let results = create_test_results(vec![create_finding(Severity::Low)]);
         let exit = determine_exit_code(&results, &None, &Some(vec![Severity::Critical]));
         assert_eq!(exit, 0);
-    }
-
-    #[test]
-    fn scan_args_baseline_options() {
-        let args = ScanArgs::new(
-            "server".to_string(),
-            vec![],
-            CliScanProfile::Quick,
-            None,
-            None,
-            30,
-            OutputFormat::Text,
-            false,
-            CliAiProvider::Ollama,
-            None,
-            Some(PathBuf::from("old_baseline.json")),
-            Some(PathBuf::from("new_baseline.json")),
-            true,
-            true,
-            None,
-        );
-
-        assert!(args.baseline.baseline_path.is_some());
-        assert!(args.baseline.save_baseline.is_some());
-        assert!(args.baseline.update_baseline);
-        assert!(args.baseline.diff_only);
     }
 }

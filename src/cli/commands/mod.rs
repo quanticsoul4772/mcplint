@@ -3,6 +3,7 @@
 pub mod cache;
 pub mod doctor;
 pub mod explain;
+pub mod fingerprint;
 pub mod fuzz;
 pub mod init;
 pub mod rules;

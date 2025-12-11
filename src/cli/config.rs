@@ -2,15 +2,12 @@
 //!
 //! Provides configuration structs to reduce argument count in command functions.
 //! This addresses the clippy::too_many_arguments warnings and improves maintainability.
-//!
-//! These structs are designed for future refactoring of command handlers.
-
-#![allow(dead_code)] // Public API for future command refactoring
 
 use std::path::PathBuf;
 
 use crate::cli::commands::explain::CliAiProvider;
 use crate::scanner::Severity;
+use crate::OutputFormat;
 use crate::ScanProfile as CliScanProfile;
 
 /// Configuration for scan command execution
@@ -135,12 +132,34 @@ impl AiExplainConfig {
     }
 }
 
+/// Output configuration
+#[derive(Debug, Clone)]
+pub struct OutputConfig {
+    /// Output format
+    pub format: OutputFormat,
+}
+
+impl Default for OutputConfig {
+    fn default() -> Self {
+        Self {
+            format: OutputFormat::Text,
+        }
+    }
+}
+
+impl OutputConfig {
+    pub fn new(format: OutputFormat) -> Self {
+        Self { format }
+    }
+}
+
 /// Combined configuration for the scan command
 #[derive(Debug, Clone)]
 pub struct ScanCommandConfig {
     pub run: ScanRunConfig,
     pub baseline: BaselineConfig,
     pub ai: AiExplainConfig,
+    pub output: OutputConfig,
 }
 
 impl ScanCommandConfig {
@@ -149,6 +168,7 @@ impl ScanCommandConfig {
             run,
             baseline: BaselineConfig::default(),
             ai: AiExplainConfig::default(),
+            output: OutputConfig::default(),
         }
     }
 
@@ -159,6 +179,11 @@ impl ScanCommandConfig {
 
     pub fn with_ai(mut self, ai: AiExplainConfig) -> Self {
         self.ai = ai;
+        self
+    }
+
+    pub fn with_output(mut self, output: OutputConfig) -> Self {
+        self.output = output;
         self
     }
 }
