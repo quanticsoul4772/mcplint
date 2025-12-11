@@ -11,6 +11,7 @@ use colored::Colorize;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tracing::{debug, info, warn};
 
+use crate::cli::server::resolve_server;
 use crate::scanner::{ScanConfig, ScanEngine, ScanProfile};
 
 /// Run watch mode with file system monitoring
@@ -25,8 +26,25 @@ pub async fn run(
 ) -> Result<()> {
     info!("Starting watch mode for MCP server: {}", server);
 
+    // Resolve server from config if not a direct path/URL
+    let (server_name, resolved_cmd, mut resolved_args, resolved_env) =
+        resolve_server(server, None)?;
+
+    // Merge CLI args with resolved args
+    resolved_args.extend(args.iter().cloned());
+
+    // Set environment variables for spawned process
+    for (key, value) in &resolved_env {
+        std::env::set_var(key, value);
+    }
+
     println!("{}", "Starting watch mode...".cyan().bold());
-    println!("  Server: {}", server.yellow());
+    println!("  Server: {}", server_name.yellow());
+    println!(
+        "  Command: {} {}",
+        resolved_cmd.dimmed(),
+        resolved_args.join(" ").dimmed()
+    );
     println!("  Profile: {:?}", profile);
     println!(
         "  Watching: {}",
@@ -44,7 +62,7 @@ pub async fn run(
     println!();
 
     // Run initial scan
-    run_scan(server, args, profile, clear_screen).await?;
+    run_scan(&resolved_cmd, &resolved_args, profile, clear_screen).await?;
 
     // Set up file watcher
     let (tx, rx) = channel();
@@ -110,7 +128,9 @@ pub async fn run(
                             );
 
                             // Run scan
-                            if let Err(e) = run_scan(server, args, profile, clear_screen).await {
+                            if let Err(e) =
+                                run_scan(&resolved_cmd, &resolved_args, profile, clear_screen).await
+                            {
                                 eprintln!("{}", format!("Scan error: {}", e).red());
                             }
                         } else {
