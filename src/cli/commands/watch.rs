@@ -20,7 +20,7 @@ use crate::scanner::rules::{
     OAuthAbuseDetector, SchemaPoisoningDetector, ToolInjectionDetector, ToolShadowingDetector,
     UnicodeHiddenDetector,
 };
-use crate::scanner::{ScanConfig, ScanProfile, ScanResults};
+use crate::scanner::{ScanProfile, ScanResults};
 use crate::transport::{connect_with_type, TransportConfig, TransportType};
 
 /// Run watch mode with file system monitoring
@@ -235,7 +235,6 @@ async fn run_resolved_scan(
     profile: ScanProfile,
 ) -> Result<ScanResults> {
     let start = Instant::now();
-    let scan_config = ScanConfig::default().with_profile(profile).with_timeout(30);
     let mut results = ScanResults::new(name, profile);
 
     // Determine transport type and connect
