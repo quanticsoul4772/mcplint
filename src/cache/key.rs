@@ -146,15 +146,7 @@ impl CacheKey {
         // Replace characters invalid in Windows/Unix filenames
         let safe_identifier = self
             .identifier
-            .replace(':', "_")
-            .replace('<', "_")
-            .replace('>', "_")
-            .replace('"', "_")
-            .replace('/', "_")
-            .replace('\\', "_")
-            .replace('|', "_")
-            .replace('?', "_")
-            .replace('*', "_");
+            .replace([':', '<', '>', '"', '/', '\\', '|', '?', '*'], "_");
 
         (
             self.category.to_string(),

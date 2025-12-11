@@ -66,7 +66,18 @@ fn get_rust_version() -> Option<String> {
 
 fn check_runtime(cmd: &str, arg: &str, name: &str) {
     print!("  {}: ", name);
-    match Command::new(cmd).arg(arg).output() {
+
+    // On Windows, commands like npx, uvx need to be run through cmd.exe
+    // or with .cmd extension to work properly
+    #[cfg(windows)]
+    let result = Command::new("cmd")
+        .args(["/C", &format!("{} {}", cmd, arg)])
+        .output();
+
+    #[cfg(not(windows))]
+    let result = Command::new(cmd).arg(arg).output();
+
+    match result {
         Ok(output) if output.status.success() => {
             let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
             println!("{} ({})", "✓ Found".green(), version.dimmed());
