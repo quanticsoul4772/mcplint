@@ -366,4 +366,285 @@ mod tests {
         let hash2 = hash_ruleset(&["rule1".to_string(), "rule2".to_string()]);
         assert_eq!(hash1, hash2);
     }
+
+    // New comprehensive tests
+
+    #[tokio::test]
+    async fn cache_manager_new_with_memory_backend() {
+        let config = CacheConfig::memory();
+        let cache = CacheManager::new(config).await.unwrap();
+
+        assert!(cache.is_enabled());
+        assert!(matches!(cache.config().backend, CacheBackend::Memory));
+    }
+
+    #[tokio::test]
+    async fn cache_manager_config_accessor() {
+        let cache = CacheManager::memory();
+        let config = cache.config();
+
+        assert!(config.enabled);
+        assert_eq!(config.schema_ttl_secs, 3600);
+    }
+
+    #[tokio::test]
+    async fn cache_manager_get_nonexistent() {
+        let cache = CacheManager::memory();
+        let key = CacheKey::schema("nonexistent");
+
+        let result: Option<String> = cache.get(&key).await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn cache_manager_set_with_custom_ttl() {
+        let cache = CacheManager::memory();
+        let key = CacheKey::schema("test");
+        let data = "test data";
+
+        cache
+            .set_with_ttl(&key, &data, Duration::from_secs(7200))
+            .await
+            .unwrap();
+
+        let retrieved: Option<String> = cache.get(&key).await.unwrap();
+        assert_eq!(retrieved, Some(data.to_string()));
+    }
+
+    #[tokio::test]
+    async fn cache_manager_delete() {
+        let cache = CacheManager::memory();
+        let key = CacheKey::schema("test");
+        let data = "test data";
+
+        cache.set(&key, &data).await.unwrap();
+        assert!(cache.exists(&key).await.unwrap());
+
+        cache.delete(&key).await.unwrap();
+        assert!(!cache.exists(&key).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn cache_manager_exists() {
+        let cache = CacheManager::memory();
+        let key = CacheKey::schema("test");
+
+        assert!(!cache.exists(&key).await.unwrap());
+
+        cache.set(&key, &"data").await.unwrap();
+        assert!(cache.exists(&key).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn cache_manager_exists_when_disabled() {
+        let config = CacheConfig::disabled();
+        let cache = CacheManager::new(config).await.unwrap();
+        let key = CacheKey::schema("test");
+
+        // Should always return false when disabled
+        assert!(!cache.exists(&key).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn cache_manager_scan_result_helpers() {
+        let cache = CacheManager::memory();
+        let result = vec!["finding1".to_string(), "finding2".to_string()];
+
+        cache
+            .set_scan_result("server1", "rules1", &result)
+            .await
+            .unwrap();
+
+        let retrieved: Option<Vec<String>> =
+            cache.get_scan_result("server1", "rules1").await.unwrap();
+
+        assert_eq!(retrieved, Some(result));
+    }
+
+    #[tokio::test]
+    async fn cache_manager_validation_helpers() {
+        let cache = CacheManager::memory();
+        let result = vec!["violation1".to_string(), "violation2".to_string()];
+
+        cache
+            .set_validation("server1", "2024-11", &result)
+            .await
+            .unwrap();
+
+        let retrieved: Option<Vec<String>> =
+            cache.get_validation("server1", "2024-11").await.unwrap();
+
+        assert_eq!(retrieved, Some(result));
+    }
+
+    #[tokio::test]
+    async fn cache_manager_corpus_helpers() {
+        let cache = CacheManager::memory();
+        let corpus = vec!["input1".to_string(), "input2".to_string()];
+
+        cache.set_corpus("server1", &corpus).await.unwrap();
+
+        let retrieved: Option<Vec<String>> = cache.get_corpus("server1").await.unwrap();
+
+        assert_eq!(retrieved, Some(corpus));
+    }
+
+    #[tokio::test]
+    async fn cache_manager_tool_hash_helpers() {
+        let cache = CacheManager::memory();
+        let hash = "abc123";
+
+        cache.set_tool_hash("server1", &hash).await.unwrap();
+
+        let retrieved: Option<String> = cache.get_tool_hash("server1").await.unwrap();
+
+        assert_eq!(retrieved, Some(hash.to_string()));
+    }
+
+    #[tokio::test]
+    async fn cache_manager_clear_all() {
+        let cache = CacheManager::memory();
+
+        cache.set_schema("server1", &"data1").await.unwrap();
+        cache.set_schema("server2", &"data2").await.unwrap();
+        cache
+            .set_validation("server3", "1.0", &"data3")
+            .await
+            .unwrap();
+
+        let cleared = cache.clear(None).await.unwrap();
+        assert_eq!(cleared, 3);
+
+        assert!(!cache.exists(&CacheKey::schema("server1")).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn cache_manager_clear_by_category() {
+        let cache = CacheManager::memory();
+
+        cache.set_schema("server1", &"data1").await.unwrap();
+        cache.set_schema("server2", &"data2").await.unwrap();
+        cache
+            .set_validation("server3", "1.0", &"data3")
+            .await
+            .unwrap();
+
+        let cleared = cache.clear(Some(CacheCategory::Schema)).await.unwrap();
+        assert_eq!(cleared, 2);
+
+        assert!(!cache.exists(&CacheKey::schema("server1")).await.unwrap());
+        assert!(cache
+            .exists(&CacheKey::validation("server3", "1.0"))
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn cache_manager_prune_expired() {
+        let cache = CacheManager::memory();
+        let key = CacheKey::schema("test");
+
+        // Set with 0 TTL (immediately expired)
+        cache
+            .set_with_ttl(&key, &"data", Duration::from_secs(0))
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        let pruned = cache.prune_expired().await.unwrap();
+        assert_eq!(pruned, 1);
+    }
+
+    #[tokio::test]
+    async fn cache_manager_stats() {
+        let cache = CacheManager::memory();
+
+        cache.set_schema("server1", &"data1").await.unwrap();
+        cache.set_schema("server2", &"data2").await.unwrap();
+
+        let stats = cache.stats().await.unwrap();
+        assert_eq!(stats.total_entries, 2);
+    }
+
+    #[tokio::test]
+    async fn cache_manager_keys_all() {
+        let cache = CacheManager::memory();
+
+        cache.set_schema("server1", &"data1").await.unwrap();
+        cache
+            .set_validation("server2", "1.0", &"data2")
+            .await
+            .unwrap();
+
+        let keys = cache.keys(None).await.unwrap();
+        assert_eq!(keys.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn cache_manager_keys_by_category() {
+        let cache = CacheManager::memory();
+
+        cache.set_schema("server1", &"data1").await.unwrap();
+        cache.set_schema("server2", &"data2").await.unwrap();
+        cache
+            .set_validation("server3", "1.0", &"data3")
+            .await
+            .unwrap();
+
+        let keys = cache.keys(Some(CacheCategory::Schema)).await.unwrap();
+        assert_eq!(keys.len(), 2);
+        assert!(keys.iter().all(|k| k.category == CacheCategory::Schema));
+    }
+
+    #[test]
+    fn hash_server_different_args() {
+        let hash1 = hash_server("server", &["arg1".to_string()]);
+        let hash2 = hash_server("server", &["arg2".to_string()]);
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn hash_server_different_servers() {
+        let hash1 = hash_server("server1", &["arg".to_string()]);
+        let hash2 = hash_server("server2", &["arg".to_string()]);
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn hash_server_empty_args() {
+        let hash1 = hash_server("server", &[]);
+        let hash2 = hash_server("server", &[]);
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn hash_server_format() {
+        let hash = hash_server("server", &["arg".to_string()]);
+        // Should be 16-character hex string
+        assert_eq!(hash.len(), 16);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn hash_ruleset_empty() {
+        let hash1 = hash_ruleset(&[]);
+        let hash2 = hash_ruleset(&[]);
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn hash_ruleset_different_order() {
+        let hash1 = hash_ruleset(&["rule1".to_string(), "rule2".to_string()]);
+        let hash2 = hash_ruleset(&["rule2".to_string(), "rule1".to_string()]);
+        assert_ne!(hash1, hash2);
+    }
+
+    #[test]
+    fn hash_ruleset_format() {
+        let hash = hash_ruleset(&["rule1".to_string()]);
+        // Should be 16-character hex string
+        assert_eq!(hash.len(), 16);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
 }

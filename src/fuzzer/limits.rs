@@ -11,6 +11,11 @@
 //! - **Corpus Size**: Maximum entries in the corpus
 //! - **Restarts**: Maximum server restart attempts
 //!
+//! # Error Handling
+//!
+//! This module uses comprehensive error types with `thiserror` for
+//! consistent and informative error reporting.
+//!
 //! # Example
 //!
 //! ```ignore
@@ -200,6 +205,48 @@ impl std::fmt::Display for ParseError {
 
 impl std::error::Error for ParseError {}
 
+/// Comprehensive error type for fuzzer resource limits
+#[derive(Debug, thiserror::Error)]
+pub enum FuzzerError {
+    /// Configuration parsing error
+    #[error("Configuration error: {0}")]
+    ConfigError(#[from] ParseError),
+
+    /// Memory monitoring failed
+    #[error("Memory monitoring failed: {0}")]
+    MemoryMonitoringFailed(String),
+
+    /// Time limit exceeded
+    #[error("Time limit exceeded: {0}")]
+    TimeLimitExceeded(String),
+
+    /// Memory limit exceeded
+    #[error("Memory limit exceeded: {0} bytes")]
+    MemoryLimitExceeded(u64),
+
+    /// Execution limit exceeded
+    #[error("Execution limit exceeded: {0} iterations")]
+    ExecutionLimitExceeded(u64),
+
+    /// Corpus size limit exceeded
+    #[error("Corpus size limit exceeded: {0} entries")]
+    CorpusLimitExceeded(usize),
+
+    /// Restart limit exceeded
+    #[error("Restart limit exceeded: {0} attempts")]
+    RestartLimitExceeded(u32),
+
+    /// Platform not supported for memory monitoring
+    #[error("Memory monitoring not supported on this platform")]
+    PlatformNotSupported,
+
+    /// IO error during resource monitoring
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+}
+
+
+
 /// Statistics tracked during fuzzing for limit checking
 #[derive(Debug, Clone, Default)]
 pub struct FuzzStats {
@@ -273,7 +320,7 @@ impl ResourceMonitor {
 
         // Memory limit (most expensive check, do last)
         if let Some(max_mem) = self.limits.max_memory {
-            if let Some(current_mem) = self.get_process_memory() {
+            if let Ok(current_mem) = self.get_process_memory() {
                 if current_mem >= max_mem {
                     return Some(LimitExceeded::Memory(max_mem));
                 }
@@ -293,7 +340,7 @@ impl ResourceMonitor {
             }
             LimitType::Memory => {
                 if let Some(max_mem) = self.limits.max_memory {
-                    if let Some(current_mem) = self.get_process_memory() {
+                    if let Ok(current_mem) = self.get_process_memory() {
                         return current_mem >= max_mem;
                     }
                 }
@@ -330,7 +377,7 @@ impl ResourceMonitor {
     }
 
     /// Get current process memory usage in bytes
-    fn get_process_memory(&self) -> Option<u64> {
+    fn get_process_memory(&self) -> Result<u64, FuzzerError> {
         // Use a simple cross-platform approach
         #[cfg(target_os = "windows")]
         {
@@ -349,97 +396,126 @@ impl ResourceMonitor {
 
         #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
         {
-            None
+            Err(FuzzerError::PlatformNotSupported)
         }
     }
 
     #[cfg(target_os = "windows")]
-    fn get_memory_windows(&self) -> Option<u64> {
-        use std::mem::MaybeUninit;
-
-        #[repr(C)]
-        struct ProcessMemoryCounters {
-            cb: u32,
-            page_fault_count: u32,
-            peak_working_set_size: usize,
-            working_set_size: usize,
-            quota_peak_paged_pool_usage: usize,
-            quota_paged_pool_usage: usize,
-            quota_peak_non_paged_pool_usage: usize,
-            quota_non_paged_pool_usage: usize,
-            pagefile_usage: usize,
-            peak_pagefile_usage: usize,
-        }
-
-        #[link(name = "psapi")]
-        extern "system" {
-            fn GetProcessMemoryInfo(
-                process: *mut std::ffi::c_void,
-                pmc: *mut ProcessMemoryCounters,
+    fn get_memory_windows(&self) -> Result<u64, FuzzerError> {
+        /// Safe wrapper for Windows process memory monitoring
+        fn get_process_memory_safe() -> Result<u64, FuzzerError> {
+            #[repr(C)]
+            struct ProcessMemoryCounters {
                 cb: u32,
-            ) -> i32;
-        }
+                page_fault_count: u32,
+                peak_working_set_size: usize,
+                working_set_size: usize,
+                quota_peak_paged_pool_usage: usize,
+                quota_paged_pool_usage: usize,
+                quota_peak_non_paged_pool_usage: usize,
+                quota_non_paged_pool_usage: usize,
+                pagefile_usage: usize,
+                peak_pagefile_usage: usize,
+            }
 
-        #[link(name = "kernel32")]
-        extern "system" {
-            fn GetCurrentProcess() -> *mut std::ffi::c_void;
-        }
+            #[link(name = "psapi")]
+            extern "system" {
+                fn GetProcessMemoryInfo(
+                    process: *mut std::ffi::c_void,
+                    pmc: *mut ProcessMemoryCounters,
+                    cb: u32,
+                ) -> i32;
+            }
 
-        unsafe {
-            let mut pmc = MaybeUninit::<ProcessMemoryCounters>::zeroed();
-            let size = std::mem::size_of::<ProcessMemoryCounters>() as u32;
+            #[link(name = "kernel32")]
+            extern "system" {
+                fn GetCurrentProcess() -> *mut std::ffi::c_void;
+            }
 
-            if GetProcessMemoryInfo(GetCurrentProcess(), pmc.as_mut_ptr(), size) != 0 {
-                Some(pmc.assume_init().working_set_size as u64)
+            // Safe wrapper with proper initialization and error handling
+            let mut pmc = ProcessMemoryCounters {
+                cb: std::mem::size_of::<ProcessMemoryCounters>() as u32,
+                page_fault_count: 0,
+                peak_working_set_size: 0,
+                working_set_size: 0,
+                quota_peak_paged_pool_usage: 0,
+                quota_paged_pool_usage: 0,
+                quota_peak_non_paged_pool_usage: 0,
+                quota_non_paged_pool_usage: 0,
+                pagefile_usage: 0,
+                peak_pagefile_usage: 0,
+            };
+
+            let result = unsafe { GetProcessMemoryInfo(GetCurrentProcess(), &mut pmc, pmc.cb) };
+
+            if result != 0 {
+                Ok(pmc.working_set_size as u64)
             } else {
-                None
+                Err(FuzzerError::MemoryMonitoringFailed(
+                    "Windows GetProcessMemoryInfo failed".to_string(),
+                ))
             }
         }
+
+        get_process_memory_safe()
     }
 
     #[cfg(target_os = "linux")]
-    fn get_memory_linux(&self) -> Option<u64> {
+    fn get_memory_linux(&self) -> Result<u64, FuzzerError> {
         // Read from /proc/self/statm
-        std::fs::read_to_string("/proc/self/statm")
-            .ok()
-            .and_then(|contents| {
-                let parts: Vec<&str> = contents.split_whitespace().collect();
-                // Second field is RSS in pages
-                parts.get(1).and_then(|rss| {
-                    rss.parse::<u64>().ok().map(|pages| pages * 4096) // Page size is typically 4KB
-                })
+        let contents = std::fs::read_to_string("/proc/self/statm").map_err(FuzzerError::IoError)?;
+
+        let parts: Vec<&str> = contents.split_whitespace().collect();
+        // Second field is RSS in pages
+        parts
+            .get(1)
+            .and_then(|rss| rss.parse::<u64>().ok())
+            .map(|pages| pages * 4096) // Page size is typically 4KB
+            .ok_or_else(|| {
+                FuzzerError::MemoryMonitoringFailed("Failed to parse /proc/self/statm".to_string())
             })
     }
 
     #[cfg(target_os = "macos")]
-    fn get_memory_macos(&self) -> Option<u64> {
-        // Use rusage for macOS
-        use std::mem::MaybeUninit;
+    fn get_memory_macos(&self) -> Result<u64, FuzzerError> {
+        /// Safe wrapper for macOS process memory monitoring using getrusage
+        fn get_memory_usage_safe() -> Result<u64, FuzzerError> {
+            #[repr(C)]
+            struct Rusage {
+                ru_utime: [i64; 2],
+                ru_stime: [i64; 2],
+                ru_maxrss: i64,
+                // ... other fields we don't need
+                _padding: [i64; 13],
+            }
 
-        #[repr(C)]
-        struct Rusage {
-            ru_utime: [i64; 2],
-            ru_stime: [i64; 2],
-            ru_maxrss: i64,
-            // ... other fields we don't need
-            _padding: [i64; 13],
-        }
+            extern "C" {
+                fn getrusage(who: i32, usage: *mut Rusage) -> i32;
+            }
 
-        extern "C" {
-            fn getrusage(who: i32, usage: *mut Rusage) -> i32;
-        }
+            const RUSAGE_SELF: i32 = 0;
 
-        const RUSAGE_SELF: i32 = 0;
+            // Safe wrapper with proper initialization
+            let mut usage = Rusage {
+                ru_utime: [0, 0],
+                ru_stime: [0, 0],
+                ru_maxrss: 0,
+                _padding: [0; 13],
+            };
 
-        unsafe {
-            let mut usage = MaybeUninit::<Rusage>::zeroed();
-            if getrusage(RUSAGE_SELF, usage.as_mut_ptr()) == 0 {
+            let result = unsafe { getrusage(RUSAGE_SELF, &mut usage) };
+
+            if result == 0 {
                 // On macOS, ru_maxrss is in bytes
-                Some(usage.assume_init().ru_maxrss as u64)
+                Ok(usage.ru_maxrss as u64)
             } else {
-                None
+                Err(FuzzerError::MemoryMonitoringFailed(
+                    "macOS getrusage failed".to_string(),
+                ))
             }
         }
+
+        get_memory_usage_safe()
     }
 
     /// Get the configured limits
@@ -448,11 +524,11 @@ impl ResourceMonitor {
     }
 
     /// Get current usage summary
-    pub fn usage_summary(&self, stats: &FuzzStats) -> UsageSummary {
-        UsageSummary {
+    pub fn usage_summary(&self, stats: &FuzzStats) -> Result<UsageSummary, FuzzerError> {
+        Ok(UsageSummary {
             elapsed: self.start_time.elapsed(),
             max_time: self.limits.max_time,
-            memory_used: self.get_process_memory(),
+            memory_used: self.get_process_memory().ok(),
             max_memory: self.limits.max_memory,
             executions: stats.executions,
             max_executions: self.limits.max_executions,
@@ -460,7 +536,7 @@ impl ResourceMonitor {
             max_corpus_size: self.limits.max_corpus_size,
             restarts: stats.restarts,
             max_restarts: self.limits.max_restarts,
-        }
+        })
     }
 }
 
@@ -700,13 +776,18 @@ mod tests {
         let limits = ResourceLimits::default().with_max_executions(100);
         let monitor = ResourceMonitor::new(limits);
 
-        let mut stats = FuzzStats::default();
-        stats.executions = 50;
-        assert!(monitor.check(&stats).is_none());
+        let stats_50 = FuzzStats {
+            executions: 50,
+            ..FuzzStats::default()
+        };
+        assert!(monitor.check(&stats_50).is_none());
 
-        stats.executions = 100;
+        let stats_100 = FuzzStats {
+            executions: 100,
+            ..FuzzStats::default()
+        };
         assert!(matches!(
-            monitor.check(&stats),
+            monitor.check(&stats_100),
             Some(LimitExceeded::Executions(100))
         ));
     }
@@ -716,13 +797,18 @@ mod tests {
         let limits = ResourceLimits::default().with_max_corpus_size(1000);
         let monitor = ResourceMonitor::new(limits);
 
-        let mut stats = FuzzStats::default();
-        stats.corpus_size = 500;
-        assert!(monitor.check(&stats).is_none());
+        let stats_500 = FuzzStats {
+            corpus_size: 500,
+            ..FuzzStats::default()
+        };
+        assert!(monitor.check(&stats_500).is_none());
 
-        stats.corpus_size = 1000;
+        let stats_1000 = FuzzStats {
+            corpus_size: 1000,
+            ..FuzzStats::default()
+        };
         assert!(matches!(
-            monitor.check(&stats),
+            monitor.check(&stats_1000),
             Some(LimitExceeded::CorpusSize(1000))
         ));
     }
@@ -732,13 +818,18 @@ mod tests {
         let limits = ResourceLimits::default().with_max_restarts(5);
         let monitor = ResourceMonitor::new(limits);
 
-        let mut stats = FuzzStats::default();
-        stats.restarts = 3;
-        assert!(monitor.check(&stats).is_none());
+        let stats_3 = FuzzStats {
+            restarts: 3,
+            ..FuzzStats::default()
+        };
+        assert!(monitor.check(&stats_3).is_none());
 
-        stats.restarts = 5;
+        let stats_5 = FuzzStats {
+            restarts: 5,
+            ..FuzzStats::default()
+        };
         assert!(matches!(
-            monitor.check(&stats),
+            monitor.check(&stats_5),
             Some(LimitExceeded::Restarts(5))
         ));
     }
@@ -796,5 +887,653 @@ mod tests {
         assert!((summary.memory_usage().unwrap() - 0.5).abs() < 0.01);
         assert!((summary.execution_usage().unwrap() - 0.5).abs() < 0.01);
         assert!((summary.corpus_usage().unwrap() - 0.25).abs() < 0.01);
+    }
+
+    // Builder method tests
+    #[test]
+    fn builder_with_max_time() {
+        let limits = ResourceLimits::unlimited().with_max_time(Duration::from_secs(120));
+        assert_eq!(limits.max_time, Some(Duration::from_secs(120)));
+    }
+
+    #[test]
+    fn builder_with_max_memory() {
+        let limits = ResourceLimits::unlimited().with_max_memory(256 * 1024 * 1024);
+        assert_eq!(limits.max_memory, Some(256 * 1024 * 1024));
+    }
+
+    #[test]
+    fn builder_with_max_executions() {
+        let limits = ResourceLimits::unlimited().with_max_executions(5000);
+        assert_eq!(limits.max_executions, Some(5000));
+    }
+
+    #[test]
+    fn builder_with_max_corpus_size() {
+        let limits = ResourceLimits::unlimited().with_max_corpus_size(2000);
+        assert_eq!(limits.max_corpus_size, Some(2000));
+    }
+
+    #[test]
+    fn builder_with_max_restarts() {
+        let limits = ResourceLimits::unlimited().with_max_restarts(15);
+        assert_eq!(limits.max_restarts, Some(15));
+    }
+
+    #[test]
+    fn builder_chaining() {
+        let limits = ResourceLimits::unlimited()
+            .with_max_time(Duration::from_secs(60))
+            .with_max_memory(128 * 1024 * 1024)
+            .with_max_executions(1000);
+
+        assert_eq!(limits.max_time, Some(Duration::from_secs(60)));
+        assert_eq!(limits.max_memory, Some(128 * 1024 * 1024));
+        assert_eq!(limits.max_executions, Some(1000));
+    }
+
+    // has_limits() with partial limits
+    #[test]
+    fn has_limits_with_only_time() {
+        let limits = ResourceLimits::unlimited().with_max_time(Duration::from_secs(60));
+        assert!(limits.has_limits());
+    }
+
+    #[test]
+    fn has_limits_with_only_memory() {
+        let limits = ResourceLimits::unlimited().with_max_memory(512 * 1024 * 1024);
+        assert!(limits.has_limits());
+    }
+
+    #[test]
+    fn has_limits_with_only_executions() {
+        let limits = ResourceLimits::unlimited().with_max_executions(1000);
+        assert!(limits.has_limits());
+    }
+
+    #[test]
+    fn has_limits_with_only_corpus_size() {
+        let limits = ResourceLimits::unlimited().with_max_corpus_size(5000);
+        assert!(limits.has_limits());
+    }
+
+    #[test]
+    fn has_limits_with_only_restarts() {
+        let limits = ResourceLimits::unlimited().with_max_restarts(3);
+        assert!(limits.has_limits());
+    }
+
+    // parse_duration tests
+    #[test]
+    fn parse_duration_days() {
+        assert_eq!(
+            ResourceLimits::parse_duration("1d").unwrap(),
+            Duration::from_secs(24 * 60 * 60)
+        );
+        assert_eq!(
+            ResourceLimits::parse_duration("2d").unwrap(),
+            Duration::from_secs(2 * 24 * 60 * 60)
+        );
+    }
+
+    #[test]
+    fn parse_duration_with_whitespace() {
+        assert_eq!(
+            ResourceLimits::parse_duration("  30s  ").unwrap(),
+            Duration::from_secs(30)
+        );
+        assert_eq!(
+            ResourceLimits::parse_duration("\t5m\n").unwrap(),
+            Duration::from_secs(300)
+        );
+    }
+
+    #[test]
+    fn parse_duration_empty_string() {
+        let result = ResourceLimits::parse_duration("");
+        assert!(matches!(result, Err(ParseError::Empty)));
+    }
+
+    #[test]
+    fn parse_duration_whitespace_only() {
+        let result = ResourceLimits::parse_duration("   ");
+        assert!(matches!(result, Err(ParseError::Empty)));
+    }
+
+    #[test]
+    fn parse_duration_invalid_number() {
+        let result = ResourceLimits::parse_duration("abc");
+        assert!(matches!(result, Err(ParseError::InvalidNumber(_))));
+    }
+
+    #[test]
+    fn parse_duration_invalid_suffix() {
+        let result = ResourceLimits::parse_duration("10x");
+        assert!(matches!(result, Err(ParseError::InvalidNumber(_))));
+    }
+
+    // parse_bytes tests
+    #[test]
+    fn parse_bytes_raw_bytes() {
+        assert_eq!(ResourceLimits::parse_bytes("1024").unwrap(), 1024);
+        assert_eq!(ResourceLimits::parse_bytes("100B").unwrap(), 100);
+    }
+
+    #[test]
+    fn parse_bytes_lowercase() {
+        assert_eq!(
+            ResourceLimits::parse_bytes("512mb").unwrap(),
+            512 * 1024 * 1024
+        );
+        assert_eq!(
+            ResourceLimits::parse_bytes("1gb").unwrap(),
+            1024 * 1024 * 1024
+        );
+        assert_eq!(ResourceLimits::parse_bytes("100kb").unwrap(), 100 * 1024);
+    }
+
+    #[test]
+    fn parse_bytes_with_whitespace() {
+        assert_eq!(
+            ResourceLimits::parse_bytes("  512MB  ").unwrap(),
+            512 * 1024 * 1024
+        );
+    }
+
+    #[test]
+    fn parse_bytes_empty_string() {
+        let result = ResourceLimits::parse_bytes("");
+        assert!(matches!(result, Err(ParseError::Empty)));
+    }
+
+    #[test]
+    fn parse_bytes_invalid_number() {
+        let result = ResourceLimits::parse_bytes("abcMB");
+        assert!(matches!(result, Err(ParseError::InvalidNumber(_))));
+    }
+
+    // ParseError Display tests
+    #[test]
+    fn parse_error_empty_display() {
+        let err = ParseError::Empty;
+        assert_eq!(err.to_string(), "empty value");
+    }
+
+    #[test]
+    fn parse_error_invalid_number_display() {
+        let err = ParseError::InvalidNumber("abc".to_string());
+        assert_eq!(err.to_string(), "invalid number: 'abc'");
+    }
+
+    #[test]
+    fn parse_error_unknown_unit_display() {
+        let err = ParseError::UnknownUnit("xyz".to_string());
+        assert_eq!(err.to_string(), "unknown unit: 'xyz'");
+    }
+
+    // ResourceMonitor tests
+    #[test]
+    fn monitor_reset_timer() {
+        let limits = ResourceLimits::default().with_max_time(Duration::from_secs(60));
+        let mut monitor = ResourceMonitor::new(limits);
+
+        std::thread::sleep(Duration::from_millis(10));
+        let elapsed1 = monitor.elapsed();
+
+        monitor.reset_timer();
+        let elapsed2 = monitor.elapsed();
+
+        assert!(elapsed2 < elapsed1);
+    }
+
+    #[test]
+    fn monitor_elapsed() {
+        let limits = ResourceLimits::default();
+        let monitor = ResourceMonitor::new(limits);
+
+        std::thread::sleep(Duration::from_millis(10));
+        let elapsed = monitor.elapsed();
+
+        assert!(elapsed >= Duration::from_millis(10));
+    }
+
+    #[test]
+    fn monitor_check_no_limits_exceeded() {
+        let limits = ResourceLimits::default()
+            .with_max_time(Duration::from_secs(60))
+            .with_max_executions(1000);
+        let monitor = ResourceMonitor::new(limits);
+
+        let stats = FuzzStats {
+            executions: 50,
+            corpus_size: 100,
+            restarts: 1,
+        };
+
+        assert!(monitor.check(&stats).is_none());
+    }
+
+    #[test]
+    fn monitor_check_specific_time() {
+        let limits = ResourceLimits::default().with_max_time(Duration::from_millis(1));
+        let monitor = ResourceMonitor::new(limits);
+
+        std::thread::sleep(Duration::from_millis(10));
+
+        let stats = FuzzStats::default();
+        assert!(monitor.check_specific(&stats, LimitType::Time));
+    }
+
+    #[test]
+    fn monitor_check_specific_executions() {
+        let limits = ResourceLimits::default().with_max_executions(100);
+        let monitor = ResourceMonitor::new(limits);
+
+        let stats = FuzzStats {
+            executions: 100,
+            corpus_size: 0,
+            restarts: 0,
+        };
+
+        assert!(monitor.check_specific(&stats, LimitType::Executions));
+    }
+
+    #[test]
+    fn monitor_check_specific_corpus_size() {
+        let limits = ResourceLimits::default().with_max_corpus_size(500);
+        let monitor = ResourceMonitor::new(limits);
+
+        let stats = FuzzStats {
+            executions: 0,
+            corpus_size: 500,
+            restarts: 0,
+        };
+
+        assert!(monitor.check_specific(&stats, LimitType::CorpusSize));
+    }
+
+    #[test]
+    fn monitor_check_specific_restarts() {
+        let limits = ResourceLimits::default().with_max_restarts(5);
+        let monitor = ResourceMonitor::new(limits);
+
+        let stats = FuzzStats {
+            executions: 0,
+            corpus_size: 0,
+            restarts: 5,
+        };
+
+        assert!(monitor.check_specific(&stats, LimitType::Restarts));
+    }
+
+    #[test]
+    fn monitor_check_specific_no_limit_set() {
+        let limits = ResourceLimits::unlimited();
+        let monitor = ResourceMonitor::new(limits);
+
+        let stats = FuzzStats {
+            executions: 10000,
+            corpus_size: 10000,
+            restarts: 100,
+        };
+
+        assert!(!monitor.check_specific(&stats, LimitType::Time));
+        assert!(!monitor.check_specific(&stats, LimitType::Executions));
+        assert!(!monitor.check_specific(&stats, LimitType::CorpusSize));
+        assert!(!monitor.check_specific(&stats, LimitType::Restarts));
+    }
+
+    #[test]
+    fn monitor_remaining_time_expired() {
+        let limits = ResourceLimits::default().with_max_time(Duration::from_millis(1));
+        let monitor = ResourceMonitor::new(limits);
+
+        std::thread::sleep(Duration::from_millis(10));
+
+        let remaining = monitor.remaining_time();
+        assert_eq!(remaining, Some(Duration::ZERO));
+    }
+
+    #[test]
+    fn monitor_remaining_time_no_limit() {
+        let limits = ResourceLimits::unlimited();
+        let monitor = ResourceMonitor::new(limits);
+
+        let remaining = monitor.remaining_time();
+        assert!(remaining.is_none());
+    }
+
+    #[test]
+    fn monitor_limits_accessor() {
+        let limits = ResourceLimits::default().with_max_executions(500);
+        let monitor = ResourceMonitor::new(limits.clone());
+
+        assert_eq!(monitor.limits().max_executions, Some(500));
+        assert_eq!(monitor.limits().max_time, limits.max_time);
+    }
+
+    #[test]
+    fn monitor_usage_summary() {
+        let limits = ResourceLimits::default()
+            .with_max_time(Duration::from_secs(60))
+            .with_max_executions(1000);
+        let monitor = ResourceMonitor::new(limits);
+
+        let stats = FuzzStats {
+            executions: 500,
+            corpus_size: 200,
+            restarts: 2,
+        };
+
+        let summary = monitor.usage_summary(&stats).unwrap();
+        assert_eq!(summary.executions, 500);
+        assert_eq!(summary.max_executions, Some(1000));
+        assert_eq!(summary.corpus_size, 200);
+        assert_eq!(summary.restarts, 2);
+    }
+
+    // LimitType tests
+    #[test]
+    fn limit_type_equality() {
+        assert_eq!(LimitType::Time, LimitType::Time);
+        assert_ne!(LimitType::Time, LimitType::Memory);
+    }
+
+    // LimitExceeded tests
+    #[test]
+    fn limit_exceeded_limit_type_time() {
+        let exceeded = LimitExceeded::Time(Duration::from_secs(60));
+        assert_eq!(exceeded.limit_type(), LimitType::Time);
+    }
+
+    #[test]
+    fn limit_exceeded_limit_type_memory() {
+        let exceeded = LimitExceeded::Memory(512 * 1024 * 1024);
+        assert_eq!(exceeded.limit_type(), LimitType::Memory);
+    }
+
+    #[test]
+    fn limit_exceeded_limit_type_executions() {
+        let exceeded = LimitExceeded::Executions(1000);
+        assert_eq!(exceeded.limit_type(), LimitType::Executions);
+    }
+
+    #[test]
+    fn limit_exceeded_limit_type_corpus_size() {
+        let exceeded = LimitExceeded::CorpusSize(5000);
+        assert_eq!(exceeded.limit_type(), LimitType::CorpusSize);
+    }
+
+    #[test]
+    fn limit_exceeded_limit_type_restarts() {
+        let exceeded = LimitExceeded::Restarts(10);
+        assert_eq!(exceeded.limit_type(), LimitType::Restarts);
+    }
+
+    // LimitExceeded Display tests
+    #[test]
+    fn limit_exceeded_display_time() {
+        let exceeded = LimitExceeded::Time(Duration::from_secs(60));
+        let display = format!("{}", exceeded);
+        assert!(display.contains("Time limit exceeded"));
+    }
+
+    #[test]
+    fn limit_exceeded_display_memory() {
+        let exceeded = LimitExceeded::Memory(512 * 1024 * 1024);
+        let display = format!("{}", exceeded);
+        assert!(display.contains("Memory limit exceeded"));
+        assert!(display.contains("bytes"));
+    }
+
+    #[test]
+    fn limit_exceeded_display_executions() {
+        let exceeded = LimitExceeded::Executions(1000);
+        let display = format!("{}", exceeded);
+        assert!(display.contains("Execution limit exceeded"));
+        assert!(display.contains("iterations"));
+    }
+
+    #[test]
+    fn limit_exceeded_display_corpus_size() {
+        let exceeded = LimitExceeded::CorpusSize(5000);
+        let display = format!("{}", exceeded);
+        assert!(display.contains("Corpus size limit exceeded"));
+        assert!(display.contains("entries"));
+    }
+
+    #[test]
+    fn limit_exceeded_display_restarts() {
+        let exceeded = LimitExceeded::Restarts(10);
+        let display = format!("{}", exceeded);
+        assert!(display.contains("Restart limit exceeded"));
+        assert!(display.contains("restarts"));
+    }
+
+    // UsageSummary percentage methods with None values
+    #[test]
+    fn usage_summary_time_usage_no_limit() {
+        let summary = UsageSummary {
+            elapsed: Duration::from_secs(30),
+            max_time: None,
+            memory_used: None,
+            max_memory: None,
+            executions: 500,
+            max_executions: None,
+            corpus_size: 250,
+            max_corpus_size: None,
+            restarts: 2,
+            max_restarts: None,
+        };
+
+        assert!(summary.time_usage().is_none());
+    }
+
+    #[test]
+    fn usage_summary_memory_usage_no_limit() {
+        let summary = UsageSummary {
+            elapsed: Duration::from_secs(30),
+            max_time: None,
+            memory_used: Some(256 * 1024 * 1024),
+            max_memory: None,
+            executions: 500,
+            max_executions: None,
+            corpus_size: 250,
+            max_corpus_size: None,
+            restarts: 2,
+            max_restarts: None,
+        };
+
+        assert!(summary.memory_usage().is_none());
+    }
+
+    #[test]
+    fn usage_summary_memory_usage_no_measurement() {
+        let summary = UsageSummary {
+            elapsed: Duration::from_secs(30),
+            max_time: None,
+            memory_used: None,
+            max_memory: Some(512 * 1024 * 1024),
+            executions: 500,
+            max_executions: None,
+            corpus_size: 250,
+            max_corpus_size: None,
+            restarts: 2,
+            max_restarts: None,
+        };
+
+        assert!(summary.memory_usage().is_none());
+    }
+
+    #[test]
+    fn usage_summary_execution_usage_no_limit() {
+        let summary = UsageSummary {
+            elapsed: Duration::from_secs(30),
+            max_time: None,
+            memory_used: None,
+            max_memory: None,
+            executions: 500,
+            max_executions: None,
+            corpus_size: 250,
+            max_corpus_size: None,
+            restarts: 2,
+            max_restarts: None,
+        };
+
+        assert!(summary.execution_usage().is_none());
+    }
+
+    #[test]
+    fn usage_summary_corpus_usage_no_limit() {
+        let summary = UsageSummary {
+            elapsed: Duration::from_secs(30),
+            max_time: None,
+            memory_used: None,
+            max_memory: None,
+            executions: 500,
+            max_executions: None,
+            corpus_size: 250,
+            max_corpus_size: None,
+            restarts: 2,
+            max_restarts: None,
+        };
+
+        assert!(summary.corpus_usage().is_none());
+    }
+
+    // format_bytes edge cases
+    #[test]
+    fn format_bytes_exact_kb_boundary() {
+        assert_eq!(format_bytes(1024), "1.0KB");
+    }
+
+    #[test]
+    fn format_bytes_exact_mb_boundary() {
+        assert_eq!(format_bytes(1024 * 1024), "1.0MB");
+    }
+
+    #[test]
+    fn format_bytes_exact_gb_boundary() {
+        assert_eq!(format_bytes(1024 * 1024 * 1024), "1.0GB");
+    }
+
+    #[test]
+    fn format_bytes_zero() {
+        assert_eq!(format_bytes(0), "0B");
+    }
+
+    #[test]
+    fn format_bytes_fractional_kb() {
+        assert_eq!(format_bytes(1536), "1.5KB");
+    }
+
+    #[test]
+    fn format_bytes_fractional_mb() {
+        assert_eq!(format_bytes(1536 * 1024), "1.5MB");
+    }
+
+    // format_duration edge cases
+    #[test]
+    fn format_duration_zero() {
+        assert_eq!(format_duration(Duration::from_secs(0)), "0s");
+    }
+
+    #[test]
+    fn format_duration_exact_minute() {
+        assert_eq!(format_duration(Duration::from_secs(60)), "1m0s");
+    }
+
+    #[test]
+    fn format_duration_exact_hour() {
+        assert_eq!(format_duration(Duration::from_secs(3600)), "1h0m");
+    }
+
+    #[test]
+    fn format_duration_multiple_hours() {
+        assert_eq!(format_duration(Duration::from_secs(7200)), "2h0m");
+    }
+
+    #[test]
+    fn format_duration_hours_and_minutes() {
+        assert_eq!(format_duration(Duration::from_secs(3720)), "1h2m");
+    }
+
+    // FuzzerError tests
+    #[test]
+    fn fuzzer_error_display_formats() {
+        let config_err = FuzzerError::ConfigError(ParseError::Empty);
+        assert_eq!(format!("{}", config_err), "Configuration error: empty value");
+
+        let mem_err = FuzzerError::MemoryMonitoringFailed("test".to_string());
+        assert_eq!(format!("{}", mem_err), "Memory monitoring failed: test");
+
+        let time_err = FuzzerError::TimeLimitExceeded("300s".to_string());
+        assert_eq!(format!("{}", time_err), "Time limit exceeded: 300s");
+
+        let memory_limit_err = FuzzerError::MemoryLimitExceeded(512 * 1024 * 1024);
+        assert_eq!(format!("{}", memory_limit_err), "Memory limit exceeded: 536870912 bytes");
+    }
+
+    #[test]
+    fn fuzzer_error_from_traits() {
+        let parse_err = ParseError::InvalidNumber("abc".to_string());
+        let fuzzer_err: FuzzerError = parse_err.into();
+        
+        match fuzzer_err {
+            FuzzerError::ConfigError(ParseError::InvalidNumber(s)) => {
+                assert_eq!(s, "abc");
+            }
+            _ => panic!("Expected ConfigError with InvalidNumber"),
+        }
+    }
+
+    #[test]
+    fn fuzzer_error_io_error_conversion() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let fuzzer_err: FuzzerError = io_err.into();
+        
+        match fuzzer_err {
+            FuzzerError::IoError(e) => {
+                assert_eq!(e.kind(), std::io::ErrorKind::NotFound);
+            }
+            _ => panic!("Expected IoError"),
+        }
+    }
+
+    #[test]
+    fn memory_monitoring_error_handling() {
+        // Test that memory monitoring returns proper errors on unsupported platforms
+        #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+        {
+            let monitor = ResourceMonitor::new(ResourceLimits::unlimited());
+            let result = monitor.get_process_memory();
+            
+            match result {
+                Err(FuzzerError::PlatformNotSupported) => {},
+                _ => panic!("Expected PlatformNotSupported error"),
+            }
+        }
+    }
+
+    #[test]
+    fn usage_summary_error_handling() {
+        let monitor = ResourceMonitor::new(ResourceLimits::unlimited());
+        let stats = FuzzStats::default();
+        
+        // This should work on supported platforms, fail gracefully on unsupported
+        let result = monitor.usage_summary(&stats);
+        
+        // On supported platforms, it should succeed (memory_used will be None if monitoring fails)
+        // On unsupported platforms, it should return PlatformNotSupported
+        match result {
+            Ok(summary) => {
+                // Summary created successfully
+                assert_eq!(summary.executions, 0);
+            },
+            Err(FuzzerError::PlatformNotSupported) => {
+                // Expected on unsupported platforms
+            },
+            Err(e) => panic!("Unexpected error: {}", e),
+        }
     }
 }

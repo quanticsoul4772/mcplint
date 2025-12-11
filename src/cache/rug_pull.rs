@@ -340,6 +340,14 @@ mod tests {
         }
     }
 
+    fn make_tool_with_schema(name: &str, description: &str, schema: serde_json::Value) -> Tool {
+        Tool {
+            name: name.to_string(),
+            description: Some(description.to_string()),
+            input_schema: schema,
+        }
+    }
+
     #[test]
     fn tool_hash_creation() {
         let tool = make_tool("test_tool", "A test tool");
@@ -438,5 +446,381 @@ mod tests {
         assert!(detection.is_some());
         let d = detection.unwrap();
         assert_eq!(d.severity, RugPullSeverity::Critical);
+    }
+
+    // New comprehensive tests
+
+    #[test]
+    fn tool_hash_consistency() {
+        let tool = make_tool("test", "description");
+        let hash1 = ToolHash::from_tool(&tool);
+        let hash2 = ToolHash::from_tool(&tool);
+
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn tool_hash_different_description() {
+        let tool1 = make_tool("test", "desc1");
+        let tool2 = make_tool("test", "desc2");
+
+        let hash1 = ToolHash::from_tool(&tool1);
+        let hash2 = ToolHash::from_tool(&tool2);
+
+        assert_ne!(hash1.description_hash, hash2.description_hash);
+        assert_eq!(hash1.schema_hash, hash2.schema_hash);
+        assert_ne!(hash1.combined_hash, hash2.combined_hash);
+    }
+
+    #[test]
+    fn tool_hash_different_schema() {
+        let tool1 = make_tool_with_schema("test", "desc", json!({"type": "object"}));
+        let tool2 = make_tool_with_schema("test", "desc", json!({"type": "string"}));
+
+        let hash1 = ToolHash::from_tool(&tool1);
+        let hash2 = ToolHash::from_tool(&tool2);
+
+        assert_eq!(hash1.description_hash, hash2.description_hash);
+        assert_ne!(hash1.schema_hash, hash2.schema_hash);
+        assert_ne!(hash1.combined_hash, hash2.combined_hash);
+    }
+
+    #[test]
+    fn tool_hash_record_seen_count() {
+        let tools = vec![make_tool("tool1", "First tool")];
+        let record = ToolHashRecord::from_tools("server", &tools);
+
+        assert_eq!(record.seen_count, 1);
+    }
+
+    #[test]
+    fn tool_hash_record_mark_seen() {
+        let tools = vec![make_tool("tool1", "First tool")];
+        let mut record = ToolHashRecord::from_tools("server", &tools);
+
+        let original_count = record.seen_count;
+        let original_updated = record.updated_at;
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        record.mark_seen();
+
+        assert_eq!(record.seen_count, original_count + 1);
+        assert!(record.updated_at > original_updated);
+    }
+
+    #[test]
+    fn tool_hash_record_config_hash_consistency() {
+        let tools = vec![make_tool("tool1", "First"), make_tool("tool2", "Second")];
+        let record1 = ToolHashRecord::from_tools("server", &tools);
+        let record2 = ToolHashRecord::from_tools("server", &tools);
+
+        assert_eq!(record1.config_hash, record2.config_hash);
+    }
+
+    #[test]
+    fn detect_schema_changes() {
+        let tools_v1 = vec![make_tool_with_schema(
+            "tool1",
+            "desc",
+            json!({"type": "object"}),
+        )];
+        let tools_v2 = vec![make_tool_with_schema(
+            "tool1",
+            "desc",
+            json!({"type": "string"}),
+        )];
+
+        let record = ToolHashRecord::from_tools("server", &tools_v1);
+        let detection = detect_rug_pull("server", &record, &tools_v2);
+
+        assert!(detection.is_some());
+        let d = detection.unwrap();
+        assert_eq!(d.modified.len(), 1);
+        assert!(d.modified[0].schema_changed);
+        assert!(!d.modified[0].description_changed);
+    }
+
+    #[test]
+    fn detect_both_description_and_schema_changes() {
+        let tools_v1 = vec![make_tool_with_schema(
+            "tool1",
+            "old",
+            json!({"type": "object"}),
+        )];
+        let tools_v2 = vec![make_tool_with_schema(
+            "tool1",
+            "new",
+            json!({"type": "string"}),
+        )];
+
+        let record = ToolHashRecord::from_tools("server", &tools_v1);
+        let detection = detect_rug_pull("server", &record, &tools_v2);
+
+        assert!(detection.is_some());
+        let d = detection.unwrap();
+        assert_eq!(d.modified.len(), 1);
+        assert!(d.modified[0].schema_changed);
+        assert!(d.modified[0].description_changed);
+    }
+
+    #[test]
+    fn severity_info_for_metadata_only() {
+        // Info severity is the default fallback
+        let severity = assess_severity(&[], &[], &[]);
+        assert_eq!(severity, RugPullSeverity::Info);
+    }
+
+    #[test]
+    fn severity_low_for_few_additions() {
+        let added = vec!["tool1".to_string(), "tool2".to_string()];
+        let severity = assess_severity(&added, &[], &[]);
+        assert_eq!(severity, RugPullSeverity::Low);
+    }
+
+    #[test]
+    fn severity_medium_for_many_additions() {
+        let added = vec![
+            "tool1".to_string(),
+            "tool2".to_string(),
+            "tool3".to_string(),
+            "tool4".to_string(),
+            "tool5".to_string(),
+        ];
+        let severity = assess_severity(&added, &[], &[]);
+        assert_eq!(severity, RugPullSeverity::Medium);
+    }
+
+    #[test]
+    fn severity_high_for_removals() {
+        let removed = vec!["tool1".to_string()];
+        let severity = assess_severity(&[], &removed, &[]);
+        assert_eq!(severity, RugPullSeverity::High);
+    }
+
+    #[test]
+    fn severity_low_for_description_only_changes() {
+        let modified = vec![ToolModification {
+            name: "tool1".to_string(),
+            description_changed: true,
+            schema_changed: false,
+            previous_hash: "old".to_string(),
+            current_hash: "new".to_string(),
+        }];
+        let severity = assess_severity(&[], &[], &modified);
+        assert_eq!(severity, RugPullSeverity::Low);
+    }
+
+    #[test]
+    fn severity_medium_for_single_schema_change() {
+        let modified = vec![ToolModification {
+            name: "tool1".to_string(),
+            description_changed: false,
+            schema_changed: true,
+            previous_hash: "old".to_string(),
+            current_hash: "new".to_string(),
+        }];
+        let severity = assess_severity(&[], &[], &modified);
+        assert_eq!(severity, RugPullSeverity::Medium);
+    }
+
+    #[test]
+    fn severity_high_for_multiple_schema_changes() {
+        let modified = vec![
+            ToolModification {
+                name: "tool1".to_string(),
+                description_changed: false,
+                schema_changed: true,
+                previous_hash: "old1".to_string(),
+                current_hash: "new1".to_string(),
+            },
+            ToolModification {
+                name: "tool2".to_string(),
+                description_changed: false,
+                schema_changed: true,
+                previous_hash: "old2".to_string(),
+                current_hash: "new2".to_string(),
+            },
+            ToolModification {
+                name: "tool3".to_string(),
+                description_changed: false,
+                schema_changed: true,
+                previous_hash: "old3".to_string(),
+                current_hash: "new3".to_string(),
+            },
+        ];
+        let severity = assess_severity(&[], &[], &modified);
+        assert_eq!(severity, RugPullSeverity::High);
+    }
+
+    #[test]
+    fn severity_critical_for_suspicious_names() {
+        let suspicious_names = vec![
+            "exec", "shell", "system", "eval", "run", "execute", "command", "admin", "sudo", "root",
+        ];
+
+        for name in suspicious_names {
+            let added = vec![format!("tool_{}", name)];
+            let severity = assess_severity(&added, &[], &[]);
+            assert_eq!(
+                severity,
+                RugPullSeverity::Critical,
+                "Expected critical for tool with name containing '{}'",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn summary_no_changes() {
+        let summary = generate_summary(&[], &[], &[]);
+        assert_eq!(summary, "No changes detected");
+    }
+
+    #[test]
+    fn summary_additions_only() {
+        let added = vec!["tool1".to_string(), "tool2".to_string()];
+        let summary = generate_summary(&added, &[], &[]);
+        assert!(summary.contains("2 tools added"));
+    }
+
+    #[test]
+    fn summary_removals_only() {
+        let removed = vec!["tool1".to_string()];
+        let summary = generate_summary(&[], &removed, &[]);
+        assert!(summary.contains("1 tools removed"));
+    }
+
+    #[test]
+    fn summary_modifications_only() {
+        let modified = vec![
+            ToolModification {
+                name: "tool1".to_string(),
+                description_changed: true,
+                schema_changed: false,
+                previous_hash: "old".to_string(),
+                current_hash: "new".to_string(),
+            },
+            ToolModification {
+                name: "tool2".to_string(),
+                description_changed: false,
+                schema_changed: true,
+                previous_hash: "old".to_string(),
+                current_hash: "new".to_string(),
+            },
+        ];
+        let summary = generate_summary(&[], &[], &modified);
+        assert!(summary.contains("1 schema changes"));
+        assert!(summary.contains("1 description changes"));
+    }
+
+    #[test]
+    fn summary_combined_changes() {
+        let added = vec!["tool3".to_string()];
+        let removed = vec!["tool1".to_string()];
+        let modified = vec![ToolModification {
+            name: "tool2".to_string(),
+            description_changed: true,
+            schema_changed: true,
+            previous_hash: "old".to_string(),
+            current_hash: "new".to_string(),
+        }];
+        let summary = generate_summary(&added, &removed, &modified);
+
+        assert!(summary.contains("1 tools added"));
+        assert!(summary.contains("1 tools removed"));
+        assert!(summary.contains("1 schema changes"));
+    }
+
+    #[test]
+    fn rug_pull_severity_display() {
+        assert_eq!(RugPullSeverity::Info.to_string(), "info");
+        assert_eq!(RugPullSeverity::Low.to_string(), "low");
+        assert_eq!(RugPullSeverity::Medium.to_string(), "medium");
+        assert_eq!(RugPullSeverity::High.to_string(), "high");
+        assert_eq!(RugPullSeverity::Critical.to_string(), "critical");
+    }
+
+    #[test]
+    fn rug_pull_detection_includes_timestamps() {
+        let tools_v1 = vec![make_tool("tool1", "First tool")];
+        let tools_v2 = vec![
+            make_tool("tool1", "First tool"),
+            make_tool("tool2", "New tool"),
+        ];
+
+        let record = ToolHashRecord::from_tools("server", &tools_v1);
+        let detection = detect_rug_pull("server", &record, &tools_v2).unwrap();
+
+        assert_eq!(detection.previous_seen, record.updated_at);
+        assert_ne!(detection.previous_hash, detection.current_hash);
+    }
+
+    #[test]
+    fn rug_pull_detection_includes_server_id() {
+        let tools_v1 = vec![make_tool("tool1", "First tool")];
+        let tools_v2 = vec![make_tool("tool1", "Changed tool")];
+
+        let record = ToolHashRecord::from_tools("my-server", &tools_v1);
+        let detection = detect_rug_pull("my-server", &record, &tools_v2).unwrap();
+
+        assert_eq!(detection.server_id, "my-server");
+    }
+
+    #[test]
+    fn detect_multiple_tools_added_and_removed() {
+        let tools_v1 = vec![
+            make_tool("tool1", "First"),
+            make_tool("tool2", "Second"),
+            make_tool("tool3", "Third"),
+        ];
+        let tools_v2 = vec![
+            make_tool("tool1", "First"),
+            make_tool("tool4", "Fourth"),
+            make_tool("tool5", "Fifth"),
+        ];
+
+        let record = ToolHashRecord::from_tools("server", &tools_v1);
+        let detection = detect_rug_pull("server", &record, &tools_v2).unwrap();
+
+        assert_eq!(detection.added.len(), 2);
+        assert_eq!(detection.removed.len(), 2);
+        assert!(detection.added.contains(&"tool4".to_string()));
+        assert!(detection.added.contains(&"tool5".to_string()));
+        assert!(detection.removed.contains(&"tool2".to_string()));
+        assert!(detection.removed.contains(&"tool3".to_string()));
+    }
+
+    #[test]
+    fn tool_modification_tracks_hash_changes() {
+        let tools_v1 = vec![make_tool("tool1", "Old description")];
+        let tools_v2 = vec![make_tool("tool1", "New description")];
+
+        let record = ToolHashRecord::from_tools("server", &tools_v1);
+        let detection = detect_rug_pull("server", &record, &tools_v2).unwrap();
+
+        assert_eq!(detection.modified.len(), 1);
+        assert_ne!(
+            detection.modified[0].previous_hash,
+            detection.modified[0].current_hash
+        );
+    }
+
+    #[test]
+    fn empty_tools_list_detected() {
+        let tools_v1 = vec![make_tool("tool1", "First")];
+        let tools_v2 = vec![];
+
+        let record = ToolHashRecord::from_tools("server", &tools_v1);
+        let detection = detect_rug_pull("server", &record, &tools_v2).unwrap();
+
+        assert_eq!(detection.removed.len(), 1);
+        assert_eq!(detection.severity, RugPullSeverity::High);
+    }
+
+    #[test]
+    fn case_sensitive_suspicious_names() {
+        let added = vec!["EXECUTE_COMMAND".to_string()];
+        let severity = assess_severity(&added, &[], &[]);
+        assert_eq!(severity, RugPullSeverity::Critical);
     }
 }

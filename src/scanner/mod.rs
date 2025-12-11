@@ -16,7 +16,9 @@ pub use context::{ScanConfig, ScanProfile, ServerContext};
 #[allow(unused_imports)]
 pub use engine::{ScanEngine, ScanResults, ScanSummary};
 #[allow(unused_imports)]
-pub use finding::{Evidence, EvidenceKind, Finding, FindingLocation, ReferenceKind, Severity};
+pub use finding::{
+    Evidence, EvidenceKind, Finding, FindingLocation, Reference, ReferenceKind, Severity,
+};
 
 use anyhow::Result;
 use colored::Colorize;

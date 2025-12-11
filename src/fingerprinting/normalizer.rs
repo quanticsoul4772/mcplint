@@ -571,4 +571,429 @@ mod tests {
         let first = &results[0];
         assert!(results.iter().all(|r| r == first));
     }
+
+    #[test]
+    fn test_canonicalize_type_variants() {
+        assert_eq!(SchemaNormalizer::canonicalize_type("str"), "string");
+        assert_eq!(SchemaNormalizer::canonicalize_type("text"), "string");
+        assert_eq!(SchemaNormalizer::canonicalize_type("double"), "number");
+        assert_eq!(SchemaNormalizer::canonicalize_type("decimal"), "number");
+        assert_eq!(SchemaNormalizer::canonicalize_type("int"), "integer");
+        assert_eq!(SchemaNormalizer::canonicalize_type("long"), "integer");
+        assert_eq!(SchemaNormalizer::canonicalize_type("bool"), "boolean");
+        assert_eq!(SchemaNormalizer::canonicalize_type("map"), "object");
+        assert_eq!(SchemaNormalizer::canonicalize_type("dict"), "object");
+        assert_eq!(SchemaNormalizer::canonicalize_type("list"), "array");
+        assert_eq!(SchemaNormalizer::canonicalize_type("vec"), "array");
+        assert_eq!(SchemaNormalizer::canonicalize_type("nil"), "null");
+        assert_eq!(SchemaNormalizer::canonicalize_type("none"), "null");
+        assert_eq!(SchemaNormalizer::canonicalize_type("custom"), "custom");
+    }
+
+    #[test]
+    fn test_normalize_empty_schema() {
+        let schema = json!({});
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.canonical_json.contains("{}"));
+        assert_eq!(normalized.metadata.property_count, 0);
+    }
+
+    #[test]
+    fn test_normalize_simple_string_type() {
+        let schema = json!({
+            "type": "string"
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.canonical_json.contains("string"));
+        assert_eq!(normalized.metadata.property_count, 0);
+    }
+
+    #[test]
+    fn test_normalize_array_schema() {
+        let schema = json!({
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.canonical_json.contains("array"));
+        assert!(normalized.canonical_json.contains("items"));
+    }
+
+    #[test]
+    fn test_normalize_additional_properties_bool() {
+        let schema = json!({
+            "type": "object",
+            "additionalProperties": false
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.canonical_json.contains("additionalProperties"));
+    }
+
+    #[test]
+    fn test_normalize_additional_properties_object() {
+        let schema = json!({
+            "type": "object",
+            "additionalProperties": {
+                "type": "string"
+            }
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.canonical_json.contains("additionalProperties"));
+    }
+
+    #[test]
+    fn test_normalize_enum_sorting() {
+        let schema1 = json!({
+            "type": "string",
+            "enum": ["z", "a", "m"]
+        });
+        let schema2 = json!({
+            "type": "string",
+            "enum": ["a", "m", "z"]
+        });
+
+        let norm1 = SchemaNormalizer::normalize_semantic(&schema1);
+        let norm2 = SchemaNormalizer::normalize_semantic(&schema2);
+
+        assert_eq!(norm1.canonical_json, norm2.canonical_json);
+    }
+
+    #[test]
+    fn test_normalize_numeric_constraints() {
+        let schema = json!({
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100,
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 100,
+            "multipleOf": 5
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.canonical_json.contains("minimum"));
+        assert!(normalized.canonical_json.contains("maximum"));
+        assert!(normalized.canonical_json.contains("multipleOf"));
+    }
+
+    #[test]
+    fn test_normalize_string_constraints() {
+        let schema = json!({
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[a-z]+$",
+            "format": "email"
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.canonical_json.contains("minLength"));
+        assert!(normalized.canonical_json.contains("maxLength"));
+        assert!(normalized.canonical_json.contains("pattern"));
+        assert!(normalized.canonical_json.contains("format"));
+    }
+
+    #[test]
+    fn test_normalize_array_constraints() {
+        let schema = json!({
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 10,
+            "uniqueItems": true
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.canonical_json.contains("minItems"));
+        assert!(normalized.canonical_json.contains("maxItems"));
+        assert!(normalized.canonical_json.contains("uniqueItems"));
+    }
+
+    #[test]
+    fn test_normalize_oneof() {
+        let schema = json!({
+            "oneOf": [
+                {"type": "string"},
+                {"type": "number"}
+            ]
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.canonical_json.contains("oneOf"));
+        assert!(normalized.metadata.complexity > 0);
+    }
+
+    #[test]
+    fn test_normalize_anyof() {
+        let schema = json!({
+            "anyOf": [
+                {"type": "string"},
+                {"type": "number"}
+            ]
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.canonical_json.contains("anyOf"));
+    }
+
+    #[test]
+    fn test_normalize_allof() {
+        let schema = json!({
+            "allOf": [
+                {"type": "object", "properties": {"a": {"type": "string"}}},
+                {"type": "object", "properties": {"b": {"type": "number"}}}
+            ]
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.canonical_json.contains("allOf"));
+    }
+
+    #[test]
+    fn test_normalize_const() {
+        let schema = json!({
+            "const": "fixed_value"
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.canonical_json.contains("const"));
+        assert!(normalized.metadata.complexity > 0);
+    }
+
+    #[test]
+    fn test_metadata_property_count() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "a": {"type": "string"},
+                "b": {"type": "number"},
+                "c": {"type": "boolean"}
+            }
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert_eq!(normalized.metadata.property_count, 3);
+    }
+
+    #[test]
+    fn test_metadata_required_fields() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "a": {"type": "string"},
+                "b": {"type": "number"}
+            },
+            "required": ["a"]
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert_eq!(normalized.metadata.required, vec!["a"]);
+    }
+
+    #[test]
+    fn test_metadata_property_types() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "age": {"type": "number"}
+            }
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert_eq!(
+            normalized.metadata.property_types.get("name"),
+            Some(&"string".to_string())
+        );
+        assert_eq!(
+            normalized.metadata.property_types.get("age"),
+            Some(&"number".to_string())
+        );
+    }
+
+    #[test]
+    fn test_metadata_max_depth() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "level1": {
+                    "type": "object",
+                    "properties": {
+                        "level2": {
+                            "type": "object",
+                            "properties": {
+                                "level3": {"type": "string"}
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.metadata.max_depth > 2);
+    }
+
+    #[test]
+    fn test_metadata_complexity_score() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "a": {"type": "string"},
+                "b": {"type": "number"}
+            },
+            "required": ["a"]
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.metadata.complexity > 0);
+    }
+
+    #[test]
+    fn test_normalize_type_array() {
+        let schema = json!({
+            "type": ["string", "null"]
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        // Array types should be normalized to a unified format
+        assert!(normalized.canonical_json.contains("type"));
+    }
+
+    #[test]
+    fn test_extract_type_from_object_schema() {
+        let value = json!({
+            "type": "object",
+            "properties": {}
+        });
+
+        let schema_type = SchemaNormalizer::normalize_semantic(&value);
+        assert!(
+            schema_type.metadata.property_types.is_empty()
+                || schema_type.metadata.property_count == 0
+        );
+    }
+
+    #[test]
+    fn test_extract_type_from_array_schema() {
+        let value = json!({
+            "type": "array",
+            "items": {"type": "string"}
+        });
+
+        let normalized = SchemaNormalizer::normalize_semantic(&value);
+        assert!(normalized.canonical_json.contains("array"));
+    }
+
+    #[test]
+    fn test_full_normalization_preserves_all_fields() {
+        let schema = json!({
+            "type": "object",
+            "title": "Test Schema",
+            "description": "A test schema",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "User name"
+                }
+            }
+        });
+        let normalized = SchemaNormalizer::normalize_full(&schema);
+
+        assert!(normalized.canonical_json.contains("title"));
+        assert!(normalized.canonical_json.contains("description"));
+    }
+
+    #[test]
+    fn test_full_normalization_key_ordering() {
+        let schema1 = json!({
+            "type": "object",
+            "description": "Test",
+            "properties": {}
+        });
+        let schema2 = json!({
+            "properties": {},
+            "type": "object",
+            "description": "Test"
+        });
+
+        let norm1 = SchemaNormalizer::normalize_full(&schema1);
+        let norm2 = SchemaNormalizer::normalize_full(&schema2);
+
+        // Full normalization should produce same result regardless of key order
+        assert_eq!(norm1.canonical_json, norm2.canonical_json);
+    }
+
+    #[test]
+    fn test_is_semantic_flag() {
+        let schema = json!({"type": "string"});
+
+        let semantic = SchemaNormalizer::normalize_semantic(&schema);
+        assert!(semantic.is_semantic);
+
+        let full = SchemaNormalizer::normalize_full(&schema);
+        assert!(!full.is_semantic);
+    }
+
+    #[test]
+    fn test_normalize_nested_arrays() {
+        let schema = json!({
+            "type": "array",
+            "items": {
+                "type": "array",
+                "items": {"type": "string"}
+            }
+        });
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.canonical_json.contains("array"));
+        assert!(normalized.metadata.max_depth > 1);
+    }
+
+    #[test]
+    fn test_normalize_primitives_pass_through() {
+        let schema = json!("string_value");
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+
+        assert!(normalized.canonical_json.contains("string_value"));
+    }
+
+    #[test]
+    fn test_normalize_description_whitespace() {
+        assert_eq!(
+            SchemaNormalizer::normalize_description("   spaces   everywhere   "),
+            "spaces everywhere"
+        );
+        assert_eq!(
+            SchemaNormalizer::normalize_description("\t\ntabs\nand\nnewlines\t"),
+            "tabs and newlines"
+        );
+    }
+
+    #[test]
+    fn test_normalize_tool_name_empty() {
+        assert_eq!(SchemaNormalizer::normalize_tool_name(""), "");
+        assert_eq!(SchemaNormalizer::normalize_tool_name("   "), "");
+    }
+
+    #[test]
+    fn test_complexity_increases_with_constraints() {
+        let simple = json!({"type": "string"});
+        let complex = json!({
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "pattern": "^[a-z]+$"
+        });
+
+        let simple_norm = SchemaNormalizer::normalize_semantic(&simple);
+        let complex_norm = SchemaNormalizer::normalize_semantic(&complex);
+
+        assert!(complex_norm.metadata.complexity > simple_norm.metadata.complexity);
+    }
 }

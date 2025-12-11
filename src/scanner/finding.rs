@@ -376,4 +376,429 @@ mod tests {
         let ref2 = Reference::cwe("CWE-89");
         assert_eq!(ref2.id, "CWE-89");
     }
+
+    // Severity::as_str() tests
+    #[test]
+    fn severity_as_str_info() {
+        assert_eq!(Severity::Info.as_str(), "info");
+    }
+
+    #[test]
+    fn severity_as_str_low() {
+        assert_eq!(Severity::Low.as_str(), "low");
+    }
+
+    #[test]
+    fn severity_as_str_medium() {
+        assert_eq!(Severity::Medium.as_str(), "medium");
+    }
+
+    #[test]
+    fn severity_as_str_high() {
+        assert_eq!(Severity::High.as_str(), "high");
+    }
+
+    #[test]
+    fn severity_as_str_critical() {
+        assert_eq!(Severity::Critical.as_str(), "critical");
+    }
+
+    // Severity::parse() tests
+    #[test]
+    fn severity_parse_info() {
+        assert_eq!(Severity::parse("info"), Some(Severity::Info));
+    }
+
+    #[test]
+    fn severity_parse_low() {
+        assert_eq!(Severity::parse("low"), Some(Severity::Low));
+    }
+
+    #[test]
+    fn severity_parse_medium() {
+        assert_eq!(Severity::parse("medium"), Some(Severity::Medium));
+    }
+
+    #[test]
+    fn severity_parse_high() {
+        assert_eq!(Severity::parse("high"), Some(Severity::High));
+    }
+
+    #[test]
+    fn severity_parse_critical() {
+        assert_eq!(Severity::parse("critical"), Some(Severity::Critical));
+    }
+
+    #[test]
+    fn severity_parse_case_insensitive() {
+        assert_eq!(Severity::parse("INFO"), Some(Severity::Info));
+        assert_eq!(Severity::parse("Low"), Some(Severity::Low));
+        assert_eq!(Severity::parse("MEDIUM"), Some(Severity::Medium));
+        assert_eq!(Severity::parse("HiGh"), Some(Severity::High));
+        assert_eq!(Severity::parse("CRITICAL"), Some(Severity::Critical));
+    }
+
+    #[test]
+    fn severity_parse_invalid() {
+        assert_eq!(Severity::parse("unknown"), None);
+        assert_eq!(Severity::parse(""), None);
+        assert_eq!(Severity::parse("severe"), None);
+        assert_eq!(Severity::parse("warning"), None);
+    }
+
+    // Severity::sarif_level() tests
+    #[test]
+    fn severity_sarif_level_critical() {
+        assert_eq!(Severity::Critical.sarif_level(), "error");
+    }
+
+    #[test]
+    fn severity_sarif_level_high() {
+        assert_eq!(Severity::High.sarif_level(), "error");
+    }
+
+    #[test]
+    fn severity_sarif_level_medium() {
+        assert_eq!(Severity::Medium.sarif_level(), "warning");
+    }
+
+    #[test]
+    fn severity_sarif_level_low() {
+        assert_eq!(Severity::Low.sarif_level(), "note");
+    }
+
+    #[test]
+    fn severity_sarif_level_info() {
+        assert_eq!(Severity::Info.sarif_level(), "note");
+    }
+
+    // Severity::colored_display() tests
+    #[test]
+    fn severity_colored_display_all_variants() {
+        // Just ensure they don't panic and return something
+        let _ = Severity::Critical.colored_display();
+        let _ = Severity::High.colored_display();
+        let _ = Severity::Medium.colored_display();
+        let _ = Severity::Low.colored_display();
+        let _ = Severity::Info.colored_display();
+    }
+
+    // Severity::colored_from_str() tests
+    #[test]
+    fn severity_colored_from_str_valid() {
+        let _ = Severity::colored_from_str("critical");
+        let _ = Severity::colored_from_str("high");
+        let _ = Severity::colored_from_str("medium");
+        let _ = Severity::colored_from_str("low");
+        let _ = Severity::colored_from_str("info");
+    }
+
+    #[test]
+    fn severity_colored_from_str_invalid() {
+        // Should return normal colored string for invalid input
+        let result = Severity::colored_from_str("invalid");
+        assert_eq!(result.to_string(), "invalid");
+    }
+
+    // Severity Display trait test
+    #[test]
+    fn severity_display_trait() {
+        assert_eq!(format!("{}", Severity::Info), "info");
+        assert_eq!(format!("{}", Severity::Low), "low");
+        assert_eq!(format!("{}", Severity::Medium), "medium");
+        assert_eq!(format!("{}", Severity::High), "high");
+        assert_eq!(format!("{}", Severity::Critical), "critical");
+    }
+
+    // Severity ordering tests (additional)
+    #[test]
+    fn severity_ordering_comprehensive() {
+        assert!(Severity::Critical > Severity::High);
+        assert!(Severity::Critical > Severity::Medium);
+        assert!(Severity::Critical > Severity::Low);
+        assert!(Severity::Critical > Severity::Info);
+
+        assert!(Severity::High > Severity::Medium);
+        assert!(Severity::High > Severity::Low);
+        assert!(Severity::High > Severity::Info);
+
+        assert!(Severity::Medium > Severity::Low);
+        assert!(Severity::Medium > Severity::Info);
+
+        assert!(Severity::Low > Severity::Info);
+    }
+
+    #[test]
+    fn severity_equality() {
+        assert_eq!(Severity::Critical, Severity::Critical);
+        assert_ne!(Severity::Critical, Severity::High);
+    }
+
+    // Finding::new() tests
+    #[test]
+    fn finding_new_creates_valid_finding() {
+        let finding = Finding::new("TEST-001", Severity::High, "Test Title", "Test Description");
+
+        assert!(!finding.id.is_empty());
+        assert_eq!(finding.rule_id, "TEST-001");
+        assert_eq!(finding.severity, Severity::High);
+        assert_eq!(finding.title, "Test Title");
+        assert_eq!(finding.description, "Test Description");
+        assert!(finding.evidence.is_empty());
+        assert!(finding.remediation.is_empty());
+        assert!(finding.references.is_empty());
+    }
+
+    #[test]
+    fn finding_new_generates_unique_ids() {
+        let finding1 = Finding::new("TEST-001", Severity::High, "Title", "Description");
+        let finding2 = Finding::new("TEST-001", Severity::High, "Title", "Description");
+
+        assert_ne!(finding1.id, finding2.id);
+    }
+
+    // Finding builder methods tests
+    #[test]
+    fn finding_with_location() {
+        let location = FindingLocation::tool("test_tool");
+        let finding = Finding::new("TEST-001", Severity::Medium, "Title", "Description")
+            .with_location(location.clone());
+
+        assert_eq!(finding.location.component, "tool");
+        assert_eq!(finding.location.identifier, "test_tool");
+    }
+
+    #[test]
+    fn finding_with_evidence() {
+        let evidence = Evidence::observation("test data", "test description");
+        let finding = Finding::new("TEST-001", Severity::Medium, "Title", "Description")
+            .with_evidence(evidence);
+
+        assert_eq!(finding.evidence.len(), 1);
+        assert_eq!(finding.evidence[0].data, "test data");
+    }
+
+    #[test]
+    fn finding_with_multiple_evidence() {
+        let finding = Finding::new("TEST-001", Severity::Medium, "Title", "Description")
+            .with_evidence(Evidence::observation("data1", "desc1"))
+            .with_evidence(Evidence::observation("data2", "desc2"));
+
+        assert_eq!(finding.evidence.len(), 2);
+    }
+
+    #[test]
+    fn finding_with_remediation() {
+        let finding = Finding::new("TEST-001", Severity::Medium, "Title", "Description")
+            .with_remediation("Apply this fix");
+
+        assert_eq!(finding.remediation, "Apply this fix");
+    }
+
+    #[test]
+    fn finding_with_cwe() {
+        let finding =
+            Finding::new("TEST-001", Severity::High, "Title", "Description").with_cwe("78");
+
+        assert_eq!(finding.references.len(), 1);
+        assert_eq!(finding.references[0].id, "CWE-78");
+        assert_eq!(finding.references[0].kind, ReferenceKind::Cwe);
+    }
+
+    #[test]
+    fn finding_with_reference() {
+        let reference = Reference::mcp_advisory("MCP-ADV-001");
+        let finding = Finding::new("TEST-001", Severity::High, "Title", "Description")
+            .with_reference(reference);
+
+        assert_eq!(finding.references.len(), 1);
+        assert_eq!(finding.references[0].id, "MCP-ADV-001");
+    }
+
+    #[test]
+    fn finding_with_multiple_references() {
+        let finding = Finding::new("TEST-001", Severity::Critical, "Title", "Description")
+            .with_cwe("78")
+            .with_reference(Reference::mcp_advisory("MCP-ADV-001"));
+
+        assert_eq!(finding.references.len(), 2);
+    }
+
+    #[test]
+    fn finding_builder_chain() {
+        let finding = Finding::new("TEST-001", Severity::Critical, "Title", "Description")
+            .with_location(FindingLocation::tool("test_tool"))
+            .with_evidence(Evidence::observation("test", "test"))
+            .with_remediation("Fix it")
+            .with_cwe("78");
+
+        assert_eq!(finding.location.component, "tool");
+        assert_eq!(finding.evidence.len(), 1);
+        assert_eq!(finding.remediation, "Fix it");
+        assert_eq!(finding.references.len(), 1);
+    }
+
+    // FindingLocation tests
+    #[test]
+    fn finding_location_tool() {
+        let location = FindingLocation::tool("my_tool");
+        assert_eq!(location.component, "tool");
+        assert_eq!(location.identifier, "my_tool");
+        assert_eq!(location.context, None);
+    }
+
+    #[test]
+    fn finding_location_resource() {
+        let location = FindingLocation::resource("file:///path/to/resource");
+        assert_eq!(location.component, "resource");
+        assert_eq!(location.identifier, "file:///path/to/resource");
+        assert_eq!(location.context, None);
+    }
+
+    #[test]
+    fn finding_location_transport() {
+        let location = FindingLocation::transport("stdio");
+        assert_eq!(location.component, "transport");
+        assert_eq!(location.identifier, "stdio");
+        assert_eq!(location.context, None);
+    }
+
+    #[test]
+    fn finding_location_server() {
+        let location = FindingLocation::server();
+        assert_eq!(location.component, "server");
+        assert_eq!(location.identifier, "configuration");
+        assert_eq!(location.context, None);
+    }
+
+    #[test]
+    fn finding_location_with_context() {
+        let location = FindingLocation::tool("test_tool").with_context("in description field");
+
+        assert_eq!(location.component, "tool");
+        assert_eq!(location.identifier, "test_tool");
+        assert_eq!(location.context, Some("in description field".to_string()));
+    }
+
+    // Evidence tests
+    #[test]
+    fn evidence_observation_creation() {
+        let evidence = Evidence::observation("observed data", "what was observed");
+        assert_eq!(evidence.kind, EvidenceKind::Observation);
+        assert_eq!(evidence.data, "observed data");
+        assert_eq!(evidence.description, "what was observed");
+    }
+
+    #[test]
+    fn evidence_request_creation() {
+        let evidence = Evidence::request("request payload", "malicious request");
+        assert_eq!(evidence.kind, EvidenceKind::Request);
+        assert_eq!(evidence.data, "request payload");
+        assert_eq!(evidence.description, "malicious request");
+    }
+
+    #[test]
+    fn evidence_response_creation() {
+        let evidence = Evidence::response("response data", "suspicious response");
+        assert_eq!(evidence.kind, EvidenceKind::Response);
+        assert_eq!(evidence.data, "response data");
+        assert_eq!(evidence.description, "suspicious response");
+    }
+
+    #[test]
+    fn evidence_configuration_creation() {
+        let evidence = Evidence::configuration("config value", "insecure config");
+        assert_eq!(evidence.kind, EvidenceKind::Configuration);
+        assert_eq!(evidence.data, "config value");
+        assert_eq!(evidence.description, "insecure config");
+    }
+
+    // Reference tests
+    #[test]
+    fn reference_cwe_formatting() {
+        let ref1 = Reference::cwe("78");
+        assert_eq!(ref1.kind, ReferenceKind::Cwe);
+        assert_eq!(ref1.id, "CWE-78");
+        assert!(ref1.url.is_some());
+        assert!(ref1.url.unwrap().contains("cwe.mitre.org"));
+    }
+
+    #[test]
+    fn reference_cwe_with_prefix() {
+        let reference = Reference::cwe("CWE-89");
+        assert_eq!(reference.id, "CWE-89");
+        assert!(reference.url.unwrap().contains("89.html"));
+    }
+
+    #[test]
+    fn reference_cve() {
+        let reference = Reference::cve("CVE-2025-1234");
+        assert_eq!(reference.kind, ReferenceKind::Cve);
+        assert_eq!(reference.id, "CVE-2025-1234");
+        assert!(reference.url.is_some());
+        assert!(reference.url.unwrap().contains("nvd.nist.gov"));
+    }
+
+    #[test]
+    fn reference_mcp_advisory() {
+        let reference = Reference::mcp_advisory("MCP-ADV-001");
+        assert_eq!(reference.kind, ReferenceKind::McpAdvisory);
+        assert_eq!(reference.id, "MCP-ADV-001");
+        assert_eq!(reference.url, None);
+    }
+
+    #[test]
+    fn reference_documentation() {
+        let reference =
+            Reference::documentation("MCP Spec", "https://spec.modelcontextprotocol.io");
+        assert_eq!(reference.kind, ReferenceKind::Documentation);
+        assert_eq!(reference.id, "MCP Spec");
+        assert_eq!(
+            reference.url,
+            Some("https://spec.modelcontextprotocol.io".to_string())
+        );
+    }
+
+    // Serialization/Deserialization tests
+    #[test]
+    fn severity_serialization() {
+        let severity = Severity::Critical;
+        let json = serde_json::to_string(&severity).unwrap();
+        assert_eq!(json, "\"critical\"");
+    }
+
+    #[test]
+    fn severity_deserialization() {
+        let json = "\"high\"";
+        let severity: Severity = serde_json::from_str(json).unwrap();
+        assert_eq!(severity, Severity::High);
+    }
+
+    #[test]
+    fn finding_serialization_roundtrip() {
+        let finding = Finding::new("TEST-001", Severity::High, "Title", "Description")
+            .with_location(FindingLocation::tool("test"))
+            .with_remediation("Fix");
+
+        let json = serde_json::to_string(&finding).unwrap();
+        let deserialized: Finding = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.rule_id, finding.rule_id);
+        assert_eq!(deserialized.severity, finding.severity);
+        assert_eq!(deserialized.title, finding.title);
+    }
+
+    #[test]
+    fn evidence_kind_serialization() {
+        let kind = EvidenceKind::Observation;
+        let json = serde_json::to_string(&kind).unwrap();
+        assert_eq!(json, "\"observation\"");
+    }
+
+    #[test]
+    fn reference_kind_serialization() {
+        let kind = ReferenceKind::Cwe;
+        let json = serde_json::to_string(&kind).unwrap();
+        assert_eq!(json, "\"cwe\"");
+    }
 }

@@ -3326,10 +3326,12 @@ mod tests {
         use crate::protocol::ServerCapabilities;
 
         fn create_mock_with_capabilities() -> MockMcpClient {
-            let mut caps = ServerCapabilities::default();
-            caps.tools = Some(ToolsCapability::default());
-            caps.resources = Some(ResourcesCapability::default());
-            caps.prompts = Some(PromptsCapability::default());
+            let caps = ServerCapabilities {
+                tools: Some(ToolsCapability::default()),
+                resources: Some(ResourcesCapability::default()),
+                prompts: Some(PromptsCapability::default()),
+                ..ServerCapabilities::default()
+            };
             MockMcpClient::with_capabilities(caps)
         }
 
@@ -3959,9 +3961,11 @@ mod tests {
         #[tokio::test]
         async fn validate_with_no_tools() {
             let mut engine = ValidationEngine::new(ValidationConfig::default());
-            let mut caps = ServerCapabilities::default();
             // No tools capability
-            caps.resources = Some(ResourcesCapability::default());
+            let caps = ServerCapabilities {
+                resources: Some(ResourcesCapability::default()),
+                ..ServerCapabilities::default()
+            };
             let mut client = MockMcpClient::with_capabilities(caps);
 
             let results = engine
@@ -4052,7 +4056,7 @@ mod tests {
 
             // Should complete without the security rules being triggered
             // Note: skip_categories functionality depends on implementation
-            assert!(results.results.len() > 0);
+            assert!(!results.results.is_empty());
         }
 
         // Test skip rules
@@ -4076,7 +4080,7 @@ mod tests {
                 .unwrap();
 
             // Should complete
-            assert!(results.results.len() > 0);
+            assert!(!results.results.is_empty());
         }
 
         // Test with prompts
@@ -4282,9 +4286,11 @@ mod tests {
         #[tokio::test]
         async fn validate_with_empty_tool_list() {
             let mut engine = ValidationEngine::new(ValidationConfig::default());
-            let mut caps = ServerCapabilities::default();
-            caps.tools = Some(ToolsCapability::default());
             // Set tools capability but don't add any actual tools
+            let caps = ServerCapabilities {
+                tools: Some(ToolsCapability::default()),
+                ..ServerCapabilities::default()
+            };
             let mut client = MockMcpClient::with_capabilities(caps);
 
             let results = engine
@@ -4293,16 +4299,18 @@ mod tests {
                 .unwrap();
 
             // Should still complete
-            assert!(results.results.len() > 0);
+            assert!(!results.results.is_empty());
         }
 
         // Test validation with empty resource list
         #[tokio::test]
         async fn validate_with_empty_resource_list() {
             let mut engine = ValidationEngine::new(ValidationConfig::default());
-            let mut caps = ServerCapabilities::default();
-            caps.resources = Some(ResourcesCapability::default());
             // Set resources capability but don't add any actual resources
+            let caps = ServerCapabilities {
+                resources: Some(ResourcesCapability::default()),
+                ..ServerCapabilities::default()
+            };
             let mut client = MockMcpClient::with_capabilities(caps);
 
             let results = engine
@@ -4311,16 +4319,18 @@ mod tests {
                 .unwrap();
 
             // Should still complete
-            assert!(results.results.len() > 0);
+            assert!(!results.results.is_empty());
         }
 
         // Test validation with empty prompt list
         #[tokio::test]
         async fn validate_with_empty_prompt_list() {
             let mut engine = ValidationEngine::new(ValidationConfig::default());
-            let mut caps = ServerCapabilities::default();
-            caps.prompts = Some(PromptsCapability::default());
             // Set prompts capability but don't add any actual prompts
+            let caps = ServerCapabilities {
+                prompts: Some(PromptsCapability::default()),
+                ..ServerCapabilities::default()
+            };
             let mut client = MockMcpClient::with_capabilities(caps);
 
             let results = engine
@@ -4329,7 +4339,589 @@ mod tests {
                 .unwrap();
 
             // Should still complete
-            assert!(results.results.len() > 0);
+            assert!(!results.results.is_empty());
+        }
+    }
+
+    // Additional synchronous function tests for improved coverage
+    #[test]
+    fn validation_config_custom_values() {
+        let config = ValidationConfig {
+            timeout_secs: 60,
+            skip_categories: vec![ValidationCategory::Protocol],
+            skip_rules: vec![ValidationRuleId::Proto001],
+            strict_mode: true,
+        };
+
+        assert_eq!(config.timeout_secs, 60);
+        assert_eq!(config.skip_categories.len(), 1);
+        assert_eq!(config.skip_rules.len(), 1);
+        assert!(config.strict_mode);
+    }
+
+    #[test]
+    fn validation_config_multiple_skips() {
+        let config = ValidationConfig {
+            timeout_secs: 45,
+            skip_categories: vec![ValidationCategory::Security, ValidationCategory::Edge],
+            skip_rules: vec![ValidationRuleId::Proto001, ValidationRuleId::Schema001],
+            strict_mode: false,
+        };
+
+        assert_eq!(config.skip_categories.len(), 2);
+        assert_eq!(config.skip_rules.len(), 2);
+    }
+
+    #[test]
+    fn validation_result_category_preservation() {
+        let rule = make_test_rule();
+        let result = ValidationResult::pass(&rule, 100);
+
+        assert_eq!(result.category, "protocol");
+    }
+
+    #[test]
+    fn validation_result_multiple_details() {
+        let rule = make_test_rule();
+        let details = vec![
+            "First detail".to_string(),
+            "Second detail".to_string(),
+            "Third detail".to_string(),
+        ];
+        let result =
+            ValidationResult::warning(&rule, "Multiple issues", 50).with_details(details.clone());
+
+        assert_eq!(result.details.len(), 3);
+        assert_eq!(result.details, details);
+    }
+
+    #[test]
+    fn validation_result_empty_details() {
+        let rule = make_test_rule();
+        let result = ValidationResult::fail(&rule, "Error", 10).with_details(vec![]);
+
+        assert!(result.details.is_empty());
+    }
+
+    #[test]
+    fn validation_results_with_protocol_version() {
+        let mut results = ValidationResults::new("test-server");
+        results.protocol_version = Some("2024-11-05".to_string());
+
+        assert_eq!(results.protocol_version, Some("2024-11-05".to_string()));
+    }
+
+    #[test]
+    fn validation_results_with_capabilities() {
+        let mut results = ValidationResults::new("test-server");
+        let caps = ServerCapabilities::default();
+        results.capabilities = Some(caps.clone());
+
+        assert!(results.capabilities.is_some());
+    }
+
+    #[test]
+    fn validation_results_add_multiple_results() {
+        let mut results = ValidationResults::new("test");
+        let rule = make_test_rule();
+
+        for i in 0..10 {
+            results.add_result(ValidationResult::pass(&rule, i * 10));
+        }
+
+        assert_eq!(results.passed, 10);
+        assert_eq!(results.results.len(), 10);
+    }
+
+    #[test]
+    fn validation_results_mixed_severities() {
+        let mut results = ValidationResults::new("test");
+        let rule = make_test_rule();
+
+        results.add_result(ValidationResult::pass(&rule, 10));
+        results.add_result(ValidationResult::pass(&rule, 10));
+        results.add_result(ValidationResult::fail(&rule, "Error 1", 20));
+        results.add_result(ValidationResult::fail(&rule, "Error 2", 20));
+        results.add_result(ValidationResult::fail(&rule, "Error 3", 20));
+        results.add_result(ValidationResult::warning(&rule, "Warning 1", 5));
+        results.add_result(ValidationResult::skip(&rule, "Skipped"));
+
+        assert_eq!(results.passed, 2);
+        assert_eq!(results.failed, 3);
+        assert_eq!(results.warnings, 1);
+        assert_eq!(results.results.len(), 7);
+    }
+
+    #[test]
+    fn validation_results_duration_accumulation() {
+        let mut results = ValidationResults::new("test");
+        let rule = make_test_rule();
+
+        results.add_result(ValidationResult::pass(&rule, 100));
+        results.add_result(ValidationResult::fail(&rule, "Error", 200));
+        results.add_result(ValidationResult::warning(&rule, "Warning", 50));
+
+        assert_eq!(results.total_duration_ms, 350);
+    }
+
+    #[test]
+    fn validation_results_has_failures_false_with_warnings() {
+        let mut results = ValidationResults::new("test");
+        let rule = make_test_rule();
+
+        results.add_result(ValidationResult::warning(&rule, "Warning", 10));
+        results.add_result(ValidationResult::pass(&rule, 10));
+
+        assert!(!results.has_failures());
+    }
+
+    #[test]
+    fn validation_engine_rules_loaded() {
+        let config = ValidationConfig::default();
+        let engine = ValidationEngine::new(config);
+
+        // Should have all rules loaded (56 rules as per architecture docs)
+        assert!(engine.rules.len() >= 50);
+    }
+
+    #[test]
+    fn validation_engine_get_all_rule_ids() {
+        let config = ValidationConfig::default();
+        let engine = ValidationEngine::new(config);
+
+        // Test that all common rule IDs exist
+        assert!(engine.get_rule(ValidationRuleId::Proto001).is_some());
+        assert!(engine.get_rule(ValidationRuleId::Proto002).is_some());
+        assert!(engine.get_rule(ValidationRuleId::Proto003).is_some());
+        assert!(engine.get_rule(ValidationRuleId::Schema001).is_some());
+        assert!(engine.get_rule(ValidationRuleId::Seq001).is_some());
+        assert!(engine.get_rule(ValidationRuleId::Tool001).is_some());
+        assert!(engine.get_rule(ValidationRuleId::Res001).is_some());
+        assert!(engine.get_rule(ValidationRuleId::Sec001).is_some());
+        assert!(engine.get_rule(ValidationRuleId::Edge001).is_some());
+    }
+
+    #[test]
+    fn validation_engine_custom_config() {
+        let config = ValidationConfig {
+            timeout_secs: 120,
+            skip_categories: vec![ValidationCategory::Edge],
+            skip_rules: vec![ValidationRuleId::Proto001],
+            strict_mode: true,
+        };
+        let engine = ValidationEngine::new(config);
+
+        assert!(!engine.rules.is_empty());
+    }
+
+    #[test]
+    fn validate_json_schema_with_nested_properties() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "user": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string" },
+                        "age": { "type": "integer" }
+                    }
+                }
+            }
+        });
+
+        assert!(validate_json_schema(&schema).is_ok());
+    }
+
+    #[test]
+    fn validate_json_schema_with_pattern() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "pattern": "^[a-zA-Z0-9+_.-]+@[a-zA-Z0-9.-]+$"
+                }
+            }
+        });
+
+        assert!(validate_json_schema(&schema).is_ok());
+    }
+
+    #[test]
+    fn validate_json_schema_with_enum() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "inactive", "pending"]
+                }
+            }
+        });
+
+        assert!(validate_json_schema(&schema).is_ok());
+    }
+
+    #[test]
+    fn validate_json_schema_boolean() {
+        let schema = serde_json::json!(true);
+        // Boolean schemas are not objects, so should fail
+        assert!(validate_json_schema(&schema).is_err());
+    }
+
+    #[test]
+    fn validate_json_schema_number_type() {
+        let schema = serde_json::json!(42);
+        assert!(validate_json_schema(&schema).is_err());
+    }
+
+    #[test]
+    fn validation_severity_equality() {
+        assert_eq!(ValidationSeverity::Pass, ValidationSeverity::Pass);
+        assert_ne!(ValidationSeverity::Pass, ValidationSeverity::Fail);
+        assert_ne!(ValidationSeverity::Warning, ValidationSeverity::Info);
+        assert_ne!(ValidationSeverity::Skip, ValidationSeverity::Pass);
+    }
+
+    #[test]
+    fn validation_severity_copy_clone() {
+        let severity = ValidationSeverity::Pass;
+        let cloned = severity;
+        let copied = severity;
+
+        assert_eq!(severity, cloned);
+        assert_eq!(severity, copied);
+    }
+
+    #[test]
+    fn validation_result_clone() {
+        let rule = make_test_rule();
+        let result =
+            ValidationResult::fail(&rule, "Error", 100).with_details(vec!["Detail".to_string()]);
+
+        let cloned = result.clone();
+
+        assert_eq!(result.rule_id, cloned.rule_id);
+        assert_eq!(result.severity, cloned.severity);
+        assert_eq!(result.message, cloned.message);
+        assert_eq!(result.details, cloned.details);
+    }
+
+    #[test]
+    fn validation_results_clone() {
+        let mut results = ValidationResults::new("test");
+        let rule = make_test_rule();
+        results.add_result(ValidationResult::pass(&rule, 10));
+        results.protocol_version = Some("2024-11-05".to_string());
+
+        let cloned = results.clone();
+
+        assert_eq!(results.server, cloned.server);
+        assert_eq!(results.passed, cloned.passed);
+        assert_eq!(results.protocol_version, cloned.protocol_version);
+    }
+
+    #[test]
+    fn validation_config_clone() {
+        let config = ValidationConfig {
+            timeout_secs: 60,
+            skip_categories: vec![ValidationCategory::Protocol],
+            skip_rules: vec![ValidationRuleId::Proto001],
+            strict_mode: true,
+        };
+
+        let cloned = config.clone();
+
+        assert_eq!(config.timeout_secs, cloned.timeout_secs);
+        assert_eq!(config.skip_categories.len(), cloned.skip_categories.len());
+        assert_eq!(config.skip_rules.len(), cloned.skip_rules.len());
+        assert_eq!(config.strict_mode, cloned.strict_mode);
+    }
+
+    // Tests for synchronous rule execution functions
+    mod sync_rule_tests {
+        use super::*;
+        use crate::protocol::mcp::{Prompt, Resource};
+
+        fn create_test_tool_with_name(name: &str) -> Tool {
+            Tool {
+                name: name.to_string(),
+                description: Some("Test tool".to_string()),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+            }
+        }
+
+        fn create_test_tool_with_invalid_schema(name: &str) -> Tool {
+            Tool {
+                name: name.to_string(),
+                description: Some("Test tool".to_string()),
+                input_schema: serde_json::json!("not an object"),
+            }
+        }
+
+        fn create_test_resource(uri: &str, name: &str) -> Resource {
+            Resource {
+                uri: uri.to_string(),
+                name: name.to_string(),
+                description: Some("Test resource".to_string()),
+                mime_type: Some("text/plain".to_string()),
+            }
+        }
+
+        fn create_test_prompt(name: &str) -> Prompt {
+            Prompt {
+                name: name.to_string(),
+                description: Some("Test prompt".to_string()),
+                arguments: None,
+            }
+        }
+
+        fn create_server_context_minimal() -> ServerContext {
+            let init_result = InitializeResult {
+                protocol_version: "2024-11-05".to_string(),
+                capabilities: ServerCapabilities::default(),
+                server_info: Implementation::new("test", "1.0.0"),
+                instructions: None,
+            };
+
+            ServerContext {
+                init_result,
+                tools: None,
+                resources: None,
+                prompts: None,
+            }
+        }
+
+        #[test]
+        fn run_protocol_rules_with_valid_tools() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tools = vec![
+                create_test_tool_with_name("tool1"),
+                create_test_tool_with_name("tool2"),
+            ];
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(tools);
+
+            engine.run_protocol_rules(&ctx, &mut results);
+
+            // Should have PROTO-005 pass
+            let proto005 = results.results.iter().find(|r| r.rule_id == "PROTO-005");
+            assert!(proto005.is_some());
+            assert_eq!(proto005.unwrap().severity, ValidationSeverity::Pass);
+        }
+
+        #[test]
+        fn run_protocol_rules_with_empty_tool_name() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tools = vec![create_test_tool_with_name("")];
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(tools);
+
+            engine.run_protocol_rules(&ctx, &mut results);
+
+            // Should have PROTO-005 fail
+            let proto005 = results.results.iter().find(|r| r.rule_id == "PROTO-005");
+            assert!(proto005.is_some());
+            assert_eq!(proto005.unwrap().severity, ValidationSeverity::Fail);
+        }
+
+        #[test]
+        fn run_protocol_rules_with_valid_resources() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let resources = ListResourcesResult {
+                resources: vec![
+                    create_test_resource("file:///test1.txt", "test1"),
+                    create_test_resource("file:///test2.txt", "test2"),
+                ],
+                next_cursor: None,
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.resources = Some(resources);
+
+            engine.run_protocol_rules(&ctx, &mut results);
+
+            // Should have PROTO-006 pass
+            let proto006 = results.results.iter().find(|r| r.rule_id == "PROTO-006");
+            assert!(proto006.is_some());
+            assert_eq!(proto006.unwrap().severity, ValidationSeverity::Pass);
+        }
+
+        #[test]
+        fn run_protocol_rules_with_empty_resource_uri() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let resources = ListResourcesResult {
+                resources: vec![create_test_resource("", "test")],
+                next_cursor: None,
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.resources = Some(resources);
+
+            engine.run_protocol_rules(&ctx, &mut results);
+
+            // Should have PROTO-006 fail
+            let proto006 = results.results.iter().find(|r| r.rule_id == "PROTO-006");
+            assert!(proto006.is_some());
+            assert_eq!(proto006.unwrap().severity, ValidationSeverity::Fail);
+        }
+
+        #[test]
+        fn run_protocol_rules_with_valid_prompts() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let prompts = ListPromptsResult {
+                prompts: vec![create_test_prompt("prompt1"), create_test_prompt("prompt2")],
+                next_cursor: None,
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.prompts = Some(prompts);
+
+            engine.run_protocol_rules(&ctx, &mut results);
+
+            // Should have PROTO-007 pass
+            let proto007 = results.results.iter().find(|r| r.rule_id == "PROTO-007");
+            assert!(proto007.is_some());
+            assert_eq!(proto007.unwrap().severity, ValidationSeverity::Pass);
+        }
+
+        #[test]
+        fn run_protocol_rules_with_empty_prompt_name() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let prompt = create_test_prompt("valid");
+            let empty_prompt = Prompt {
+                name: "".to_string(),
+                description: Some("Empty name".to_string()),
+                arguments: None,
+            };
+
+            let prompts = ListPromptsResult {
+                prompts: vec![prompt, empty_prompt],
+                next_cursor: None,
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.prompts = Some(prompts);
+
+            engine.run_protocol_rules(&ctx, &mut results);
+
+            // Should have PROTO-007 fail
+            let proto007 = results.results.iter().find(|r| r.rule_id == "PROTO-007");
+            assert!(proto007.is_some());
+            assert_eq!(proto007.unwrap().severity, ValidationSeverity::Fail);
+        }
+
+        #[test]
+        fn run_protocol_rules_capabilities_consistency() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let ctx = create_server_context_minimal();
+            // Capabilities are empty, tools/resources/prompts are None - should be consistent
+
+            engine.run_protocol_rules(&ctx, &mut results);
+
+            // Should have PROTO-008 pass
+            let proto008 = results.results.iter().find(|r| r.rule_id == "PROTO-008");
+            assert!(proto008.is_some());
+            assert_eq!(proto008.unwrap().severity, ValidationSeverity::Pass);
+        }
+
+        #[test]
+        fn run_schema_rules_with_valid_tool_schemas() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tools = vec![
+                create_test_tool_with_name("tool1"),
+                create_test_tool_with_name("tool2"),
+            ];
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(tools);
+
+            engine.run_schema_rules(&ctx, &mut results);
+
+            // Should have SCHEMA-001 pass
+            let schema001 = results.results.iter().find(|r| r.rule_id == "SCHEMA-001");
+            assert!(schema001.is_some());
+            assert_eq!(schema001.unwrap().severity, ValidationSeverity::Pass);
+        }
+
+        #[test]
+        fn run_schema_rules_with_invalid_tool_schema() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tools = vec![create_test_tool_with_invalid_schema("bad_tool")];
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(tools);
+
+            engine.run_schema_rules(&ctx, &mut results);
+
+            // Should have SCHEMA-001 fail
+            let schema001 = results.results.iter().find(|r| r.rule_id == "SCHEMA-001");
+            assert!(schema001.is_some());
+            assert_eq!(schema001.unwrap().severity, ValidationSeverity::Fail);
+        }
+
+        #[test]
+        fn run_schema_rules_no_tools() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let ctx = create_server_context_minimal();
+            // No tools
+
+            engine.run_schema_rules(&ctx, &mut results);
+
+            // SCHEMA-001 should not be present
+            let schema001 = results.results.iter().find(|r| r.rule_id == "SCHEMA-001");
+            assert!(schema001.is_none());
+        }
+
+        #[test]
+        fn multiple_protocol_rules_execution() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tools = vec![create_test_tool_with_name("tool1")];
+            let resources = ListResourcesResult {
+                resources: vec![create_test_resource("file:///test.txt", "test")],
+                next_cursor: None,
+            };
+            let prompts = ListPromptsResult {
+                prompts: vec![create_test_prompt("prompt1")],
+                next_cursor: None,
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(tools);
+            ctx.resources = Some(resources);
+            ctx.prompts = Some(prompts);
+
+            engine.run_protocol_rules(&ctx, &mut results);
+
+            // Should have multiple protocol rules executed
+            assert!(results.results.len() >= 3); // At least PROTO-005, PROTO-006, PROTO-007
         }
     }
 }

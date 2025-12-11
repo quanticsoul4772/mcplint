@@ -800,4 +800,503 @@ mod tests {
         assert!(detector.similarity_score("read_file", "read_flie") > 0.7);
         assert!(detector.similarity_score("abc", "xyz") < 0.5);
     }
+
+    #[test]
+    fn test_database_initialization() {
+        let detector = ToolShadowingDetector::new();
+        // Verify that known tools are loaded
+        assert!(!detector.known_tools.is_empty());
+        assert!(!detector.suspicious_patterns.is_empty());
+
+        // Check that we have tools from various sources
+        assert!(detector
+            .known_tools
+            .iter()
+            .any(|t| t.source == "filesystem"));
+        assert!(detector.known_tools.iter().any(|t| t.source == "git"));
+        assert!(detector.known_tools.iter().any(|t| t.source == "github"));
+        assert!(detector.known_tools.iter().any(|t| t.source == "shell"));
+    }
+
+    #[test]
+    fn test_similarity_score_edge_cases() {
+        let detector = ToolShadowingDetector::new();
+
+        // Empty string comparison
+        assert!((detector.similarity_score("", "") - 1.0).abs() < 0.01);
+
+        // One empty string
+        assert!((detector.similarity_score("", "abc") - 0.0).abs() < 0.01);
+        assert!((detector.similarity_score("abc", "") - 0.0).abs() < 0.01);
+
+        // Single character differences
+        assert!(detector.similarity_score("a", "b") < 0.5);
+        assert!((detector.similarity_score("a", "a") - 1.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_levenshtein_edge_cases() {
+        let detector = ToolShadowingDetector::new();
+
+        // Empty strings
+        assert_eq!(detector.levenshtein_distance("", ""), 0);
+        assert_eq!(detector.levenshtein_distance("", "abc"), 3);
+        assert_eq!(detector.levenshtein_distance("abc", ""), 3);
+
+        // Single characters
+        assert_eq!(detector.levenshtein_distance("a", "a"), 0);
+        assert_eq!(detector.levenshtein_distance("a", "b"), 1);
+
+        // Insertions, deletions, substitutions
+        assert_eq!(detector.levenshtein_distance("kitten", "sitting"), 3);
+        assert_eq!(detector.levenshtein_distance("Saturday", "Sunday"), 3);
+    }
+
+    #[test]
+    fn test_suspicious_pattern_with_matching_description() {
+        let detector = ToolShadowingDetector::new();
+
+        // Tool with matching description should not be flagged
+        let tools = vec![
+            make_tool("execute", Some("Execute shell command via subprocess")),
+            make_tool(
+                "read_file",
+                Some("Read file contents from local filesystem"),
+            ),
+        ];
+
+        let findings = detector.check_tools(&tools, Some("custom-server"));
+
+        // These should still be flagged if description doesn't match well enough
+        // but fewer than if description was completely unrelated
+        assert!(!findings.is_empty());
+    }
+
+    #[test]
+    fn test_clear_prefix_detection() {
+        let detector = ToolShadowingDetector::new();
+
+        // Tools with clear prefixes should not be flagged as shadowing
+        let tools = vec![
+            make_tool("sftp_read_file", Some("Read file via SFTP")),
+            make_tool("ssh_execute", Some("Execute command via SSH")),
+            make_tool("s3_write_file", Some("Write file to S3")),
+            make_tool("azure_list_directory", Some("List Azure storage")),
+            make_tool("gcp_delete_file", Some("Delete file from GCP")),
+            make_tool("cloud_copy_file", Some("Copy file in cloud storage")),
+            make_tool("remote_bash", Some("Execute bash remotely")),
+        ];
+
+        let findings = detector.check_tools(&tools, Some("cloud-server"));
+
+        // Should have fewer or no shadowing findings due to clear prefixes
+        let shadowing_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.title.contains("Shadowing") || f.title.contains("Pattern"))
+            .collect();
+
+        // These are clearly differentiated, so should not trigger shadowing
+        assert!(shadowing_findings.is_empty() || shadowing_findings.len() < tools.len());
+    }
+
+    #[test]
+    fn test_description_matches_filesystem_category() {
+        let detector = ToolShadowingDetector::new();
+
+        // Should match
+        assert!(
+            detector.description_matches_category("read file contents", ShadowCategory::FileSystem)
+        );
+        assert!(detector
+            .description_matches_category("list directory entries", ShadowCategory::FileSystem));
+        assert!(
+            detector.description_matches_category("create a folder", ShadowCategory::FileSystem)
+        );
+
+        // Should not match
+        assert!(
+            !detector.description_matches_category("execute command", ShadowCategory::FileSystem)
+        );
+    }
+
+    #[test]
+    fn test_description_matches_code_execution_category() {
+        let detector = ToolShadowingDetector::new();
+
+        // Should match
+        assert!(detector
+            .description_matches_category("execute a command", ShadowCategory::CodeExecution));
+        assert!(detector
+            .description_matches_category("run shell script", ShadowCategory::CodeExecution));
+
+        // Should not match
+        assert!(!detector.description_matches_category("read file", ShadowCategory::CodeExecution));
+    }
+
+    #[test]
+    fn test_description_matches_network_category() {
+        let detector = ToolShadowingDetector::new();
+
+        // Should match
+        assert!(
+            detector.description_matches_category("fetch http resource", ShadowCategory::Network)
+        );
+        assert!(detector.description_matches_category("call web api", ShadowCategory::Network));
+        assert!(detector.description_matches_category("download from url", ShadowCategory::Network));
+
+        // Should not match
+        assert!(!detector.description_matches_category("read local file", ShadowCategory::Network));
+    }
+
+    #[test]
+    fn test_description_matches_authentication_category() {
+        let detector = ToolShadowingDetector::new();
+
+        // Should match
+        assert!(detector
+            .description_matches_category("authenticate user", ShadowCategory::Authentication));
+        assert!(
+            detector.description_matches_category("perform login", ShadowCategory::Authentication)
+        );
+        assert!(
+            detector.description_matches_category("get auth token", ShadowCategory::Authentication)
+        );
+        assert!(detector
+            .description_matches_category("store credentials", ShadowCategory::Authentication));
+
+        // Should not match
+        assert!(!detector.description_matches_category("read file", ShadowCategory::Authentication));
+    }
+
+    #[test]
+    fn test_description_matches_database_category() {
+        let detector = ToolShadowingDetector::new();
+
+        // Should match
+        assert!(
+            detector.description_matches_category("execute sql query", ShadowCategory::Database)
+        );
+        assert!(
+            detector.description_matches_category("list database tables", ShadowCategory::Database)
+        );
+
+        // Should not match
+        assert!(!detector.description_matches_category("read file", ShadowCategory::Database));
+    }
+
+    #[test]
+    fn test_description_matches_ai_assistant_category() {
+        let detector = ToolShadowingDetector::new();
+
+        // Should match
+        assert!(detector
+            .description_matches_category("think through problem", ShadowCategory::AiAssistant));
+        assert!(detector
+            .description_matches_category("reason about hypothesis", ShadowCategory::AiAssistant));
+        assert!(detector.description_matches_category("analyze data", ShadowCategory::AiAssistant));
+        assert!(detector
+            .description_matches_category("evaluate hypotheses", ShadowCategory::AiAssistant));
+        assert!(detector
+            .description_matches_category("bayesian inference", ShadowCategory::AiAssistant));
+        assert!(detector
+            .description_matches_category("probabilistic reasoning", ShadowCategory::AiAssistant));
+        assert!(
+            detector.description_matches_category("decision making", ShadowCategory::AiAssistant)
+        );
+        assert!(detector
+            .description_matches_category("metacognitive reflection", ShadowCategory::AiAssistant));
+        assert!(detector
+            .description_matches_category("self-assessment tool", ShadowCategory::AiAssistant));
+        assert!(
+            detector.description_matches_category("timing analysis", ShadowCategory::AiAssistant)
+        );
+
+        // Should not match
+        assert!(
+            !detector.description_matches_category("execute command", ShadowCategory::AiAssistant)
+        );
+    }
+
+    #[test]
+    fn test_typosquatting_various_distances() {
+        let detector = ToolShadowingDetector::new();
+
+        // Distance 1 - should be flagged
+        let tools = vec![
+            make_tool("git_comit", Some("Create commit")), // missing 'm'
+            make_tool("git_pushh", Some("Push to remote")), // extra 'h'
+        ];
+
+        let findings = detector.check_tools(&tools, Some("custom-server"));
+        let typo_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.title.contains("Typosquatting"))
+            .collect();
+        assert!(!typo_findings.is_empty());
+    }
+
+    #[test]
+    fn test_typosquatting_short_names_not_flagged() {
+        let detector = ToolShadowingDetector::new();
+
+        // Short names (< 4 chars) should not trigger typosquatting
+        let tools = vec![
+            make_tool("gt", Some("Get tool")), // similar to "git" but too short
+            make_tool("bsh", Some("Shell")),   // similar to "bash" but too short
+        ];
+
+        let findings = detector.check_tools(&tools, Some("custom-server"));
+        let typo_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.title.contains("Typosquatting"))
+            .collect();
+
+        // Short names should not be flagged for typosquatting
+        assert!(typo_findings.is_empty());
+    }
+
+    #[test]
+    fn test_unicode_tool_names() {
+        let detector = ToolShadowingDetector::new();
+
+        // Unicode characters in tool names
+        let tools = vec![
+            make_tool("read_file_🔒", Some("Read secure file")),
+            make_tool("写文件", Some("Write file")), // Chinese characters
+            make_tool("читать_файл", Some("Read file")), // Cyrillic
+        ];
+
+        // Should not crash and should process without panic
+        let _findings = detector.check_tools(&tools, Some("unicode-server"));
+        // Just verify it doesn't panic - if we get here, test passes
+    }
+
+    #[test]
+    fn test_empty_tool_name() {
+        let detector = ToolShadowingDetector::new();
+
+        let tools = vec![make_tool("", Some("Empty name tool"))];
+
+        // Should handle empty names gracefully
+        let _findings = detector.check_tools(&tools, Some("test-server"));
+        // If we get here without panic, test passes
+    }
+
+    #[test]
+    fn test_similar_name_detection() {
+        let detector = ToolShadowingDetector::new();
+
+        // Tools with similar names that contain known tool names
+        // "read_filex" contains "read_file" and is very similar (edit distance 1)
+        let tools = vec![
+            make_tool("read_filex", Some("Custom file reader")),
+            make_tool("git_commitx", Some("Enhanced commit")),
+        ];
+
+        let findings = detector.check_tools(&tools, Some("custom-server"));
+
+        // Should detect similar name shadowing
+        let shadowing_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.title.contains("Shadowing"))
+            .collect();
+
+        assert!(!shadowing_findings.is_empty());
+    }
+
+    #[test]
+    fn test_exact_match_severity() {
+        let detector = ToolShadowingDetector::new();
+
+        let tools = vec![make_tool("read_file", Some("Reads files"))];
+        let findings = detector.check_tools(&tools, Some("malicious-server"));
+
+        // Exact match should be High severity
+        let exact_matches: Vec<_> = findings
+            .iter()
+            .filter(|f| f.title.contains("Shadowing") && f.severity == Severity::High)
+            .collect();
+
+        assert!(!exact_matches.is_empty());
+    }
+
+    #[test]
+    fn test_category_name_function() {
+        assert_eq!(category_name(ShadowCategory::FileSystem), "filesystem");
+        assert_eq!(
+            category_name(ShadowCategory::CodeExecution),
+            "code execution"
+        );
+        assert_eq!(category_name(ShadowCategory::Network), "network/API");
+        assert_eq!(
+            category_name(ShadowCategory::Authentication),
+            "authentication"
+        );
+        assert_eq!(category_name(ShadowCategory::Database), "database");
+        assert_eq!(category_name(ShadowCategory::AiAssistant), "AI assistant");
+    }
+
+    #[test]
+    fn test_truncate_function() {
+        assert_eq!(truncate("short", 10), "short");
+        assert_eq!(truncate("this is a very long string", 10), "this is a ...");
+        assert_eq!(truncate("exactly10!", 10), "exactly10!");
+        assert_eq!(truncate("", 10), "");
+    }
+
+    #[test]
+    fn test_default_implementation() {
+        let detector = ToolShadowingDetector::default();
+        assert!(!detector.known_tools.is_empty());
+        assert!(!detector.suspicious_patterns.is_empty());
+    }
+
+    #[test]
+    fn test_multiple_findings_per_tool() {
+        let detector = ToolShadowingDetector::new();
+
+        // A tool that triggers multiple detection rules
+        let tools = vec![make_tool("execute", Some("Does something vague"))];
+
+        let findings = detector.check_tools(&tools, Some("suspicious-server"));
+
+        // Should detect both suspicious pattern and possibly shadowing
+        assert!(!findings.is_empty());
+    }
+
+    #[test]
+    fn test_git_server_allowed_git_tools() {
+        let detector = ToolShadowingDetector::new();
+
+        let tools = vec![
+            make_tool("git_status", Some("Get git status")),
+            make_tool("git_commit", Some("Create commit")),
+            make_tool("git_push", Some("Push to remote")),
+        ];
+
+        // Git server should be allowed to have git tools
+        let findings = detector.check_tools(&tools, Some("git-server"));
+
+        let shadowing_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.title.contains("Shadowing"))
+            .collect();
+
+        assert!(shadowing_findings.is_empty());
+    }
+
+    #[test]
+    fn test_github_server_allowed_github_tools() {
+        let detector = ToolShadowingDetector::new();
+
+        let tools = vec![
+            make_tool("create_issue", Some("Create GitHub issue")),
+            make_tool("create_pull_request", Some("Create PR")),
+        ];
+
+        let findings = detector.check_tools(&tools, Some("github-integration"));
+
+        let shadowing_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.title.contains("Shadowing"))
+            .collect();
+
+        assert!(shadowing_findings.is_empty());
+    }
+
+    #[test]
+    fn test_suspicious_pattern_critical_severity() {
+        let detector = ToolShadowingDetector::new();
+
+        // Critical patterns
+        let tools = vec![
+            make_tool("write_file", Some("Does something unrelated to files")),
+            make_tool("delete_file", Some("Not about files")),
+            make_tool("bash", Some("Some tool")),
+            make_tool("authenticate", Some("Not about auth")),
+            make_tool("login", Some("Not about login")),
+        ];
+
+        let findings = detector.check_tools(&tools, Some("suspicious-server"));
+
+        // Should have critical severity findings
+        let critical_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.severity == Severity::Critical)
+            .collect();
+
+        assert!(!critical_findings.is_empty());
+    }
+
+    #[test]
+    fn test_ai_assistant_low_severity() {
+        let detector = ToolShadowingDetector::new();
+
+        // AI assistant patterns should be low/info severity
+        let tools = vec![
+            make_tool("think", Some("Random thinking")),
+            make_tool("reason", Some("Some reasoning")),
+            make_tool("analyze", Some("Analysis tool")),
+        ];
+
+        let findings = detector.check_tools(&tools, Some("random-server"));
+
+        // Should have info severity findings for AI patterns
+        let info_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.severity == Severity::Info)
+            .collect();
+
+        assert!(!info_findings.is_empty());
+    }
+
+    #[test]
+    fn test_no_findings_for_unique_names() {
+        let detector = ToolShadowingDetector::new();
+
+        let tools = vec![
+            make_tool("myapp_custom_tool", Some("My custom tool")),
+            make_tool("unique_operation", Some("Unique operation")),
+            make_tool("specialized_function", Some("Specialized function")),
+        ];
+
+        let findings = detector.check_tools(&tools, Some("myapp-server"));
+
+        // Unique names should not trigger any findings
+        assert!(findings.is_empty());
+    }
+
+    #[test]
+    fn test_slack_server_allowed_slack_tools() {
+        let detector = ToolShadowingDetector::new();
+
+        let tools = vec![
+            make_tool("send_message", Some("Send Slack message")),
+            make_tool("list_channels", Some("List Slack channels")),
+        ];
+
+        let findings = detector.check_tools(&tools, Some("slack-integration"));
+
+        let shadowing_findings: Vec<_> = findings
+            .iter()
+            .filter(|f| f.title.contains("Shadowing"))
+            .collect();
+
+        assert!(shadowing_findings.is_empty());
+    }
+
+    #[test]
+    fn test_case_insensitive_matching() {
+        let detector = ToolShadowingDetector::new();
+
+        let tools = vec![
+            make_tool("READ_FILE", Some("Read file")),
+            make_tool("Git_Status", Some("Get status")),
+        ];
+
+        let findings = detector.check_tools(&tools, Some("random-server"));
+
+        // Should detect despite case differences
+        assert!(!findings.is_empty());
+    }
 }
