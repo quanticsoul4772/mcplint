@@ -2,17 +2,26 @@
 //!
 //! Monitors server files for changes and automatically triggers security scans.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use colored::Colorize;
 use notify::{Config, Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use tracing::{debug, info, warn};
 
 use crate::cli::server::resolve_server;
-use crate::scanner::{ScanConfig, ScanEngine, ScanProfile};
+use crate::client::McpClient;
+use crate::protocol::Implementation;
+use crate::scanner::context::ServerContext;
+use crate::scanner::rules::{
+    OAuthAbuseDetector, SchemaPoisoningDetector, ToolInjectionDetector, ToolShadowingDetector,
+    UnicodeHiddenDetector,
+};
+use crate::scanner::{ScanConfig, ScanProfile, ScanResults};
+use crate::transport::{connect_with_type, TransportConfig, TransportType};
 
 /// Run watch mode with file system monitoring
 #[allow(clippy::too_many_arguments)]
@@ -61,8 +70,9 @@ pub async fn run(
     println!("{}", "─".repeat(60));
     println!();
 
-    // Run initial scan
-    run_scan(&resolved_cmd, &resolved_args, profile, clear_screen).await?;
+    // Run initial scan - pass server name, not resolved command
+    // ScanEngine resolves the server internally
+    run_scan(server, args, profile, clear_screen).await?;
 
     // Set up file watcher
     let (tx, rx) = channel();
@@ -127,9 +137,9 @@ pub async fn run(
                                     .yellow()
                             );
 
-                            // Run scan
+                            // Run scan - pass server name, not resolved command
                             if let Err(e) =
-                                run_scan(&resolved_cmd, &resolved_args, profile, clear_screen).await
+                                run_scan(server, args, profile, clear_screen).await
                             {
                                 eprintln!("{}", format!("Scan error: {}", e).red());
                             }
@@ -178,7 +188,7 @@ fn should_trigger_scan(event: &Event) -> bool {
     }
 }
 
-/// Run a security scan
+/// Run a security scan with proper server resolution
 async fn run_scan(
     server: &str,
     args: &[String],
@@ -193,10 +203,12 @@ async fn run_scan(
     println!("{}", "Running security scan...".cyan());
     println!("{}", "─".repeat(60));
 
-    let config = ScanConfig::default().with_profile(profile).with_timeout(30);
+    // Resolve server from config
+    let (server_name, command, mut resolved_args, env) = resolve_server(server, None)?;
+    resolved_args.extend(args.iter().cloned());
 
-    let engine = ScanEngine::new(config);
-    let results = engine.scan(server, args, None).await?;
+    // Run the scan with resolved values
+    let results = run_resolved_scan(&server_name, &command, &resolved_args, &env, profile).await?;
 
     results.print_text();
 
@@ -212,6 +224,121 @@ async fn run_scan(
     println!("{}", "Waiting for file changes...".bright_black());
 
     Ok(())
+}
+
+/// Run a security scan using resolved server specification
+async fn run_resolved_scan(
+    name: &str,
+    command: &str,
+    args: &[String],
+    env: &HashMap<String, String>,
+    profile: ScanProfile,
+) -> Result<ScanResults> {
+    let start = Instant::now();
+    let scan_config = ScanConfig::default().with_profile(profile).with_timeout(30);
+    let mut results = ScanResults::new(name, profile);
+
+    // Determine transport type and connect
+    let transport_type = if command.starts_with("http://") || command.starts_with("https://") {
+        TransportType::StreamableHttp
+    } else {
+        TransportType::Stdio
+    };
+
+    let transport_config = TransportConfig {
+        timeout_secs: 30,
+        ..Default::default()
+    };
+
+    tracing::info!("Connecting to server: {} via {:?}", name, transport_type);
+    let transport_box = connect_with_type(command, args, env, transport_config, transport_type)
+        .await
+        .context("Failed to connect to server")?;
+
+    // Create and initialize client
+    let client_info = Implementation::new("mcplint-scanner", env!("CARGO_PKG_VERSION"));
+    let mut client = McpClient::new(transport_box, client_info);
+    client.mark_connected();
+
+    let init_result = client.initialize().await?;
+
+    // Build server context
+    let mut ctx = ServerContext::new(
+        &init_result.server_info.name,
+        &init_result.server_info.version,
+        &init_result.protocol_version,
+        init_result.capabilities.clone(),
+    )
+    .with_transport(transport_type.to_string())
+    .with_target(name);
+
+    // Collect tools, resources, prompts
+    if init_result.capabilities.has_tools() {
+        if let Ok(tools) = client.list_tools().await {
+            ctx = ctx.with_tools(tools);
+        }
+    }
+
+    if init_result.capabilities.has_resources() {
+        if let Ok(resources) = client.list_resources().await {
+            ctx = ctx.with_resources(resources);
+        }
+    }
+
+    if init_result.capabilities.has_prompts() {
+        if let Ok(prompts) = client.list_prompts().await {
+            ctx = ctx.with_prompts(prompts);
+        }
+    }
+
+    // Run security checks (simplified for watch mode - quick profile)
+    let mut checks = 0;
+
+    // Only run checks if there are tools
+    if !ctx.tools.is_empty() {
+        // Tool injection checks
+        let detector = ToolInjectionDetector::new();
+        for finding in detector.check_tools(&ctx.tools) {
+            results.add_finding(finding);
+        }
+        checks += 1;
+
+        // Tool shadowing checks
+        let detector = ToolShadowingDetector::new();
+        for finding in detector.check_tools(&ctx.tools, Some(name)) {
+            results.add_finding(finding);
+        }
+        checks += 1;
+
+        // Schema poisoning checks
+        let detector = SchemaPoisoningDetector::new();
+        for finding in detector.check_tools(&ctx.tools) {
+            results.add_finding(finding);
+        }
+        checks += 1;
+
+        // Unicode hidden character checks
+        let detector = UnicodeHiddenDetector::new();
+        for finding in detector.check_tools(&ctx.tools) {
+            results.add_finding(finding);
+        }
+        checks += 1;
+
+        // OAuth abuse checks
+        let detector = OAuthAbuseDetector::new();
+        for finding in detector.check_tools(&ctx.tools) {
+            results.add_finding(finding);
+        }
+        checks += 1;
+    }
+
+    // Close connection
+    let _ = client.close().await;
+
+    results.total_checks = checks;
+    results.duration_ms = start.elapsed().as_millis() as u64;
+
+    Ok(results)
 }
 
 #[cfg(test)]
