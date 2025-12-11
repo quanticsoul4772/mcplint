@@ -86,6 +86,16 @@ fn detect_runtime_for_file(server: &str) -> (String, Vec<String>) {
 /// # Returns
 /// A tuple of (name, command, args, env) for spawning the server
 pub fn resolve_server(server: &str, config_path: Option<&Path>) -> Result<ServerSpec> {
+    // If server is an HTTP/HTTPS URL, return it as-is (for SSE/HTTP transport)
+    if server.starts_with("http://") || server.starts_with("https://") {
+        return Ok((
+            server.to_string(),
+            server.to_string(),
+            vec![],
+            HashMap::new(),
+        ));
+    }
+
     // If server starts with @, it's an npm package
     if server.starts_with('@')
         || server.contains('/') && !server.contains('\\') && !Path::new(server).exists()
@@ -94,16 +104,6 @@ pub fn resolve_server(server: &str, config_path: Option<&Path>) -> Result<Server
             server.to_string(),
             "npx".to_string(),
             vec!["-y".to_string(), server.to_string()],
-            HashMap::new(),
-        ));
-    }
-
-    // URL - use directly
-    if server.starts_with("http://") || server.starts_with("https://") {
-        return Ok((
-            server.to_string(),
-            server.to_string(),
-            vec![],
             HashMap::new(),
         ));
     }
