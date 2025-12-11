@@ -111,7 +111,7 @@ fn check_npx_package(package: &str, name: &str) {
             let version = output_str
                 .lines()
                 .find(|line| line.contains(package))
-                .and_then(|line| line.split('@').last())
+                .and_then(|line| line.split('@').next_back())
                 .unwrap_or("installed")
                 .trim();
             println!("{} ({})", "✓ Available".green(), version.dimmed());
