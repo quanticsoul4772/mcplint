@@ -28,7 +28,8 @@ pub async fn run(extended: bool) -> Result<()> {
 
     // Check for MCP tools
     println!("{}", "MCP Ecosystem".yellow());
-    check_runtime("mcp", "--version", "MCP CLI");
+    check_npx_package("@modelcontextprotocol/inspector", "MCP Inspector");
+    check_npx_package("@anthropic-ai/claude-code", "Claude Code");
     println!();
 
     if extended {
@@ -84,6 +85,44 @@ fn check_runtime(cmd: &str, arg: &str, name: &str) {
         }
         _ => {
             println!("{}", "✗ Not found".red());
+        }
+    }
+}
+
+fn check_npx_package(package: &str, name: &str) {
+    print!("  {}: ", name);
+
+    // Check if the package is available via npm list (globally installed)
+    // or can be resolved by npx
+    #[cfg(windows)]
+    let result = Command::new("cmd")
+        .args(["/C", &format!("npm list -g {} --depth=0", package)])
+        .output();
+
+    #[cfg(not(windows))]
+    let result = Command::new("npm")
+        .args(["list", "-g", package, "--depth=0"])
+        .output();
+
+    match result {
+        Ok(output) if output.status.success() => {
+            // Extract version from output like "@modelcontextprotocol/inspector@0.6.0"
+            let output_str = String::from_utf8_lossy(&output.stdout);
+            let version = output_str
+                .lines()
+                .find(|line| line.contains(package))
+                .and_then(|line| line.split('@').last())
+                .unwrap_or("installed")
+                .trim();
+            println!("{} ({})", "✓ Available".green(), version.dimmed());
+        }
+        _ => {
+            // Package not globally installed, but may still be available via npx
+            println!(
+                "{} ({})",
+                "○ Via npx".yellow(),
+                format!("npx {}", package).dimmed()
+            );
         }
     }
 }
