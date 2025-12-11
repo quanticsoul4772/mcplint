@@ -63,7 +63,10 @@ impl OllamaProvider {
             format: Some("json".to_string()),
             options: Some(GenerateOptions {
                 temperature: Some(0.3),
-                num_predict: Some(4096),
+                // Reduced from 4096 to 1024 to improve constrained JSON generation speed
+                // on resource-limited environments (CI, smaller GPUs). 1024 tokens is
+                // sufficient for a complete vulnerability explanation.
+                num_predict: Some(1024),
             }),
         };
 
