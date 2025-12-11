@@ -41,7 +41,7 @@ async fn run_resolved_scan(
     use std::time::Instant;
 
     let start = Instant::now();
-    let mut results = ScanResults::new(name, scan_config.profile.clone());
+    let mut results = ScanResults::new(name, scan_config.profile);
 
     // Determine transport type and connect
     let transport_type = if command.starts_with("http://") || command.starts_with("https://") {
