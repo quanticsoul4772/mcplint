@@ -5,6 +5,7 @@ use colored::Colorize;
 use std::path::PathBuf;
 use tracing::{debug, info};
 
+use crate::cli::server::resolve_server;
 use crate::fuzzer::limits::{format_bytes, format_duration, ResourceLimits};
 use crate::fuzzer::{FuzzConfig, FuzzEngine, FuzzProfile};
 use crate::OutputFormat;
@@ -138,6 +139,14 @@ pub async fn run(args: FuzzArgs) -> Result<()> {
     } = args;
 
     info!("Fuzzing MCP server: {}", server);
+
+    // Resolve server from config if not a direct path/URL
+    let (server_name, resolved_cmd, mut resolved_args, resolved_env) =
+        resolve_server(&server, None)?;
+
+    // Merge CLI args with resolved args
+    resolved_args.extend(server_args);
+
     debug!(
         "Duration: {}s, Corpus: {:?}, Iterations: {}, Workers: {}, Tools: {:?}, Profile: {:?}",
         options.duration,
@@ -149,7 +158,12 @@ pub async fn run(args: FuzzArgs) -> Result<()> {
     );
 
     println!("{}", "Starting fuzzing session...".cyan());
-    println!("  Server: {}", server.yellow());
+    println!("  Server: {}", server_name.yellow());
+    println!(
+        "  Command: {} {}",
+        resolved_cmd.dimmed(),
+        resolved_args.join(" ").dimmed()
+    );
     println!("  Profile: {}", format!("{:?}", options.profile).cyan());
     println!(
         "  Duration: {}s",
@@ -229,8 +243,13 @@ pub async fn run(args: FuzzArgs) -> Result<()> {
     }
     println!();
 
-    // Create engine with config
-    let engine = FuzzEngine::with_config(&server, &server_args, config);
+    // Set environment variables for spawned process
+    for (key, value) in &resolved_env {
+        std::env::set_var(key, value);
+    }
+
+    // Create engine with config using resolved command and args
+    let engine = FuzzEngine::with_config(&resolved_cmd, &resolved_args, config);
     let results = engine
         .run(
             options.duration,
