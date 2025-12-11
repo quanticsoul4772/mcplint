@@ -201,6 +201,7 @@ impl ScanConfig {
     }
 
     /// Check if a rule should be executed based on configuration
+    #[allow(dead_code)] // Public API method for library consumers
     pub fn should_run_rule(&self, rule_id: &str, category: &str) -> bool {
         // Check explicit exclusions first
         if self.exclude_rules.iter().any(|r| r == rule_id) {
@@ -248,6 +249,7 @@ pub enum ScanProfile {
 
 impl ScanProfile {
     /// Get the rule IDs included in this profile
+    #[allow(dead_code)] // Public API method for library consumers
     pub fn included_rules(&self) -> Vec<&'static str> {
         match self {
             ScanProfile::Quick => vec![
@@ -301,6 +303,7 @@ impl ScanProfile {
     }
 
     /// Check if a rule is included in this profile
+    #[allow(dead_code)] // Public API method for library consumers
     pub fn includes_rule(&self, rule_id: &str) -> bool {
         self.included_rules().contains(&rule_id)
     }
