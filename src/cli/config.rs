@@ -25,6 +25,8 @@ pub struct ScanRunConfig {
     pub exclude: Option<Vec<String>>,
     /// Timeout in seconds
     pub timeout: u64,
+    /// Path to MCP config file
+    pub config_path: Option<PathBuf>,
 }
 
 impl ScanRunConfig {
@@ -36,6 +38,7 @@ impl ScanRunConfig {
             include: None,
             exclude: None,
             timeout: 60,
+            config_path: None,
         }
     }
 
@@ -46,6 +49,11 @@ impl ScanRunConfig {
 
     pub fn with_timeout(mut self, timeout: u64) -> Self {
         self.timeout = timeout;
+        self
+    }
+
+    pub fn with_config_path(mut self, path: PathBuf) -> Self {
+        self.config_path = Some(path);
         self
     }
 }

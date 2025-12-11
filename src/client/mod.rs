@@ -6,6 +6,8 @@
 //! - Tool discovery and invocation
 //! - Resource and prompt access
 
+#![allow(dead_code)] // Public API - methods will be used by consumers
+
 pub mod mock;
 
 // Re-export mock types for testing

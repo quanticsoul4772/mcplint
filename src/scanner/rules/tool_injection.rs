@@ -116,10 +116,12 @@ impl ToolInjectionDetector {
         );
 
         // === System Prompt Patterns ===
+        // Note: "system_prompt" alone is too common as a parameter name
+        // Only flag when it's used as a marker/delimiter or with injection context
         Self::add_pattern(
             &mut direct_patterns,
             "system_prompt_marker",
-            r"(?i)(system\s*:?\s*prompt|<<\s*SYS\s*>>|<\|system\|>|<\|im_start\|>system|\[SYSTEM\])",
+            r"(?i)(<<\s*SYS\s*>>|<\|system\|>|<\|im_start\|>system|\[SYSTEM\]|system\s*:\s*\n)",
             Severity::Critical,
             PatternCategory::SystemPrompt,
         );

@@ -283,11 +283,8 @@ impl ToolShadowingDetector {
                 category: ShadowCategory::CodeExecution,
                 severity: Severity::Critical,
             },
-            ShadowPattern {
-                pattern: "eval",
-                category: ShadowCategory::CodeExecution,
-                severity: Severity::Critical,
-            },
+            // Note: "eval" is handled in AiAssistant category to avoid false positives
+            // on legitimate reasoning tools like "evaluate-hypotheses", "self-evaluate"
             // Network tools
             ShadowPattern {
                 pattern: "fetch",
@@ -337,20 +334,28 @@ impl ToolShadowingDetector {
                 severity: Severity::High,
             },
             // AI assistant tools (potential for confusion attacks)
+            // Note: These patterns have low/info severity because many legitimate
+            // MCP servers provide reasoning/analysis tools. Only flag if the
+            // description doesn't match expected cognitive functionality.
             ShadowPattern {
                 pattern: "think",
                 category: ShadowCategory::AiAssistant,
-                severity: Severity::Medium,
+                severity: Severity::Info,
             },
             ShadowPattern {
                 pattern: "reason",
                 category: ShadowCategory::AiAssistant,
-                severity: Severity::Medium,
+                severity: Severity::Info,
             },
             ShadowPattern {
                 pattern: "analyze",
                 category: ShadowCategory::AiAssistant,
-                severity: Severity::Low,
+                severity: Severity::Info,
+            },
+            ShadowPattern {
+                pattern: "eval",
+                category: ShadowCategory::AiAssistant,
+                severity: Severity::Info,
             },
         ];
 
@@ -404,6 +409,20 @@ impl ToolShadowingDetector {
             else if tool_name_lower.contains(&known.name.to_lowercase())
                 || known.name.to_lowercase().contains(&tool_name_lower)
             {
+                // Skip if the tool has a clear differentiating prefix that indicates
+                // it's for a different protocol/purpose (e.g., sftp_, ssh_, remote_)
+                let has_clear_prefix = tool_name_lower.starts_with("sftp_")
+                    || tool_name_lower.starts_with("ssh_")
+                    || tool_name_lower.starts_with("remote_")
+                    || tool_name_lower.starts_with("s3_")
+                    || tool_name_lower.starts_with("azure_")
+                    || tool_name_lower.starts_with("gcp_")
+                    || tool_name_lower.starts_with("cloud_");
+
+                if has_clear_prefix {
+                    continue;
+                }
+
                 // Only flag if very similar (at least 70% of characters match)
                 if self.similarity_score(&tool_name_lower, known.name) > 0.7 {
                     findings.push(self.create_shadowing_finding(
@@ -648,6 +667,18 @@ impl ToolShadowingDetector {
                     || desc.contains("reason")
                     || desc.contains("analyze")
                     || desc.contains("ai")
+                    || desc.contains("cognitive")
+                    || desc.contains("hypothesis")
+                    || desc.contains("hypotheses")
+                    || desc.contains("inference")
+                    || desc.contains("bayesian")
+                    || desc.contains("probabilistic")
+                    || desc.contains("decision")
+                    || desc.contains("evaluat")
+                    || desc.contains("metacognit")
+                    || desc.contains("self-assess")
+                    || desc.contains("reflect")
+                    || desc.contains("timing")
             }
         }
     }
