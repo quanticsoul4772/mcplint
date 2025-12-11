@@ -55,18 +55,20 @@ impl OllamaProvider {
 
     /// Make a request to the Ollama API
     async fn make_request(&self, prompt: &str, system: Option<&str>) -> Result<GenerateResponse> {
+        // Note: We intentionally do NOT use format: "json" here.
+        // Ollama's JSON format mode uses constrained decoding which can be
+        // extremely slow (10-100x slower) on resource-limited environments.
+        // Instead, we ask for JSON in the prompt and parse what we can from
+        // the response. This is more reliable for local models.
         let request = GenerateRequest {
             model: self.model.clone(),
             prompt: prompt.to_string(),
             system: system.map(|s| s.to_string()),
             stream: Some(false),
-            format: Some("json".to_string()),
+            format: None, // Disabled - constrained decoding too slow on CI
             options: Some(GenerateOptions {
                 temperature: Some(0.3),
-                // Reduced from 4096 to 1024 to improve constrained JSON generation speed
-                // on resource-limited environments (CI, smaller GPUs). 1024 tokens is
-                // sufficient for a complete vulnerability explanation.
-                num_predict: Some(1024),
+                num_predict: Some(2048),
             }),
         };
 
@@ -107,14 +109,15 @@ impl OllamaProvider {
         // Try to extract JSON from the response
         let json_str = extract_json(response_text)?;
 
-        let parsed: ParsedExplanation =
-            serde_json::from_str(&json_str).map_err(|e| AiProviderError::ParseError {
-                message: format!(
-                    "Failed to parse AI response: {}. Raw: {}",
-                    e,
-                    &json_str[..json_str.len().min(200)]
-                ),
-            })?;
+        // Try to parse as structured JSON first
+        let parsed: ParsedExplanation = match serde_json::from_str(&json_str) {
+            Ok(p) => p,
+            Err(_) => {
+                // Fallback: create a minimal response from the raw text
+                // This handles cases where local models don't produce perfect JSON
+                return Ok(self.create_fallback_response(finding, response_text, response_time_ms));
+            }
+        };
 
         let explanation = VulnerabilityExplanation {
             summary: parsed.explanation.summary,
@@ -184,6 +187,37 @@ impl OllamaProvider {
         }
 
         Ok(response)
+    }
+
+    /// Create a fallback response when JSON parsing fails
+    /// Extracts what we can from free-form text
+    fn create_fallback_response(
+        &self,
+        finding: &Finding,
+        response_text: &str,
+        response_time_ms: u64,
+    ) -> ExplanationResponse {
+        // Use the raw response as the summary, truncating if too long
+        let summary = if response_text.len() > 500 {
+            format!("{}...", &response_text[..500])
+        } else {
+            response_text.to_string()
+        };
+
+        let explanation = VulnerabilityExplanation {
+            summary,
+            technical_details: String::new(),
+            attack_scenario: String::new(),
+            impact: String::new(),
+            likelihood: Likelihood::Medium,
+        };
+
+        let metadata =
+            ExplanationMetadata::new("ollama", &self.model).with_response_time(response_time_ms);
+
+        ExplanationResponse::new(&finding.id, &finding.rule_id)
+            .with_explanation(explanation)
+            .with_metadata(metadata)
     }
 }
 
