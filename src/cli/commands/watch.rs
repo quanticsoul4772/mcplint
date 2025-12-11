@@ -138,9 +138,7 @@ pub async fn run(
                             );
 
                             // Run scan - pass server name, not resolved command
-                            if let Err(e) =
-                                run_scan(server, args, profile, clear_screen).await
-                            {
+                            if let Err(e) = run_scan(server, args, profile, clear_screen).await {
                                 eprintln!("{}", format!("Scan error: {}", e).red());
                             }
                         } else {
