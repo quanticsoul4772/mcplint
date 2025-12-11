@@ -245,8 +245,6 @@ pub enum FuzzerError {
     IoError(#[from] std::io::Error),
 }
 
-
-
 /// Statistics tracked during fuzzing for limit checking
 #[derive(Debug, Clone, Default)]
 pub struct FuzzStats {
@@ -1462,7 +1460,10 @@ mod tests {
     #[test]
     fn fuzzer_error_display_formats() {
         let config_err = FuzzerError::ConfigError(ParseError::Empty);
-        assert_eq!(format!("{}", config_err), "Configuration error: empty value");
+        assert_eq!(
+            format!("{}", config_err),
+            "Configuration error: empty value"
+        );
 
         let mem_err = FuzzerError::MemoryMonitoringFailed("test".to_string());
         assert_eq!(format!("{}", mem_err), "Memory monitoring failed: test");
@@ -1471,14 +1472,17 @@ mod tests {
         assert_eq!(format!("{}", time_err), "Time limit exceeded: 300s");
 
         let memory_limit_err = FuzzerError::MemoryLimitExceeded(512 * 1024 * 1024);
-        assert_eq!(format!("{}", memory_limit_err), "Memory limit exceeded: 536870912 bytes");
+        assert_eq!(
+            format!("{}", memory_limit_err),
+            "Memory limit exceeded: 536870912 bytes"
+        );
     }
 
     #[test]
     fn fuzzer_error_from_traits() {
         let parse_err = ParseError::InvalidNumber("abc".to_string());
         let fuzzer_err: FuzzerError = parse_err.into();
-        
+
         match fuzzer_err {
             FuzzerError::ConfigError(ParseError::InvalidNumber(s)) => {
                 assert_eq!(s, "abc");
@@ -1491,7 +1495,7 @@ mod tests {
     fn fuzzer_error_io_error_conversion() {
         let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
         let fuzzer_err: FuzzerError = io_err.into();
-        
+
         match fuzzer_err {
             FuzzerError::IoError(e) => {
                 assert_eq!(e.kind(), std::io::ErrorKind::NotFound);
@@ -1507,9 +1511,9 @@ mod tests {
         {
             let monitor = ResourceMonitor::new(ResourceLimits::unlimited());
             let result = monitor.get_process_memory();
-            
+
             match result {
-                Err(FuzzerError::PlatformNotSupported) => {},
+                Err(FuzzerError::PlatformNotSupported) => {}
                 _ => panic!("Expected PlatformNotSupported error"),
             }
         }
@@ -1519,20 +1523,20 @@ mod tests {
     fn usage_summary_error_handling() {
         let monitor = ResourceMonitor::new(ResourceLimits::unlimited());
         let stats = FuzzStats::default();
-        
+
         // This should work on supported platforms, fail gracefully on unsupported
         let result = monitor.usage_summary(&stats);
-        
+
         // On supported platforms, it should succeed (memory_used will be None if monitoring fails)
         // On unsupported platforms, it should return PlatformNotSupported
         match result {
             Ok(summary) => {
                 // Summary created successfully
                 assert_eq!(summary.executions, 0);
-            },
+            }
             Err(FuzzerError::PlatformNotSupported) => {
                 // Expected on unsupported platforms
-            },
+            }
             Err(e) => panic!("Unexpected error: {}", e),
         }
     }
