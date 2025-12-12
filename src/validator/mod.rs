@@ -213,7 +213,11 @@ impl ValidationResults {
         // Show passing tests (collapsed summary)
         if !passing.is_empty() && (self.failed > 0 || self.warnings > 0) {
             printer.newline();
-            let check_mark = if mode.unicode_enabled() { "✓" } else { "[OK]" };
+            let check_mark = if mode.unicode_enabled() {
+                "✓"
+            } else {
+                "[OK]"
+            };
             if mode.colors_enabled() {
                 println!(
                     "  {} {} checks passed",
@@ -248,7 +252,11 @@ impl ValidationResults {
         } else if failures.is_empty() && warnings.is_empty() {
             // All passed - show brief summary
             printer.newline();
-            let check_mark = if mode.unicode_enabled() { "✓" } else { "[OK]" };
+            let check_mark = if mode.unicode_enabled() {
+                "✓"
+            } else {
+                "[OK]"
+            };
             if mode.colors_enabled() {
                 println!(
                     "  {} All {} protocol checks passed",
@@ -256,7 +264,10 @@ impl ValidationResults {
                     self.passed
                 );
             } else {
-                println!("  {} All {} protocol checks passed", check_mark, self.passed);
+                println!(
+                    "  {} All {} protocol checks passed",
+                    check_mark, self.passed
+                );
             }
         }
 
@@ -279,7 +290,11 @@ impl ValidationResults {
         // Rule ID and name
         println!();
         if mode.colors_enabled() {
-            let icon_display = if mode.unicode_enabled() { icon } else { icon_plain };
+            let icon_display = if mode.unicode_enabled() {
+                icon
+            } else {
+                icon_plain
+            };
             let icon_colored = if is_failure {
                 icon_display.red()
             } else {
@@ -297,8 +312,15 @@ impl ValidationResults {
                 result.rule_name.bold()
             );
         } else {
-            let icon_display = if mode.unicode_enabled() { icon } else { icon_plain };
-            println!("  {} {} - {}", icon_display, result.rule_id, result.rule_name);
+            let icon_display = if mode.unicode_enabled() {
+                icon
+            } else {
+                icon_plain
+            };
+            println!(
+                "  {} {} - {}",
+                icon_display, result.rule_id, result.rule_name
+            );
         }
 
         // What happened

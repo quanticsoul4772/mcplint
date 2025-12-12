@@ -73,7 +73,10 @@ impl ScanResults {
                 } else {
                     finding.rule_id.clone()
                 };
-                println!("  [{}] {} ({})", severity_display, finding.title, rule_display);
+                println!(
+                    "  [{}] {} ({})",
+                    severity_display, finding.title, rule_display
+                );
                 println!("    {}", finding.description);
 
                 if !finding.location.component.is_empty() {
@@ -82,7 +85,10 @@ impl ScanResults {
                     } else {
                         finding.location.component.clone()
                     };
-                    println!("    Location: {}: {}", component, finding.location.identifier);
+                    println!(
+                        "    Location: {}: {}",
+                        component, finding.location.identifier
+                    );
                 }
 
                 if !finding.remediation.is_empty() {

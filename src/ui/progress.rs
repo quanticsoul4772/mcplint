@@ -260,11 +260,7 @@ impl ConnectionSpinner {
             "[{elapsed}] {msg}"
         };
 
-        let tick_chars = if unicode {
-            "◐◓◑◒"
-        } else {
-            "-\\|/"
-        };
+        let tick_chars = if unicode { "◐◓◑◒" } else { "-\\|/" };
 
         let style = IndicatifStyle::default_spinner()
             .template(template)
@@ -298,7 +294,11 @@ impl ConnectionSpinner {
     #[allow(dead_code)]
     pub fn phase_scanning(&mut self, check_name: &str) {
         if let Some(bar) = &self.bar {
-            let icon = if self.mode.unicode_enabled() { "🔍" } else { ">" };
+            let icon = if self.mode.unicode_enabled() {
+                "🔍"
+            } else {
+                ">"
+            };
             bar.set_message(format!("{} Running: {}", icon, check_name));
         }
     }
@@ -306,7 +306,11 @@ impl ConnectionSpinner {
     /// Update phase: running security checks
     pub fn phase_security_check(&mut self, rule_id: &str) {
         if let Some(bar) = &self.bar {
-            let icon = if self.mode.unicode_enabled() { "🛡️" } else { "*" };
+            let icon = if self.mode.unicode_enabled() {
+                "🛡️"
+            } else {
+                "*"
+            };
             bar.set_message(format!("{} Check: {}", icon, rule_id));
         }
     }
@@ -314,7 +318,11 @@ impl ConnectionSpinner {
     /// Finish with success
     pub fn finish_success(&mut self, message: &str) {
         if let Some(bar) = &self.bar {
-            let icon = if self.mode.unicode_enabled() { "✓" } else { "[OK]" };
+            let icon = if self.mode.unicode_enabled() {
+                "✓"
+            } else {
+                "[OK]"
+            };
             bar.finish_with_message(format!("{} {}", icon, message));
         }
     }
@@ -322,7 +330,11 @@ impl ConnectionSpinner {
     /// Finish with error
     pub fn finish_error(&mut self, message: &str) {
         if let Some(bar) = &self.bar {
-            let icon = if self.mode.unicode_enabled() { "✗" } else { "[ERROR]" };
+            let icon = if self.mode.unicode_enabled() {
+                "✗"
+            } else {
+                "[ERROR]"
+            };
             bar.finish_with_message(format!("{} {}", icon, message));
         }
     }
