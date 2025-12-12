@@ -1,0 +1,40 @@
+# MCPLint Simple Security Scan
+#
+# A minimal GitHub Actions workflow for MCP server security scanning.
+# For a more comprehensive example with SARIF and baseline comparison,
+# see github-actions-mcp-scan.yml
+
+name: MCP Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install MCPLint
+        run: cargo install mcplint
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Scan a local server
+      - name: Scan local MCP server
+        run: |
+          mcplint scan ./my-mcp-server --profile standard
+
+      # Or scan a remote server
+      # - name: Scan remote MCP server
+      #   run: |
+      #     mcplint scan https://api.example.com/mcp --profile standard

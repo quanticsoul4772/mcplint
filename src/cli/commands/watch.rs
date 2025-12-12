@@ -1,8 +1,9 @@
 //! Watch command - File system monitoring with automatic rescanning
 //!
 //! Monitors server files for changes and automatically triggers security scans.
+//! Supports differential display showing new and fixed issues between scans.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::time::{Duration, Instant};
@@ -20,8 +21,155 @@ use crate::scanner::rules::{
     OAuthAbuseDetector, SchemaPoisoningDetector, ToolInjectionDetector, ToolShadowingDetector,
     UnicodeHiddenDetector,
 };
+use crate::scanner::Finding;
 use crate::scanner::{ScanProfile, ScanResults};
 use crate::transport::{connect_with_type, TransportConfig, TransportType};
+
+/// Represents the diff between two scan results
+#[derive(Debug, Clone)]
+pub struct ResultsDiff {
+    /// Newly detected findings (present in new scan, not in previous)
+    pub new_findings: Vec<Finding>,
+    /// Fixed findings (present in previous scan, not in new)
+    pub fixed_findings: Vec<Finding>,
+    /// Unchanged findings (present in both scans)
+    pub unchanged_findings: Vec<Finding>,
+}
+
+impl ResultsDiff {
+    /// Compute the diff between previous and new scan results
+    pub fn compute(previous: &ScanResults, current: &ScanResults) -> Self {
+        // Build a set of fingerprints for previous findings
+        let previous_fingerprints: HashSet<String> = previous
+            .findings
+            .iter()
+            .map(Self::fingerprint)
+            .collect();
+
+        // Build a set of fingerprints for current findings
+        let current_fingerprints: HashSet<String> = current
+            .findings
+            .iter()
+            .map(Self::fingerprint)
+            .collect();
+
+        // New findings: in current but not in previous
+        let new_findings: Vec<Finding> = current
+            .findings
+            .iter()
+            .filter(|f| !previous_fingerprints.contains(&Self::fingerprint(f)))
+            .cloned()
+            .collect();
+
+        // Fixed findings: in previous but not in current
+        let fixed_findings: Vec<Finding> = previous
+            .findings
+            .iter()
+            .filter(|f| !current_fingerprints.contains(&Self::fingerprint(f)))
+            .cloned()
+            .collect();
+
+        // Unchanged findings: in both
+        let unchanged_findings: Vec<Finding> = current
+            .findings
+            .iter()
+            .filter(|f| previous_fingerprints.contains(&Self::fingerprint(f)))
+            .cloned()
+            .collect();
+
+        Self {
+            new_findings,
+            fixed_findings,
+            unchanged_findings,
+        }
+    }
+
+    /// Create a fingerprint for a finding based on its key attributes
+    /// This is used to compare findings across scans (ignoring unique IDs and timestamps)
+    fn fingerprint(finding: &Finding) -> String {
+        format!(
+            "{}:{}:{}:{}",
+            finding.rule_id, finding.location.component, finding.location.identifier, finding.title
+        )
+    }
+
+    /// Check if there are any changes between scans
+    pub fn has_changes(&self) -> bool {
+        !self.new_findings.is_empty() || !self.fixed_findings.is_empty()
+    }
+
+    /// Display the diff in a human-readable format
+    pub fn display(&self) {
+        if !self.has_changes() {
+            println!("{}", "No changes detected since last scan.".dimmed());
+            println!(
+                "  Total issues: {}",
+                self.unchanged_findings.len().to_string().yellow()
+            );
+            return;
+        }
+
+        // Display new findings
+        if !self.new_findings.is_empty() {
+            println!();
+            println!(
+                "{} {} {}",
+                "▲".red().bold(),
+                self.new_findings.len().to_string().red().bold(),
+                "NEW ISSUE(S) DETECTED:".red().bold()
+            );
+            for finding in &self.new_findings {
+                println!(
+                    "  {} {} [{}] {}",
+                    "+".red(),
+                    finding.severity.colored_display(),
+                    finding.rule_id.dimmed(),
+                    finding.title
+                );
+                if !finding.location.identifier.is_empty() {
+                    println!(
+                        "    └─ {}: {}",
+                        finding.location.component.dimmed(),
+                        finding.location.identifier.yellow()
+                    );
+                }
+            }
+        }
+
+        // Display fixed findings
+        if !self.fixed_findings.is_empty() {
+            println!();
+            println!(
+                "{} {} {}",
+                "▼".green().bold(),
+                self.fixed_findings.len().to_string().green().bold(),
+                "ISSUE(S) FIXED:".green().bold()
+            );
+            for finding in &self.fixed_findings {
+                println!(
+                    "  {} {} [{}] {}",
+                    "-".green(),
+                    finding.severity.as_str().dimmed(),
+                    finding.rule_id.dimmed(),
+                    finding.title.strikethrough()
+                );
+            }
+        }
+
+        // Summary
+        println!();
+        println!(
+            "{}",
+            format!(
+                "Summary: {} new, {} fixed, {} unchanged",
+                self.new_findings.len(),
+                self.fixed_findings.len(),
+                self.unchanged_findings.len()
+            )
+            .bright_black()
+        );
+    }
+}
 
 /// Run watch mode with file system monitoring
 #[allow(clippy::too_many_arguments)]
@@ -68,6 +216,7 @@ pub async fn run(
             .yellow()
     );
     println!("  Debounce: {}ms", debounce_ms);
+    println!("  Differential display: {}", "enabled".green());
     println!();
     println!("{}", "Press Ctrl+C to stop watching".bright_black());
     println!("{}", "─".repeat(60));
@@ -75,7 +224,8 @@ pub async fn run(
 
     // Run initial scan - pass server name, not resolved command
     // ScanEngine resolves the server internally
-    run_scan(server, args, profile, clear_screen).await?;
+    let mut previous_results =
+        run_scan_with_results(server, args, profile, clear_screen, None).await?;
 
     // Set up file watcher
     let (tx, rx) = channel();
@@ -140,9 +290,22 @@ pub async fn run(
                                     .yellow()
                             );
 
-                            // Run scan - pass server name, not resolved command
-                            if let Err(e) = run_scan(server, args, profile, clear_screen).await {
-                                eprintln!("{}", format!("Scan error: {}", e).red());
+                            // Run scan with diff comparison - pass server name, not resolved command
+                            match run_scan_with_results(
+                                server,
+                                args,
+                                profile,
+                                clear_screen,
+                                Some(&previous_results),
+                            )
+                            .await
+                            {
+                                Ok(new_results) => {
+                                    previous_results = new_results;
+                                }
+                                Err(e) => {
+                                    eprintln!("{}", format!("Scan error: {}", e).red());
+                                }
                             }
                         } else {
                             debug!("Debouncing event");
@@ -189,13 +352,14 @@ fn should_trigger_scan(event: &Event) -> bool {
     }
 }
 
-/// Run a security scan with proper server resolution
-async fn run_scan(
+/// Run a security scan with proper server resolution and optional diff display
+async fn run_scan_with_results(
     server: &str,
     args: &[String],
     profile: ScanProfile,
     clear_screen: bool,
-) -> Result<()> {
+    previous_results: Option<&ScanResults>,
+) -> Result<ScanResults> {
     if clear_screen {
         // Clear screen
         print!("\x1B[2J\x1B[1;1H");
@@ -215,7 +379,25 @@ async fn run_scan(
     // Run the scan with resolved values
     let results = run_resolved_scan(&server_name, &command, &resolved_args, &env, profile).await?;
 
-    results.print_text();
+    // If we have previous results, show diff; otherwise show full results
+    if let Some(prev) = previous_results {
+        let diff = ResultsDiff::compute(prev, &results);
+        diff.display();
+
+        // Also show current total summary
+        println!();
+        println!("{}", "─".repeat(60));
+        println!(
+            "Current state: {} critical, {} high, {} medium, {} low, {} info",
+            results.summary.critical.to_string().red().bold(),
+            results.summary.high.to_string().red(),
+            results.summary.medium.to_string().yellow(),
+            results.summary.low.to_string().blue(),
+            results.summary.info.to_string().dimmed()
+        );
+    } else {
+        results.print_text();
+    }
 
     println!();
     println!(
@@ -228,7 +410,7 @@ async fn run_scan(
     );
     println!("{}", "Waiting for file changes...".bright_black());
 
-    Ok(())
+    Ok(results)
 }
 
 /// Run a security scan using resolved server specification
@@ -348,7 +530,28 @@ async fn run_resolved_scan(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scanner::{FindingLocation, Severity};
     use notify::event::{CreateKind, ModifyKind, RemoveKind};
+
+    // Helper to create a test finding
+    fn make_finding(
+        rule_id: &str,
+        severity: Severity,
+        title: &str,
+        component: &str,
+        identifier: &str,
+    ) -> Finding {
+        Finding::new(rule_id, severity, title, "Test description").with_location(FindingLocation {
+            component: component.to_string(),
+            identifier: identifier.to_string(),
+            context: None,
+        })
+    }
+
+    // Helper to create empty scan results
+    fn make_empty_results() -> ScanResults {
+        ScanResults::new("test-server", ScanProfile::Standard)
+    }
 
     #[test]
     fn should_trigger_on_create() {
@@ -418,5 +621,276 @@ mod tests {
             attrs: Default::default(),
         };
         assert!(!should_trigger_scan(&event));
+    }
+
+    // ResultsDiff tests
+    #[test]
+    fn diff_empty_results_has_no_changes() {
+        let prev = make_empty_results();
+        let curr = make_empty_results();
+        let diff = ResultsDiff::compute(&prev, &curr);
+
+        assert!(!diff.has_changes());
+        assert!(diff.new_findings.is_empty());
+        assert!(diff.fixed_findings.is_empty());
+        assert!(diff.unchanged_findings.is_empty());
+    }
+
+    #[test]
+    fn diff_detects_new_findings() {
+        let prev = make_empty_results();
+        let mut curr = make_empty_results();
+        curr.add_finding(make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "New Issue",
+            "tool",
+            "test_tool",
+        ));
+
+        let diff = ResultsDiff::compute(&prev, &curr);
+
+        assert!(diff.has_changes());
+        assert_eq!(diff.new_findings.len(), 1);
+        assert!(diff.fixed_findings.is_empty());
+        assert!(diff.unchanged_findings.is_empty());
+    }
+
+    #[test]
+    fn diff_detects_fixed_findings() {
+        let mut prev = make_empty_results();
+        prev.add_finding(make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Fixed Issue",
+            "tool",
+            "test_tool",
+        ));
+        let curr = make_empty_results();
+
+        let diff = ResultsDiff::compute(&prev, &curr);
+
+        assert!(diff.has_changes());
+        assert!(diff.new_findings.is_empty());
+        assert_eq!(diff.fixed_findings.len(), 1);
+        assert!(diff.unchanged_findings.is_empty());
+    }
+
+    #[test]
+    fn diff_detects_unchanged_findings() {
+        let mut prev = make_empty_results();
+        prev.add_finding(make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Unchanged Issue",
+            "tool",
+            "test_tool",
+        ));
+
+        let mut curr = make_empty_results();
+        curr.add_finding(make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Unchanged Issue",
+            "tool",
+            "test_tool",
+        ));
+
+        let diff = ResultsDiff::compute(&prev, &curr);
+
+        assert!(!diff.has_changes());
+        assert!(diff.new_findings.is_empty());
+        assert!(diff.fixed_findings.is_empty());
+        assert_eq!(diff.unchanged_findings.len(), 1);
+    }
+
+    #[test]
+    fn diff_handles_mixed_changes() {
+        let mut prev = make_empty_results();
+        prev.add_finding(make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Fixed Issue",
+            "tool",
+            "tool1",
+        ));
+        prev.add_finding(make_finding(
+            "MCP-INJ-002",
+            Severity::Medium,
+            "Unchanged Issue",
+            "tool",
+            "tool2",
+        ));
+
+        let mut curr = make_empty_results();
+        curr.add_finding(make_finding(
+            "MCP-INJ-002",
+            Severity::Medium,
+            "Unchanged Issue",
+            "tool",
+            "tool2",
+        ));
+        curr.add_finding(make_finding(
+            "MCP-INJ-003",
+            Severity::Critical,
+            "New Issue",
+            "tool",
+            "tool3",
+        ));
+
+        let diff = ResultsDiff::compute(&prev, &curr);
+
+        assert!(diff.has_changes());
+        assert_eq!(diff.new_findings.len(), 1);
+        assert_eq!(diff.fixed_findings.len(), 1);
+        assert_eq!(diff.unchanged_findings.len(), 1);
+
+        // Verify the correct findings in each category
+        assert_eq!(diff.new_findings[0].rule_id, "MCP-INJ-003");
+        assert_eq!(diff.fixed_findings[0].rule_id, "MCP-INJ-001");
+        assert_eq!(diff.unchanged_findings[0].rule_id, "MCP-INJ-002");
+    }
+
+    #[test]
+    fn diff_ignores_finding_id_differences() {
+        // Same finding with different UUIDs should be considered the same
+        let mut prev = make_empty_results();
+        prev.add_finding(make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Issue",
+            "tool",
+            "test_tool",
+        ));
+
+        let mut curr = make_empty_results();
+        curr.add_finding(make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Issue",
+            "tool",
+            "test_tool",
+        ));
+
+        let diff = ResultsDiff::compute(&prev, &curr);
+
+        // Even though the UUIDs are different, the fingerprint (rule_id + location + title) matches
+        assert!(!diff.has_changes());
+        assert_eq!(diff.unchanged_findings.len(), 1);
+    }
+
+    #[test]
+    fn diff_treats_different_locations_as_different_findings() {
+        let mut prev = make_empty_results();
+        prev.add_finding(make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Issue",
+            "tool",
+            "tool_a",
+        ));
+
+        let mut curr = make_empty_results();
+        curr.add_finding(make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Issue",
+            "tool",
+            "tool_b",
+        ));
+
+        let diff = ResultsDiff::compute(&prev, &curr);
+
+        // Different tool location = different findings
+        assert!(diff.has_changes());
+        assert_eq!(diff.new_findings.len(), 1);
+        assert_eq!(diff.fixed_findings.len(), 1);
+    }
+
+    #[test]
+    fn diff_treats_different_titles_as_different_findings() {
+        let mut prev = make_empty_results();
+        prev.add_finding(make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Issue A",
+            "tool",
+            "test_tool",
+        ));
+
+        let mut curr = make_empty_results();
+        curr.add_finding(make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Issue B",
+            "tool",
+            "test_tool",
+        ));
+
+        let diff = ResultsDiff::compute(&prev, &curr);
+
+        // Different title = different findings
+        assert!(diff.has_changes());
+        assert_eq!(diff.new_findings.len(), 1);
+        assert_eq!(diff.fixed_findings.len(), 1);
+    }
+
+    #[test]
+    fn fingerprint_is_consistent() {
+        let finding = make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Test Issue",
+            "tool",
+            "my_tool",
+        );
+        let fp1 = ResultsDiff::fingerprint(&finding);
+        let fp2 = ResultsDiff::fingerprint(&finding);
+
+        assert_eq!(fp1, fp2);
+        assert_eq!(fp1, "MCP-INJ-001:tool:my_tool:Test Issue");
+    }
+
+    #[test]
+    fn diff_multiple_findings_same_rule() {
+        // Multiple findings with same rule but different locations
+        let mut prev = make_empty_results();
+        prev.add_finding(make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Injection",
+            "tool",
+            "tool_a",
+        ));
+        prev.add_finding(make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Injection",
+            "tool",
+            "tool_b",
+        ));
+
+        let mut curr = make_empty_results();
+        curr.add_finding(make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Injection",
+            "tool",
+            "tool_b",
+        ));
+        curr.add_finding(make_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Injection",
+            "tool",
+            "tool_c",
+        ));
+
+        let diff = ResultsDiff::compute(&prev, &curr);
+
+        assert!(diff.has_changes());
+        assert_eq!(diff.new_findings.len(), 1); // tool_c is new
+        assert_eq!(diff.fixed_findings.len(), 1); // tool_a was fixed
+        assert_eq!(diff.unchanged_findings.len(), 1); // tool_b unchanged
     }
 }
