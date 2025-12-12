@@ -23,6 +23,7 @@ mod reporter;
 mod rules;
 mod scanner;
 mod transport;
+mod ui;
 mod validator;
 
 use cli::commands;

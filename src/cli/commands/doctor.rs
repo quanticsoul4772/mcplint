@@ -1,59 +1,67 @@
 //! Doctor command - Environment diagnostics
 
+use crate::ui::{OutputMode, Printer};
 use anyhow::Result;
 use colored::Colorize;
 use std::process::Command;
 
 pub async fn run(extended: bool) -> Result<()> {
-    println!("{}", "MCPLint Environment Check".cyan().bold());
-    println!("{}", "=".repeat(60));
-    println!();
+    let printer = Printer::new();
+    let mode = printer.mode();
+
+    printer.header("MCPLint Environment Check");
+    printer.separator();
+    printer.newline();
 
     // Version info
-    println!("{}", "Version Information".yellow());
-    println!("  MCPLint: {}", env!("CARGO_PKG_VERSION").green());
-    println!(
-        "  Rust: {}",
-        get_rust_version().unwrap_or_else(|| "unknown".to_string())
+    print_section_header(&printer, mode, "Version Information");
+    printer.kv("MCPLint", env!("CARGO_PKG_VERSION"));
+    printer.kv(
+        "Rust",
+        &get_rust_version().unwrap_or_else(|| "unknown".to_string()),
     );
-    println!();
+    printer.newline();
 
     // Check for common MCP server runtimes
-    println!("{}", "Runtime Detection".yellow());
-    check_runtime("node", "--version", "Node.js");
-    check_runtime("python", "--version", "Python");
-    check_runtime("npx", "--version", "npx");
-    check_runtime("uvx", "--version", "uvx");
-    println!();
+    print_section_header(&printer, mode, "Runtime Detection");
+    check_runtime(&printer, mode, "node", "--version", "Node.js");
+    check_runtime(&printer, mode, "python", "--version", "Python");
+    check_runtime(&printer, mode, "npx", "--version", "npx");
+    check_runtime(&printer, mode, "uvx", "--version", "uvx");
+    printer.newline();
 
     // Check for MCP tools
-    println!("{}", "MCP Ecosystem".yellow());
-    check_npx_package("@modelcontextprotocol/inspector", "MCP Inspector");
-    check_npx_package("@anthropic-ai/claude-code", "Claude Code");
-    println!();
+    print_section_header(&printer, mode, "MCP Ecosystem");
+    check_npx_package(&printer, mode, "@modelcontextprotocol/inspector", "MCP Inspector");
+    check_npx_package(&printer, mode, "@anthropic-ai/claude-code", "Claude Code");
+    printer.newline();
 
     if extended {
-        println!("{}", "Extended Diagnostics".yellow());
+        print_section_header(&printer, mode, "Extended Diagnostics");
 
         // Check network connectivity
-        print!("  Network (GitHub): ");
-        match check_network("https://github.com").await {
-            Ok(_) => println!("{}", "✓ OK".green()),
-            Err(e) => println!("{} ({})", "✗ Failed".red(), e),
-        }
-
-        print!("  Network (MCP Registry): ");
-        match check_network("https://registry.modelcontextprotocol.io").await {
-            Ok(_) => println!("{}", "✓ OK".green()),
-            Err(e) => println!("{} ({})", "✗ Failed".red(), e),
-        }
-        println!();
+        check_network_with_output(&printer, mode, "https://github.com", "GitHub").await;
+        check_network_with_output(
+            &printer,
+            mode,
+            "https://registry.modelcontextprotocol.io",
+            "MCP Registry",
+        )
+        .await;
+        printer.newline();
     }
 
-    println!("{}", "Environment Status: ".cyan().bold());
-    println!("{}", "  All checks passed ✓".green());
+    printer.success("Environment Status: All checks passed");
 
     Ok(())
+}
+
+fn print_section_header(printer: &Printer, mode: OutputMode, title: &str) {
+    if mode.colors_enabled() {
+        println!("{}", title.yellow());
+    } else {
+        printer.println(&format!("== {} ==", title));
+    }
 }
 
 fn get_rust_version() -> Option<String> {
@@ -65,9 +73,7 @@ fn get_rust_version() -> Option<String> {
         .map(|s| s.trim().replace("rustc ", ""))
 }
 
-fn check_runtime(cmd: &str, arg: &str, name: &str) {
-    print!("  {}: ", name);
-
+fn check_runtime(printer: &Printer, mode: OutputMode, cmd: &str, arg: &str, name: &str) {
     // On Windows, commands like npx, uvx need to be run through cmd.exe
     // or with .cmd extension to work properly
     #[cfg(windows)]
@@ -81,17 +87,28 @@ fn check_runtime(cmd: &str, arg: &str, name: &str) {
     match result {
         Ok(output) if output.status.success() => {
             let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            println!("{} ({})", "✓ Found".green(), version.dimmed());
+            if mode.colors_enabled() {
+                println!(
+                    "  {}: {} ({})",
+                    name,
+                    "✓ Found".green(),
+                    version.dimmed()
+                );
+            } else {
+                printer.println(&format!("  {}: [OK] Found ({})", name, version));
+            }
         }
         _ => {
-            println!("{}", "✗ Not found".red());
+            if mode.colors_enabled() {
+                println!("  {}: {}", name, "✗ Not found".red());
+            } else {
+                printer.println(&format!("  {}: [ERROR] Not found", name));
+            }
         }
     }
 }
 
-fn check_npx_package(package: &str, name: &str) {
-    print!("  {}: ", name);
-
+fn check_npx_package(printer: &Printer, mode: OutputMode, package: &str, name: &str) {
     // Check if the package is available via npm list (globally installed)
     // or can be resolved by npx
     #[cfg(windows)]
@@ -114,15 +131,29 @@ fn check_npx_package(package: &str, name: &str) {
                 .and_then(|line| line.split('@').next_back())
                 .unwrap_or("installed")
                 .trim();
-            println!("{} ({})", "✓ Available".green(), version.dimmed());
+            if mode.colors_enabled() {
+                println!(
+                    "  {}: {} ({})",
+                    name,
+                    "✓ Available".green(),
+                    version.dimmed()
+                );
+            } else {
+                printer.println(&format!("  {}: [OK] Available ({})", name, version));
+            }
         }
         _ => {
             // Package not globally installed, but may still be available via npx
-            println!(
-                "{} ({})",
-                "○ Via npx".yellow(),
-                format!("npx {}", package).dimmed()
-            );
+            if mode.colors_enabled() {
+                println!(
+                    "  {}: {} ({})",
+                    name,
+                    "○ Via npx".yellow(),
+                    format!("npx {}", package).dimmed()
+                );
+            } else {
+                printer.println(&format!("  {}: [INFO] Via npx (npx {})", name, package));
+            }
         }
     }
 }
@@ -134,6 +165,25 @@ async fn check_network(url: &str) -> Result<()> {
 
     client.get(url).send().await?.error_for_status()?;
     Ok(())
+}
+
+async fn check_network_with_output(printer: &Printer, mode: OutputMode, url: &str, name: &str) {
+    match check_network(url).await {
+        Ok(_) => {
+            if mode.colors_enabled() {
+                println!("  Network ({}): {}", name, "✓ OK".green());
+            } else {
+                printer.println(&format!("  Network ({}): [OK]", name));
+            }
+        }
+        Err(e) => {
+            if mode.colors_enabled() {
+                println!("  Network ({}): {} ({})", name, "✗ Failed".red(), e);
+            } else {
+                printer.println(&format!("  Network ({}): [ERROR] Failed ({})", name, e));
+            }
+        }
+    }
 }
 
 #[cfg(test)]

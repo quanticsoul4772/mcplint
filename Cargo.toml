@@ -42,6 +42,11 @@ rayon = "1"
 # Terminal output
 colored = "2"
 indicatif = "0.17"
+console = "0.15"
+dialoguer = { version = "0.11", features = ["fuzzy-select"] }
+
+# CI detection
+is_ci = "1.2"
 
 # HTTP client (for remote MCP servers)
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }
