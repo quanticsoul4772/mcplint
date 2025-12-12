@@ -246,7 +246,10 @@ pub async fn run_scan(
     let mut full_args = spec.args;
     full_args.extend(args.iter().cloned());
 
-    debug!("Resolved server '{}': {} {:?} (transport: {})", name, command, full_args, spec.transport);
+    debug!(
+        "Resolved server '{}': {} {:?} (transport: {})",
+        name, command, full_args, spec.transport
+    );
 
     // First, run a security scan
     println!("{}", "Step 1: Scanning for security issues...".cyan());

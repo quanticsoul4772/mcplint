@@ -170,7 +170,10 @@ pub async fn run(config: ScanCommandConfig) -> Result<()> {
     let mut full_args = spec.args;
     full_args.extend(run.args.iter().cloned());
 
-    debug!("Resolved server '{}': {} {:?} (transport: {})", name, command, full_args, spec.transport);
+    debug!(
+        "Resolved server '{}': {} {:?} (transport: {})",
+        name, command, full_args, spec.transport
+    );
 
     let profile_name = run.profile.as_str();
     let scan_profile: ScanProfile = run.profile.into();

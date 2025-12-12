@@ -276,8 +276,11 @@ pub fn resolve_server_with_transport(
 
     // Use full transport detection algorithm (ADR-001)
     let transport_config = server_config.to_transport_config();
-    let transport =
-        detect_transport_type_full(&server_config.command, Some(&transport_config), explicit_transport);
+    let transport = detect_transport_type_full(
+        &server_config.command,
+        Some(&transport_config),
+        explicit_transport,
+    );
 
     Ok(ServerSpec {
         name: server.to_string(),
@@ -354,7 +357,10 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
 ///
 /// # Returns
 /// A vector of ServerSpecs for batch processing
-pub fn resolve_servers(server: Option<&str>, config_path: Option<&Path>) -> Result<Vec<ServerSpec>> {
+pub fn resolve_servers(
+    server: Option<&str>,
+    config_path: Option<&Path>,
+) -> Result<Vec<ServerSpec>> {
     use crate::transport::detect_transport_type_full;
     use colored::Colorize;
 
@@ -394,11 +400,8 @@ pub fn resolve_servers(server: Option<&str>, config_path: Option<&Path>) -> Resu
         .into_iter()
         .map(|(name, server_config)| {
             let transport_config = server_config.to_transport_config();
-            let transport = detect_transport_type_full(
-                &server_config.command,
-                Some(&transport_config),
-                None,
-            );
+            let transport =
+                detect_transport_type_full(&server_config.command, Some(&transport_config), None);
 
             ServerSpec {
                 name,
@@ -716,7 +719,9 @@ mod tests {
             );
         }
 
-        let config = McpConfig { mcp_servers: servers };
+        let config = McpConfig {
+            mcp_servers: servers,
+        };
         let json = serde_json::to_string(&config).unwrap();
 
         let start = Instant::now();
