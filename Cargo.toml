@@ -6,6 +6,9 @@ authors = ["Russ Smith <quanticsoul4772@users.noreply.github.com>"]
 description = "MCP Server Testing, Fuzzing, and Security Scanning Platform"
 license = "MIT"
 repository = "https://github.com/quanticsoul4772/mcplint"
+homepage = "https://github.com/quanticsoul4772/mcplint"
+documentation = "https://docs.rs/mcplint"
+readme = "README.md"
 keywords = ["mcp", "security", "fuzzing", "testing", "ai"]
 categories = ["command-line-utilities", "development-tools::testing"]
 
