@@ -17,6 +17,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+use crate::errors::suggestions;
 use crate::transport::{ServerTransportConfig, TransportType};
 
 /// Server specification: (name, command, args, env, transport)
@@ -256,22 +257,9 @@ pub fn resolve_server_with_transport(
 
     let server_config = config.mcp_servers.get(server).ok_or_else(|| {
         let available: Vec<_> = config.mcp_servers.keys().cloned().collect();
-        let suggestions = suggest_similar(server, &available);
-
-        if suggestions.is_empty() {
-            anyhow::anyhow!(
-                "Server '{}' not found in config. Available: {}",
-                server,
-                available.join(", ")
-            )
-        } else {
-            anyhow::anyhow!(
-                "Server '{}' not found in config.\n\nDid you mean one of these?\n  - {}\n\nAvailable servers: {}",
-                server,
-                suggestions.join("\n  - "),
-                available.join(", ")
-            )
-        }
+        // Use the new strsim-based suggestion system
+        let suggestion_msg = suggestions::suggest_server(server, &available);
+        anyhow::anyhow!("{}", suggestion_msg)
     })?;
 
     // Use full transport detection algorithm (ADR-001)
@@ -290,60 +278,6 @@ pub fn resolve_server_with_transport(
         transport,
         transport_config,
     })
-}
-
-/// Suggest similar server names using Levenshtein distance
-fn suggest_similar(input: &str, candidates: &[String]) -> Vec<String> {
-    let input_lower = input.to_lowercase();
-    let mut suggestions: Vec<(String, usize)> = candidates
-        .iter()
-        .filter_map(|candidate| {
-            let candidate_lower = candidate.to_lowercase();
-            let distance = levenshtein_distance(&input_lower, &candidate_lower);
-            // Only suggest if distance is reasonably small (< 50% of input length)
-            if distance <= (input.len() / 2).max(3) {
-                Some((candidate.clone(), distance))
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    suggestions.sort_by_key(|(_, d)| *d);
-    suggestions.into_iter().take(3).map(|(s, _)| s).collect()
-}
-
-/// Simple Levenshtein distance implementation
-fn levenshtein_distance(a: &str, b: &str) -> usize {
-    let a_chars: Vec<char> = a.chars().collect();
-    let b_chars: Vec<char> = b.chars().collect();
-    let m = a_chars.len();
-    let n = b_chars.len();
-
-    if m == 0 {
-        return n;
-    }
-    if n == 0 {
-        return m;
-    }
-
-    let mut prev: Vec<usize> = (0..=n).collect();
-    let mut curr = vec![0; n + 1];
-
-    for i in 1..=m {
-        curr[0] = i;
-        for j in 1..=n {
-            let cost = if a_chars[i - 1] == b_chars[j - 1] {
-                0
-            } else {
-                1
-            };
-            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
-        }
-        std::mem::swap(&mut prev, &mut curr);
-    }
-
-    prev[n]
 }
 
 /// Resolve all servers from config (for batch operations like validate --all)
@@ -570,73 +504,9 @@ mod tests {
     }
 
     // ==========================================================================
-    // Levenshtein Distance Tests
-    // ==========================================================================
-
-    #[test]
-    fn levenshtein_identical() {
-        assert_eq!(levenshtein_distance("hello", "hello"), 0);
-    }
-
-    #[test]
-    fn levenshtein_one_char_diff() {
-        assert_eq!(levenshtein_distance("hello", "hallo"), 1);
-    }
-
-    #[test]
-    fn levenshtein_empty() {
-        assert_eq!(levenshtein_distance("", "hello"), 5);
-        assert_eq!(levenshtein_distance("hello", ""), 5);
-        assert_eq!(levenshtein_distance("", ""), 0);
-    }
-
-    #[test]
-    fn levenshtein_completely_different() {
-        assert_eq!(levenshtein_distance("abc", "xyz"), 3);
-    }
-
-    // ==========================================================================
-    // Suggest Similar Tests
-    // ==========================================================================
-
-    #[test]
-    fn suggest_similar_finds_close_matches() {
-        let candidates = vec![
-            "filesystem".to_string(),
-            "github".to_string(),
-            "slack".to_string(),
-        ];
-        let suggestions = suggest_similar("filesystm", &candidates);
-        assert!(suggestions.contains(&"filesystem".to_string()));
-    }
-
-    #[test]
-    fn suggest_similar_no_matches_for_very_different() {
-        let candidates = vec![
-            "filesystem".to_string(),
-            "github".to_string(),
-            "slack".to_string(),
-        ];
-        let suggestions = suggest_similar("completely_unrelated_name", &candidates);
-        assert!(suggestions.is_empty());
-    }
-
-    #[test]
-    fn suggest_similar_limits_to_three() {
-        let candidates = vec![
-            "test1".to_string(),
-            "test2".to_string(),
-            "test3".to_string(),
-            "test4".to_string(),
-            "test5".to_string(),
-        ];
-        let suggestions = suggest_similar("test", &candidates);
-        assert!(suggestions.len() <= 3);
-    }
-
-    // ==========================================================================
     // ServerConfig Tests
     // ==========================================================================
+    // Note: Suggestion tests moved to src/errors/suggestions.rs (Phase 4)
 
     #[test]
     fn server_config_deserialize() {

@@ -16,6 +16,7 @@ mod baseline;
 mod cache;
 mod cli;
 mod client;
+mod errors;
 mod fingerprinting;
 mod fuzzer;
 mod protocol;
@@ -339,6 +340,17 @@ enum Commands {
     Fingerprint {
         #[command(subcommand)]
         action: FingerprintAction,
+    },
+
+    /// Show contextual help and guided recipes
+    #[command(name = "how-do-i")]
+    HowDoI {
+        /// Recipe name (e.g., first-scan, ci-integration, fuzz-testing)
+        recipe: Option<String>,
+
+        /// Search for recipes by keyword
+        #[arg(short, long)]
+        search: Option<String>,
     },
 }
 
@@ -747,6 +759,17 @@ async fn main() -> Result<()> {
                 .await?;
             }
         },
+        Commands::HowDoI { recipe, search } => {
+            let help = cli::help::HelpSystem::new();
+            let mode = ui::OutputMode::detect();
+            if let Some(query) = search {
+                help.show_search_results(&query, mode);
+            } else if let Some(name) = recipe {
+                help.show_recipe(&name, mode);
+            } else {
+                help.show_list(mode);
+            }
+        }
     }
 
     Ok(())
