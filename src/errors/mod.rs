@@ -5,6 +5,9 @@
 
 // This module provides public API types for library consumers
 #![allow(dead_code)]
+// Fields in error variants are used by miette/thiserror derive macros for formatting,
+// but clippy incorrectly reports them as unused assignments
+#![allow(unused_assignments)]
 
 pub mod suggestions;
 
@@ -12,10 +15,6 @@ use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
 /// Main error type for mcplint with rich diagnostics
-///
-/// Note: Fields are used by miette's derive macros for error formatting,
-/// but clippy doesn't recognize this usage pattern.
-#[allow(unused_assignments)]
 #[derive(Error, Debug, Diagnostic)]
 pub enum McpLintError {
     /// Server connection failed
