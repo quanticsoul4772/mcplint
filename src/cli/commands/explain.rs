@@ -236,14 +236,17 @@ pub async fn run_scan(
 ) -> Result<()> {
     info!("Scanning and explaining: {}", server);
 
-    // Resolve server to get command, args, and env
-    let (name, command, resolved_args, env) = resolve_server(server, config_path)?;
+    // Resolve server to get command, args, env, and transport
+    let spec = resolve_server(server, config_path)?;
+    let name = spec.name;
+    let command = spec.command;
+    let env = spec.env;
 
     // Combine resolved args with any additional args provided
-    let mut full_args = resolved_args;
+    let mut full_args = spec.args;
     full_args.extend(args.iter().cloned());
 
-    debug!("Resolved server '{}': {} {:?}", name, command, full_args);
+    debug!("Resolved server '{}': {} {:?} (transport: {})", name, command, full_args, spec.transport);
 
     // First, run a security scan
     println!("{}", "Step 1: Scanning for security issues...".cyan());

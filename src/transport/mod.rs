@@ -4,6 +4,18 @@
 //! - `stdio` - Local server communication via stdin/stdout
 //! - `streamable_http` - Remote server communication via HTTP (MCP 2025 spec)
 //! - `sse` - Legacy SSE transport (MCP 2024-11-05 spec)
+//!
+//! # Transport Selection Algorithm (ADR-001)
+//!
+//! Transport is selected using the following priority:
+//! 1. Explicit override via `--transport` flag
+//! 2. URL detection (http:// or https://)
+//!    - "/sse" path or "sse" query param → SSE
+//!    - Otherwise → StreamableHttp
+//! 3. Config-based: `transport` field in server config
+//! 4. File-based: Local file paths → Stdio
+//! 5. NPM packages (starts with "@") → Stdio
+//! 6. Default: Stdio
 
 #![allow(dead_code)] // Transport layer will be used in M1 (Protocol Validator)
 
@@ -13,6 +25,7 @@ pub mod stdio;
 pub mod streamable_http;
 
 use std::collections::HashMap;
+use std::str::FromStr;
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -81,22 +94,122 @@ impl std::fmt::Display for TransportType {
         match self {
             TransportType::Stdio => write!(f, "stdio"),
             TransportType::StreamableHttp => write!(f, "streamable_http"),
-            TransportType::SseLegacy => write!(f, "sse_legacy"),
+            TransportType::SseLegacy => write!(f, "sse"),
         }
     }
 }
 
-/// Detect appropriate transport type based on target string
-pub fn detect_transport_type(target: &str) -> TransportType {
-    let target_lower = target.to_lowercase();
+impl FromStr for TransportType {
+    type Err = anyhow::Error;
 
-    if target_lower.starts_with("http://") || target_lower.starts_with("https://") {
-        // HTTP URL - prefer Streamable HTTP (2025 spec)
-        TransportType::StreamableHttp
-    } else {
-        // Assume local executable path
-        TransportType::Stdio
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "stdio" => Ok(TransportType::Stdio),
+            "http" | "streamable_http" | "streamablehttp" => Ok(TransportType::StreamableHttp),
+            "sse" | "sse_legacy" | "sselegacy" => Ok(TransportType::SseLegacy),
+            _ => Err(anyhow::anyhow!(
+                "Unknown transport type: '{}'. Valid options: stdio, http, sse",
+                s
+            )),
+        }
     }
+}
+
+/// Server configuration for transport detection
+#[derive(Debug, Clone, Default)]
+pub struct ServerTransportConfig {
+    /// Explicit transport type from config
+    pub transport: Option<String>,
+    /// Command to spawn (for detecting if it's a URL)
+    pub command: Option<String>,
+}
+
+/// Detect appropriate transport type based on target string (simple version)
+///
+/// For advanced detection with config and explicit override, use `detect_transport_type_full`.
+pub fn detect_transport_type(target: &str) -> TransportType {
+    detect_transport_type_full(target, None, None)
+}
+
+/// Detect appropriate transport type with full ADR-001 algorithm
+///
+/// # Arguments
+/// * `target` - Server specification (path, URL, or npm package)
+/// * `config` - Optional server configuration from config file
+/// * `explicit` - Explicit transport override from --transport flag
+///
+/// # Algorithm (ADR-001)
+/// 1. Explicit override (--transport flag)
+/// 2. URL detection (http:// or https://)
+///    - "/sse" path or "sse" query param → SSE
+///    - Otherwise → StreamableHttp
+/// 3. Config-based: `transport` field in server config
+/// 4. File-based: Local file paths → Stdio
+/// 5. NPM packages (starts with "@") → Stdio
+/// 6. Default: Stdio
+pub fn detect_transport_type_full(
+    target: &str,
+    config: Option<&ServerTransportConfig>,
+    explicit: Option<TransportType>,
+) -> TransportType {
+    // 1. Explicit override takes highest priority
+    if let Some(t) = explicit {
+        return t;
+    }
+
+    // 2. URL detection
+    let target_lower = target.to_lowercase();
+    if target_lower.starts_with("http://") || target_lower.starts_with("https://") {
+        return detect_http_transport_type(target);
+    }
+
+    // 3. Config-based detection
+    if let Some(cfg) = config {
+        // Check explicit transport in config
+        if let Some(ref t) = cfg.transport {
+            if let Ok(transport) = t.parse::<TransportType>() {
+                return transport;
+            }
+        }
+
+        // Check if command is a URL
+        if let Some(ref cmd) = cfg.command {
+            let cmd_lower = cmd.to_lowercase();
+            if cmd_lower.starts_with("http://") || cmd_lower.starts_with("https://") {
+                return detect_http_transport_type(cmd);
+            }
+        }
+    }
+
+    // 4 & 5. File-based and NPM packages → Stdio
+    // 6. Default → Stdio
+    TransportType::Stdio
+}
+
+/// Detect HTTP transport type (StreamableHttp vs SSE) from URL
+///
+/// Uses URL patterns to determine transport:
+/// - Path ends with "/sse" → SSE
+/// - Query contains "sse" → SSE
+/// - Otherwise → StreamableHttp (MCP 2025 spec default)
+fn detect_http_transport_type(url: &str) -> TransportType {
+    let url_lower = url.to_lowercase();
+
+    // Check for SSE indicators in path
+    if url_lower.contains("/sse") {
+        return TransportType::SseLegacy;
+    }
+
+    // Check for SSE in query parameters
+    if let Some(query_start) = url_lower.find('?') {
+        let query = &url_lower[query_start..];
+        if query.contains("sse") {
+            return TransportType::SseLegacy;
+        }
+    }
+
+    // Default to StreamableHttp (MCP 2025 spec)
+    TransportType::StreamableHttp
 }
 
 /// Connect to an MCP server with auto-detection
@@ -170,6 +283,10 @@ pub async fn connect_http_with_fallback(
 mod tests {
     use super::*;
 
+    // ==========================================================================
+    // Basic Transport Detection Tests (simple version)
+    // ==========================================================================
+
     #[test]
     fn detect_stdio_for_path() {
         assert_eq!(detect_transport_type("./server"), TransportType::Stdio);
@@ -197,12 +314,171 @@ mod tests {
         );
     }
 
+    // ==========================================================================
+    // SSE Detection Tests (ADR-001)
+    // ==========================================================================
+
     #[test]
-    fn default_config() {
-        let config = TransportConfig::default();
-        assert_eq!(config.timeout_secs, 30);
-        assert_eq!(config.max_message_size, 10 * 1024 * 1024);
+    fn detect_sse_for_sse_path() {
+        assert_eq!(
+            detect_transport_type("http://localhost:8080/sse"),
+            TransportType::SseLegacy
+        );
+        assert_eq!(
+            detect_transport_type("https://api.example.com/mcp/sse"),
+            TransportType::SseLegacy
+        );
+        assert_eq!(
+            detect_transport_type("http://localhost/v1/sse/events"),
+            TransportType::SseLegacy
+        );
     }
+
+    #[test]
+    fn detect_sse_for_sse_query_param() {
+        assert_eq!(
+            detect_transport_type("http://localhost:8080/mcp?transport=sse"),
+            TransportType::SseLegacy
+        );
+        assert_eq!(
+            detect_transport_type("https://api.example.com/mcp?mode=sse&version=1"),
+            TransportType::SseLegacy
+        );
+    }
+
+    // ==========================================================================
+    // Full Transport Detection Tests (ADR-001 algorithm)
+    // ==========================================================================
+
+    #[test]
+    fn detect_full_explicit_override_takes_priority() {
+        // Explicit override should beat URL detection
+        assert_eq!(
+            detect_transport_type_full(
+                "http://localhost:8080/mcp",
+                None,
+                Some(TransportType::Stdio)
+            ),
+            TransportType::Stdio
+        );
+
+        // Explicit override should beat config
+        let config = ServerTransportConfig {
+            transport: Some("sse".to_string()),
+            command: None,
+        };
+        assert_eq!(
+            detect_transport_type_full(
+                "server.js",
+                Some(&config),
+                Some(TransportType::StreamableHttp)
+            ),
+            TransportType::StreamableHttp
+        );
+    }
+
+    #[test]
+    fn detect_full_url_detection() {
+        assert_eq!(
+            detect_transport_type_full("http://localhost/mcp", None, None),
+            TransportType::StreamableHttp
+        );
+        assert_eq!(
+            detect_transport_type_full("https://localhost/sse", None, None),
+            TransportType::SseLegacy
+        );
+    }
+
+    #[test]
+    fn detect_full_config_transport_field() {
+        let config = ServerTransportConfig {
+            transport: Some("sse".to_string()),
+            command: Some("node".to_string()),
+        };
+        assert_eq!(
+            detect_transport_type_full("my-server", Some(&config), None),
+            TransportType::SseLegacy
+        );
+    }
+
+    #[test]
+    fn detect_full_config_command_url() {
+        let config = ServerTransportConfig {
+            transport: None,
+            command: Some("https://api.example.com/mcp".to_string()),
+        };
+        assert_eq!(
+            detect_transport_type_full("remote-server", Some(&config), None),
+            TransportType::StreamableHttp
+        );
+    }
+
+    #[test]
+    fn detect_full_default_stdio() {
+        assert_eq!(
+            detect_transport_type_full("server.js", None, None),
+            TransportType::Stdio
+        );
+        assert_eq!(
+            detect_transport_type_full("@modelcontextprotocol/server", None, None),
+            TransportType::Stdio
+        );
+    }
+
+    // ==========================================================================
+    // FromStr Tests
+    // ==========================================================================
+
+    #[test]
+    fn transport_type_from_str() {
+        assert_eq!(
+            "stdio".parse::<TransportType>().unwrap(),
+            TransportType::Stdio
+        );
+        assert_eq!(
+            "http".parse::<TransportType>().unwrap(),
+            TransportType::StreamableHttp
+        );
+        assert_eq!(
+            "streamable_http".parse::<TransportType>().unwrap(),
+            TransportType::StreamableHttp
+        );
+        assert_eq!(
+            "sse".parse::<TransportType>().unwrap(),
+            TransportType::SseLegacy
+        );
+        assert_eq!(
+            "sse_legacy".parse::<TransportType>().unwrap(),
+            TransportType::SseLegacy
+        );
+    }
+
+    #[test]
+    fn transport_type_from_str_case_insensitive() {
+        assert_eq!(
+            "STDIO".parse::<TransportType>().unwrap(),
+            TransportType::Stdio
+        );
+        assert_eq!(
+            "HTTP".parse::<TransportType>().unwrap(),
+            TransportType::StreamableHttp
+        );
+        assert_eq!(
+            "SSE".parse::<TransportType>().unwrap(),
+            TransportType::SseLegacy
+        );
+    }
+
+    #[test]
+    fn transport_type_from_str_invalid() {
+        assert!("invalid".parse::<TransportType>().is_err());
+        assert!("websocket".parse::<TransportType>().is_err());
+        assert!("".parse::<TransportType>().is_err());
+    }
+
+    // ==========================================================================
+    // Display Tests
+    // ==========================================================================
 
     #[test]
     fn transport_type_display() {
@@ -211,6 +487,65 @@ mod tests {
             format!("{}", TransportType::StreamableHttp),
             "streamable_http"
         );
-        assert_eq!(format!("{}", TransportType::SseLegacy), "sse_legacy");
+        assert_eq!(format!("{}", TransportType::SseLegacy), "sse");
+    }
+
+    // ==========================================================================
+    // Config Tests
+    // ==========================================================================
+
+    #[test]
+    fn default_config() {
+        let config = TransportConfig::default();
+        assert_eq!(config.timeout_secs, 30);
+        assert_eq!(config.max_message_size, 10 * 1024 * 1024);
+    }
+
+    #[test]
+    fn server_transport_config_default() {
+        let config = ServerTransportConfig::default();
+        assert!(config.transport.is_none());
+        assert!(config.command.is_none());
+    }
+
+    // ==========================================================================
+    // Edge Cases
+    // ==========================================================================
+
+    #[test]
+    fn detect_mixed_case_urls() {
+        assert_eq!(
+            detect_transport_type("HTTP://LOCALHOST/MCP"),
+            TransportType::StreamableHttp
+        );
+        assert_eq!(
+            detect_transport_type("HTTPS://LOCALHOST/SSE"),
+            TransportType::SseLegacy
+        );
+    }
+
+    #[test]
+    fn detect_npm_packages() {
+        assert_eq!(
+            detect_transport_type("@modelcontextprotocol/server-filesystem"),
+            TransportType::Stdio
+        );
+        assert_eq!(
+            detect_transport_type("@anthropic/mcp-server"),
+            TransportType::Stdio
+        );
+    }
+
+    #[test]
+    fn detect_local_paths() {
+        assert_eq!(detect_transport_type("./server.js"), TransportType::Stdio);
+        assert_eq!(
+            detect_transport_type("../path/to/server"),
+            TransportType::Stdio
+        );
+        assert_eq!(
+            detect_transport_type("C:\\path\\to\\server.exe"),
+            TransportType::Stdio
+        );
     }
 }

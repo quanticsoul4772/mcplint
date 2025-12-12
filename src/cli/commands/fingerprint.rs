@@ -3,143 +3,20 @@
 //! Generates and compares tool definition fingerprints to detect schema changes.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::Result;
 use colored::Colorize;
-use serde::Deserialize;
 use tracing::{debug, info};
 
 use crate::baseline::Baseline;
+use crate::cli::server::resolve_server;
 use crate::fingerprinting::{
     ChangeSeverity, FingerprintComparator, FingerprintDiff, FingerprintHasher, ToolFingerprint,
 };
 use crate::protocol::mcp::Tool;
 use crate::transport::{stdio::StdioTransport, Transport, TransportConfig};
 use crate::OutputFormat;
-
-/// Server specification: (name, command, args, env)
-type ServerSpec = (String, String, Vec<String>, HashMap<String, String>);
-
-/// MCP server configuration from claude_desktop_config.json or similar
-#[derive(Debug, Deserialize)]
-struct McpConfig {
-    #[serde(rename = "mcpServers")]
-    mcp_servers: HashMap<String, ServerConfig>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ServerConfig {
-    command: String,
-    #[serde(default)]
-    args: Vec<String>,
-    #[serde(default)]
-    env: HashMap<String, String>,
-}
-
-/// Find MCP config file in standard locations
-fn find_config_file() -> Option<PathBuf> {
-    let home = dirs::home_dir()?;
-
-    let locations = [
-        home.join("AppData/Roaming/Claude/claude_desktop_config.json"),
-        home.join("Library/Application Support/Claude/claude_desktop_config.json"),
-        home.join(".config/claude/claude_desktop_config.json"),
-        PathBuf::from("claude_desktop_config.json"),
-        PathBuf::from(".mcplint.json"),
-        PathBuf::from("mcp.json"),
-    ];
-
-    locations.into_iter().find(|path| path.exists())
-}
-
-/// Load MCP config from file
-fn load_config(path: &Path) -> Result<McpConfig> {
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("Failed to read config: {}", path.display()))?;
-    let config: McpConfig = serde_json::from_str(&content)
-        .with_context(|| format!("Failed to parse config: {}", path.display()))?;
-    Ok(config)
-}
-
-/// Resolve server specification to command, args, and env vars
-fn resolve_server(server: &str, config_path: Option<&Path>) -> Result<ServerSpec> {
-    // If server starts with @, it's an npm package
-    if server.starts_with('@')
-        || server.contains('/') && !server.contains('\\') && !Path::new(server).exists()
-    {
-        return Ok((
-            server.to_string(),
-            "npx".to_string(),
-            vec!["-y".to_string(), server.to_string()],
-            HashMap::new(),
-        ));
-    }
-
-    // URL - use directly
-    if server.starts_with("http://") || server.starts_with("https://") {
-        return Ok((
-            server.to_string(),
-            server.to_string(),
-            vec![],
-            HashMap::new(),
-        ));
-    }
-
-    // File path
-    let path = Path::new(server);
-    if path.exists() {
-        let (cmd, args) = detect_runtime_for_file(server);
-        return Ok((server.to_string(), cmd, args, HashMap::new()));
-    }
-
-    // Try to load from config
-    let config_file = config_path
-        .map(PathBuf::from)
-        .or_else(find_config_file)
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "No MCP config found. Specify a server path or create claude_desktop_config.json"
-            )
-        })?;
-
-    let config = load_config(&config_file)?;
-
-    let server_config = config.mcp_servers.get(server).ok_or_else(|| {
-        anyhow::anyhow!(
-            "Server '{}' not found in config. Available: {}",
-            server,
-            config
-                .mcp_servers
-                .keys()
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(", ")
-        )
-    })?;
-
-    Ok((
-        server.to_string(),
-        server_config.command.clone(),
-        server_config.args.clone(),
-        server_config.env.clone(),
-    ))
-}
-
-/// Detect runtime for a file path
-fn detect_runtime_for_file(server: &str) -> (String, Vec<String>) {
-    let path = Path::new(server);
-
-    match path.extension().and_then(|e| e.to_str()) {
-        Some("js") | Some("mjs") => ("node".to_string(), vec![server.to_string()]),
-        Some("ts") => (
-            "npx".to_string(),
-            vec!["ts-node".to_string(), server.to_string()],
-        ),
-        Some("py") => ("python".to_string(), vec![server.to_string()]),
-        _ => (server.to_string(), vec![]),
-    }
-}
 
 /// Fetch tools from an MCP server
 async fn fetch_tools(
@@ -198,7 +75,11 @@ pub async fn run_generate(
     timeout: u64,
     format: OutputFormat,
 ) -> Result<()> {
-    let (name, command, args, env) = resolve_server(server, config)?;
+    let spec = resolve_server(server, config)?;
+    let name = spec.name;
+    let command = spec.command;
+    let args = spec.args;
+    let env = spec.env;
 
     info!("Generating fingerprints for: {} ({})", name, command);
     debug!("Args: {:?}, Timeout: {}s", args, timeout);
@@ -271,7 +152,11 @@ pub async fn run_compare(
     timeout: u64,
     format: OutputFormat,
 ) -> Result<()> {
-    let (name, command, args, env) = resolve_server(server, config)?;
+    let spec = resolve_server(server, config)?;
+    let name = spec.name;
+    let command = spec.command;
+    let args = spec.args;
+    let env = spec.env;
 
     // Load baseline
     let baseline = Baseline::load(baseline_path)?;
