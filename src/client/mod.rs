@@ -740,7 +740,7 @@ mod tests {
         mock_transport
             .queue_responses(vec![
                 MockTransport::success_response(RequestId::Number(1), json!(init_result)),
-                MockTransport::success_response(RequestId::Number(2), json!({})),
+                // notify does not consume response
             ])
             .await;
 
@@ -774,7 +774,7 @@ mod tests {
         mock_transport
             .queue_responses(vec![
                 MockTransport::success_response(RequestId::Number(1), json!(init_result)),
-                MockTransport::success_response(RequestId::Number(2), json!({})),
+                // notify does not consume response
             ])
             .await;
 
@@ -809,7 +809,7 @@ mod tests {
         mock_transport
             .queue_responses(vec![
                 MockTransport::success_response(RequestId::Number(1), json!(init_result)),
-                MockTransport::success_response(RequestId::Number(2), json!({})),
+                // notify does not consume response
             ])
             .await;
 
@@ -847,7 +847,7 @@ mod tests {
         mock_transport
             .queue_responses(vec![
                 MockTransport::success_response(RequestId::Number(1), json!(init_result)),
-                MockTransport::success_response(RequestId::Number(2), json!({})),
+                // notify does not consume response
             ])
             .await;
 
@@ -881,7 +881,7 @@ mod tests {
         mock_transport
             .queue_responses(vec![
                 MockTransport::success_response(RequestId::Number(1), json!(init_result)),
-                MockTransport::success_response(RequestId::Number(2), json!({})),
+                // notify does not consume response
             ])
             .await;
 
@@ -916,7 +916,7 @@ mod tests {
         mock_transport
             .queue_responses(vec![
                 MockTransport::success_response(RequestId::Number(1), json!(init_result)),
-                MockTransport::success_response(RequestId::Number(2), json!({})),
+                // notify does not consume response
             ])
             .await;
 
@@ -954,7 +954,7 @@ mod tests {
         mock_transport
             .queue_responses(vec![
                 MockTransport::success_response(RequestId::Number(1), json!(init_result)),
-                MockTransport::success_response(RequestId::Number(2), json!({})),
+                // notify does not consume response
             ])
             .await;
 
@@ -988,7 +988,7 @@ mod tests {
         mock_transport
             .queue_responses(vec![
                 MockTransport::success_response(RequestId::Number(1), json!(init_result)),
-                MockTransport::success_response(RequestId::Number(2), json!({})),
+                // notify does not consume response
             ])
             .await;
 
@@ -1026,8 +1026,8 @@ mod tests {
         mock_transport
             .queue_responses(vec![
                 MockTransport::success_response(RequestId::Number(1), json!(init_result)),
-                MockTransport::success_response(RequestId::Number(2), json!({})),
-                MockTransport::success_response(RequestId::Number(3), json!({})), // ping response
+                // notify does not consume response
+                MockTransport::success_response(RequestId::Number(2), json!({})), // ping response
             ])
             .await;
 
@@ -1061,7 +1061,7 @@ mod tests {
         mock_transport
             .queue_responses(vec![
                 MockTransport::success_response(RequestId::Number(1), json!(init_result)),
-                MockTransport::success_response(RequestId::Number(2), json!({})),
+                // notify does not consume response
             ])
             .await;
 
@@ -1110,7 +1110,7 @@ mod tests {
         mock_transport
             .queue_responses(vec![
                 MockTransport::success_response(RequestId::Number(1), json!(init_result)),
-                MockTransport::success_response(RequestId::Number(2), json!({})),
+                // notify does not consume response
             ])
             .await;
 
@@ -1144,7 +1144,7 @@ mod tests {
         mock_transport
             .queue_responses(vec![
                 MockTransport::success_response(RequestId::Number(1), json!(init_result)),
-                MockTransport::success_response(RequestId::Number(2), json!({})),
+                // notify does not consume response
             ])
             .await;
 
@@ -1181,7 +1181,7 @@ mod tests {
         mock_transport
             .queue_responses(vec![
                 MockTransport::success_response(RequestId::Number(1), json!(init_result)),
-                MockTransport::success_response(RequestId::Number(2), json!({})),
+                // notify does not consume response
             ])
             .await;
 
@@ -1194,5 +1194,740 @@ mod tests {
         client.initialize().await.unwrap();
 
         assert_eq!(client.protocol_version(), Some("2025-03-26"));
+    }
+
+    // =========================================================================
+    // NEW TESTS - Client State Management
+    // =========================================================================
+
+    #[tokio::test]
+    async fn client_state_connected_to_initializing() {
+        use crate::transport::mock::MockTransport;
+
+        let transport = Box::new(MockTransport::new());
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+
+        assert_eq!(client.state(), ConnectionState::Disconnected);
+
+        client.mark_connected();
+        assert_eq!(client.state(), ConnectionState::Connecting);
+        assert!(client.context.can_initialize());
+    }
+
+    #[tokio::test]
+    async fn client_state_cannot_initialize_from_disconnected() {
+        use crate::transport::mock::MockTransport;
+
+        let transport = Box::new(MockTransport::new());
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let client = McpClient::new(transport, client_info);
+
+        assert_eq!(client.state(), ConnectionState::Disconnected);
+        assert!(!client.context.can_initialize());
+    }
+
+    #[tokio::test]
+    async fn client_state_ready_to_shutting_down() {
+        use crate::protocol::mcp::InitializeResult;
+        use crate::protocol::RequestId;
+        use crate::transport::mock::MockTransport;
+        use serde_json::json;
+
+        let mock_transport = MockTransport::new();
+        let server_caps = ServerCapabilities::default();
+
+        let init_result = InitializeResult {
+            protocol_version: "2024-11-05".to_string(),
+            capabilities: server_caps,
+            server_info: Implementation::new("test-server", "1.0.0"),
+            instructions: None,
+        };
+
+        mock_transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!(init_result)),
+                // notify does not consume response
+            ])
+            .await;
+
+        let transport = Box::new(mock_transport.clone());
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+        client.initialize().await.unwrap();
+
+        assert_eq!(client.state(), ConnectionState::Ready);
+
+        client.close().await.unwrap();
+        assert_eq!(client.state(), ConnectionState::Disconnected);
+    }
+
+    // =========================================================================
+    // NEW TESTS - Request/Response Error Handling
+    // =========================================================================
+
+    #[tokio::test]
+    async fn request_with_rpc_error_code() {
+        use crate::protocol::RequestId;
+        use crate::transport::mock::MockTransport;
+
+        let mock_transport = MockTransport::new();
+        mock_transport
+            .queue_response(MockTransport::error_response(
+                RequestId::Number(1),
+                -32600,
+                "Invalid Request",
+            ))
+            .await;
+
+        let transport = Box::new(mock_transport);
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+
+        let result = client.initialize().await;
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("RPC error"));
+        assert!(error_msg.contains("-32600"));
+        assert!(error_msg.contains("Invalid Request"));
+    }
+
+    #[tokio::test]
+    async fn request_with_custom_error_code() {
+        use crate::protocol::mcp::{InitializeResult, ToolsCapability};
+        use crate::protocol::RequestId;
+        use crate::transport::mock::MockTransport;
+        use serde_json::json;
+
+        let mock_transport = MockTransport::new();
+        let server_caps = ServerCapabilities {
+            tools: Some(ToolsCapability::default()),
+            ..ServerCapabilities::default()
+        };
+
+        let init_result = InitializeResult {
+            protocol_version: "2024-11-05".to_string(),
+            capabilities: server_caps,
+            server_info: Implementation::new("test-server", "1.0.0"),
+            instructions: None,
+        };
+
+        mock_transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!(init_result)),
+                // notify does not consume response
+                MockTransport::error_response(RequestId::Number(2), -32001, "Custom error"),
+            ])
+            .await;
+
+        let transport = Box::new(mock_transport);
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+        client.initialize().await.unwrap();
+
+        let result = client.list_tools().await;
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("Custom error"));
+    }
+
+    // =========================================================================
+    // NEW TESTS - Pagination Logic
+    // =========================================================================
+
+    #[tokio::test]
+    async fn list_tools_paginated_with_cursor() {
+        use crate::protocol::mcp::{InitializeResult, ListToolsResult, Tool, ToolsCapability};
+        use crate::protocol::RequestId;
+        use crate::transport::mock::MockTransport;
+        use serde_json::json;
+
+        let mock_transport = MockTransport::new();
+        let server_caps = ServerCapabilities {
+            tools: Some(ToolsCapability::default()),
+            ..ServerCapabilities::default()
+        };
+
+        let init_result = InitializeResult {
+            protocol_version: "2024-11-05".to_string(),
+            capabilities: server_caps,
+            server_info: Implementation::new("test-server", "1.0.0"),
+            instructions: None,
+        };
+
+        let tools_result = ListToolsResult {
+            tools: vec![Tool {
+                name: "test_tool".to_string(),
+                description: Some("A test tool".to_string()),
+                input_schema: json!({}),
+            }],
+            next_cursor: Some("cursor123".to_string()),
+        };
+
+        mock_transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!(init_result)),
+                // notify does not consume response
+                MockTransport::success_response(RequestId::Number(2), json!(tools_result)),
+            ])
+            .await;
+
+        let transport = Box::new(mock_transport);
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+        client.initialize().await.unwrap();
+
+        let result = client
+            .list_tools_paginated(Some("prev_cursor".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(result.tools.len(), 1);
+        assert_eq!(result.next_cursor, Some("cursor123".to_string()));
+    }
+
+    #[tokio::test]
+    async fn list_resources_paginated_with_cursor() {
+        use crate::protocol::mcp::{
+            InitializeResult, ListResourcesResult, Resource, ResourcesCapability,
+        };
+        use crate::protocol::RequestId;
+        use crate::transport::mock::MockTransport;
+        use serde_json::json;
+
+        let mock_transport = MockTransport::new();
+        let server_caps = ServerCapabilities {
+            resources: Some(ResourcesCapability::default()),
+            ..ServerCapabilities::default()
+        };
+
+        let init_result = InitializeResult {
+            protocol_version: "2024-11-05".to_string(),
+            capabilities: server_caps,
+            server_info: Implementation::new("test-server", "1.0.0"),
+            instructions: None,
+        };
+
+        let resources_result = ListResourcesResult {
+            resources: vec![Resource {
+                uri: "file:///test.txt".to_string(),
+                name: "test.txt".to_string(),
+                description: Some("A test resource".to_string()),
+                mime_type: Some("text/plain".to_string()),
+            }],
+            next_cursor: None,
+        };
+
+        mock_transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!(init_result)),
+                // notify does not consume response
+                MockTransport::success_response(RequestId::Number(2), json!(resources_result)),
+            ])
+            .await;
+
+        let transport = Box::new(mock_transport);
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+        client.initialize().await.unwrap();
+
+        let result = client
+            .list_resources_paginated(Some("cursor".to_string()))
+            .await
+            .unwrap();
+        assert_eq!(result.resources.len(), 1);
+        assert_eq!(result.next_cursor, None);
+    }
+
+    // =========================================================================
+    // NEW TESTS - Builder Pattern Validation
+    // =========================================================================
+
+    #[test]
+    fn builder_chaining() {
+        let caps = ClientCapabilities::default();
+        let builder = McpClientBuilder::new("test", "1.0.0")
+            .timeout_secs(120)
+            .max_message_size(2048)
+            .capabilities(caps);
+
+        assert_eq!(builder.config.timeout_secs, 120);
+        assert_eq!(builder.config.max_message_size, 2048);
+        assert_eq!(builder.client_name, "test");
+        assert_eq!(builder.client_version, "1.0.0");
+    }
+
+    #[test]
+    fn builder_default_capabilities() {
+        let builder = McpClientBuilder::new("test", "1.0.0");
+
+        assert!(builder.capabilities.roots.is_none());
+        assert!(builder.capabilities.sampling.is_none());
+    }
+
+    #[test]
+    fn builder_timeout_override() {
+        let builder1 = McpClientBuilder::new("test", "1.0.0").timeout_secs(60);
+        let builder2 = builder1.timeout_secs(90);
+
+        assert_eq!(builder2.config.timeout_secs, 90);
+    }
+
+    #[test]
+    fn builder_message_size_override() {
+        let builder1 = McpClientBuilder::new("test", "1.0.0").max_message_size(1024);
+        let builder2 = builder1.max_message_size(4096);
+
+        assert_eq!(builder2.config.max_message_size, 4096);
+    }
+
+    // =========================================================================
+    // NEW TESTS - Connection Context Edge Cases
+    // =========================================================================
+
+    #[test]
+    fn connection_context_state_display_all_variants() {
+        let states = vec![
+            ConnectionState::Disconnected,
+            ConnectionState::Connecting,
+            ConnectionState::Initializing,
+            ConnectionState::Ready,
+            ConnectionState::ShuttingDown,
+        ];
+
+        for state in states {
+            let display = format!("{}", state);
+            assert!(!display.is_empty());
+        }
+    }
+
+    #[test]
+    fn connection_context_multiple_set_connected() {
+        let mut ctx = ConnectionContext::new();
+
+        ctx.set_connected();
+        assert!(ctx.is_connected());
+
+        // Calling set_connected again should be idempotent
+        ctx.set_connected();
+        assert!(ctx.is_connected());
+    }
+
+    #[test]
+    fn connection_context_set_disconnected() {
+        let mut ctx = ConnectionContext::new();
+
+        ctx.set_connected();
+        assert!(ctx.is_connected());
+
+        ctx.set_disconnected();
+        assert!(!ctx.is_connected());
+        assert_eq!(ctx.state(), ConnectionState::Disconnected);
+    }
+
+    // =========================================================================
+    // NEW TESTS - Transport Type and Info
+    // =========================================================================
+
+    #[tokio::test]
+    async fn client_transport_type_is_accessible() {
+        use crate::transport::mock::MockTransport;
+
+        let transport = Box::new(MockTransport::new());
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let client = McpClient::new(transport, client_info);
+
+        assert_eq!(client.transport_type(), "mock");
+    }
+
+    #[tokio::test]
+    async fn client_server_info_none_before_init() {
+        use crate::transport::mock::MockTransport;
+
+        let transport = Box::new(MockTransport::new());
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let client = McpClient::new(transport, client_info);
+
+        assert!(client.server_info().is_none());
+        assert!(client.protocol_version().is_none());
+        assert!(client.server_capabilities().is_none());
+    }
+
+    // =========================================================================
+    // NEW TESTS - Ensure Ready Validation
+    // =========================================================================
+
+    #[tokio::test]
+    async fn ensure_ready_fails_in_disconnected_state() {
+        use crate::transport::mock::MockTransport;
+
+        let mock_transport = MockTransport::new();
+        let transport = Box::new(mock_transport);
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+
+        let result = client.ping().await;
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("not ready"));
+    }
+
+    #[tokio::test]
+    async fn ensure_ready_fails_in_connecting_state() {
+        use crate::transport::mock::MockTransport;
+
+        let mock_transport = MockTransport::new();
+        let transport = Box::new(mock_transport);
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+
+        let result = client.list_tools().await;
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("not ready"));
+    }
+
+    // =========================================================================
+    // NEW TESTS - Tool Operations with Capabilities
+    // =========================================================================
+
+    #[tokio::test]
+    async fn call_tool_with_arguments() {
+        use crate::protocol::mcp::{CallToolResult, InitializeResult, ToolsCapability};
+        use crate::protocol::RequestId;
+        use crate::transport::mock::MockTransport;
+        use serde_json::json;
+
+        let mock_transport = MockTransport::new();
+        let server_caps = ServerCapabilities {
+            tools: Some(ToolsCapability::default()),
+            ..ServerCapabilities::default()
+        };
+
+        let init_result = InitializeResult {
+            protocol_version: "2024-11-05".to_string(),
+            capabilities: server_caps,
+            server_info: Implementation::new("test-server", "1.0.0"),
+            instructions: None,
+        };
+
+        let tool_result = CallToolResult {
+            content: vec![],
+            is_error: Some(false),
+        };
+
+        mock_transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!(init_result)),
+                // notify does not consume response
+                MockTransport::success_response(RequestId::Number(2), json!(tool_result)),
+            ])
+            .await;
+
+        let transport = Box::new(mock_transport);
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+        client.initialize().await.unwrap();
+
+        let args = json!({"param": "value"});
+        let result = client.call_tool("test_tool", Some(args)).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn call_tool_without_arguments() {
+        use crate::protocol::mcp::{CallToolResult, InitializeResult, ToolsCapability};
+        use crate::protocol::RequestId;
+        use crate::transport::mock::MockTransport;
+        use serde_json::json;
+
+        let mock_transport = MockTransport::new();
+        let server_caps = ServerCapabilities {
+            tools: Some(ToolsCapability::default()),
+            ..ServerCapabilities::default()
+        };
+
+        let init_result = InitializeResult {
+            protocol_version: "2024-11-05".to_string(),
+            capabilities: server_caps,
+            server_info: Implementation::new("test-server", "1.0.0"),
+            instructions: None,
+        };
+
+        let tool_result = CallToolResult {
+            content: vec![],
+            is_error: Some(false),
+        };
+
+        mock_transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!(init_result)),
+                // notify does not consume response
+                MockTransport::success_response(RequestId::Number(2), json!(tool_result)),
+            ])
+            .await;
+
+        let transport = Box::new(mock_transport);
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+        client.initialize().await.unwrap();
+
+        let result = client.call_tool("test_tool", None).await;
+        assert!(result.is_ok());
+    }
+
+    // =========================================================================
+    // NEW TESTS - Resource Operations with Capabilities
+    // =========================================================================
+
+    #[tokio::test]
+    async fn read_resource_with_uri() {
+        use crate::protocol::mcp::{InitializeResult, ReadResourceResult, ResourcesCapability};
+        use crate::protocol::RequestId;
+        use crate::transport::mock::MockTransport;
+        use serde_json::json;
+
+        let mock_transport = MockTransport::new();
+        let server_caps = ServerCapabilities {
+            resources: Some(ResourcesCapability::default()),
+            ..ServerCapabilities::default()
+        };
+
+        let init_result = InitializeResult {
+            protocol_version: "2024-11-05".to_string(),
+            capabilities: server_caps,
+            server_info: Implementation::new("test-server", "1.0.0"),
+            instructions: None,
+        };
+
+        let resource_result = ReadResourceResult { contents: vec![] };
+
+        mock_transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!(init_result)),
+                // notify does not consume response
+                MockTransport::success_response(RequestId::Number(2), json!(resource_result)),
+            ])
+            .await;
+
+        let transport = Box::new(mock_transport);
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+        client.initialize().await.unwrap();
+
+        let result = client.read_resource("file:///test.txt").await;
+        assert!(result.is_ok());
+    }
+
+    // =========================================================================
+    // NEW TESTS - Prompt Operations with Capabilities
+    // =========================================================================
+
+    #[tokio::test]
+    async fn get_prompt_with_arguments() {
+        use crate::protocol::mcp::{GetPromptResult, InitializeResult, PromptsCapability};
+        use crate::protocol::RequestId;
+        use crate::transport::mock::MockTransport;
+        use serde_json::json;
+
+        let mock_transport = MockTransport::new();
+        let server_caps = ServerCapabilities {
+            prompts: Some(PromptsCapability::default()),
+            ..ServerCapabilities::default()
+        };
+
+        let init_result = InitializeResult {
+            protocol_version: "2024-11-05".to_string(),
+            capabilities: server_caps,
+            server_info: Implementation::new("test-server", "1.0.0"),
+            instructions: None,
+        };
+
+        let prompt_result = GetPromptResult {
+            description: Some("Test prompt".to_string()),
+            messages: vec![],
+        };
+
+        mock_transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!(init_result)),
+                // notify does not consume response
+                MockTransport::success_response(RequestId::Number(2), json!(prompt_result)),
+            ])
+            .await;
+
+        let transport = Box::new(mock_transport);
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+        client.initialize().await.unwrap();
+
+        let args = json!({"key": "value"});
+        let result = client.get_prompt("test_prompt", Some(args)).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn get_prompt_without_arguments() {
+        use crate::protocol::mcp::{GetPromptResult, InitializeResult, PromptsCapability};
+        use crate::protocol::RequestId;
+        use crate::transport::mock::MockTransport;
+        use serde_json::json;
+
+        let mock_transport = MockTransport::new();
+        let server_caps = ServerCapabilities {
+            prompts: Some(PromptsCapability::default()),
+            ..ServerCapabilities::default()
+        };
+
+        let init_result = InitializeResult {
+            protocol_version: "2024-11-05".to_string(),
+            capabilities: server_caps,
+            server_info: Implementation::new("test-server", "1.0.0"),
+            instructions: None,
+        };
+
+        let prompt_result = GetPromptResult {
+            description: None,
+            messages: vec![],
+        };
+
+        mock_transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!(init_result)),
+                // notify does not consume response
+                MockTransport::success_response(RequestId::Number(2), json!(prompt_result)),
+            ])
+            .await;
+
+        let transport = Box::new(mock_transport);
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+        client.initialize().await.unwrap();
+
+        let result = client.get_prompt("test_prompt", None).await;
+        assert!(result.is_ok());
+    }
+
+    // =========================================================================
+    // NEW TESTS - Multiple Supported Protocol Versions
+    // =========================================================================
+
+    #[tokio::test]
+    async fn initialize_with_2025_protocol_version() {
+        use crate::protocol::mcp::InitializeResult;
+        use crate::protocol::RequestId;
+        use crate::transport::mock::MockTransport;
+        use serde_json::json;
+
+        let mock_transport = MockTransport::new();
+        let server_caps = ServerCapabilities::default();
+
+        let init_result = InitializeResult {
+            protocol_version: "2025-03-26".to_string(),
+            capabilities: server_caps,
+            server_info: Implementation::new("test-server", "1.0.0"),
+            instructions: None,
+        };
+
+        mock_transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!(init_result)),
+                // notify does not consume response
+            ])
+            .await;
+
+        let transport = Box::new(mock_transport);
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+
+        let result = client.initialize().await;
+        assert!(result.is_ok());
+        assert_eq!(client.protocol_version(), Some("2025-03-26"));
+    }
+
+    #[tokio::test]
+    async fn initialize_with_2024_protocol_version() {
+        use crate::protocol::mcp::InitializeResult;
+        use crate::protocol::RequestId;
+        use crate::transport::mock::MockTransport;
+        use serde_json::json;
+
+        let mock_transport = MockTransport::new();
+        let server_caps = ServerCapabilities::default();
+
+        let init_result = InitializeResult {
+            protocol_version: "2024-11-05".to_string(),
+            capabilities: server_caps,
+            server_info: Implementation::new("test-server", "1.0.0"),
+            instructions: None,
+        };
+
+        mock_transport
+            .queue_responses(vec![
+                MockTransport::success_response(RequestId::Number(1), json!(init_result)),
+                // notify does not consume response
+            ])
+            .await;
+
+        let transport = Box::new(mock_transport);
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let mut client = McpClient::new(transport, client_info);
+        client.mark_connected();
+
+        let result = client.initialize().await;
+        assert!(result.is_ok());
+        assert_eq!(client.protocol_version(), Some("2024-11-05"));
+    }
+
+    // =========================================================================
+    // NEW TESTS - Client Configuration and Capabilities
+    // =========================================================================
+
+    #[tokio::test]
+    async fn client_with_custom_capabilities_creation() {
+        use crate::transport::mock::MockTransport;
+
+        let transport = Box::new(MockTransport::new());
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let caps = ClientCapabilities::default();
+        let client = McpClient::with_capabilities(transport, client_info, caps);
+
+        assert!(!client.is_ready());
+        assert_eq!(client.state(), ConnectionState::Disconnected);
+    }
+
+    #[test]
+    fn implementation_struct_fields() {
+        let impl_info = Implementation::new("my-client", "2.0.0");
+        assert_eq!(impl_info.name, "my-client");
+        assert_eq!(impl_info.version, "2.0.0");
+    }
+
+    // =========================================================================
+    // NEW TESTS - Drop Behavior
+    // =========================================================================
+
+    #[tokio::test]
+    async fn client_drop_without_connection() {
+        use crate::transport::mock::MockTransport;
+
+        let transport = Box::new(MockTransport::new());
+        let client_info = Implementation::new("test-client", "1.0.0");
+        let client = McpClient::new(transport, client_info);
+
+        // Drop without connecting - should not log warning
+        assert!(!client.context.is_connected());
+        drop(client);
     }
 }

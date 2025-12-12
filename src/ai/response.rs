@@ -453,27 +453,363 @@ mod tests {
     }
 
     #[test]
-    fn code_example_creation() {
-        let example = CodeExample::new("rust", "let x = unsafe { ... }", "let x = safe_fn()")
-            .with_explanation("Replaced unsafe block with safe alternative");
+    fn explanation_response_defaults() {
+        let response = ExplanationResponse::new("test-id", "TEST-001");
 
-        assert_eq!(example.language, "rust");
-        assert!(!example.explanation.is_empty());
+        assert_eq!(response.finding_id, "test-id");
+        assert_eq!(response.rule_id, "TEST-001");
+        assert!(response.explanation.summary.is_empty());
+        assert!(response.remediation.permanent_fix.is_empty());
+        assert!(response.education.is_none());
+        assert!(!response.is_cached());
     }
 
     #[test]
-    fn weakness_info_url() {
-        let weakness = WeaknessInfo::new("CWE-78", "OS Command Injection", "Description");
-        assert!(weakness.url().contains("78"));
+    fn explanation_response_full_builder() {
+        let explanation = VulnerabilityExplanation::new("Summary")
+            .with_technical_details("Technical details")
+            .with_attack_scenario("Attack scenario")
+            .with_impact("Impact description")
+            .with_likelihood(Likelihood::High);
 
-        let weakness2 = WeaknessInfo::new("78", "OS Command Injection", "Description");
-        assert!(weakness2.url().contains("78"));
+        let remediation = RemediationGuide::new("Permanent fix")
+            .add_immediate_action("Action 1")
+            .add_immediate_action("Action 2")
+            .add_verification_step("Step 1")
+            .with_effort(EffortLevel::Medium);
+
+        let education = EducationalContext::default()
+            .add_weakness(WeaknessInfo::new(
+                "CWE-78",
+                "Command Injection",
+                "Description",
+            ))
+            .add_pattern("Pattern 1")
+            .add_best_practice("Practice 1")
+            .add_resource(ResourceLink::documentation("Doc", "http://example.com"));
+
+        let metadata = ExplanationMetadata::new("TestProvider", "test-model")
+            .with_tokens(500)
+            .with_response_time(1000)
+            .mark_cached();
+
+        let response = ExplanationResponse::new("finding", "RULE-001")
+            .with_explanation(explanation)
+            .with_remediation(remediation)
+            .with_education(education)
+            .with_metadata(metadata);
+
+        assert_eq!(response.summary(), "Summary");
+        assert!(response.is_cached());
+    }
+
+    #[test]
+    fn vulnerability_explanation_builder() {
+        let explanation = VulnerabilityExplanation::new("Brief summary")
+            .with_technical_details("Deep technical analysis")
+            .with_attack_scenario("How an attacker exploits this")
+            .with_impact("Potential damage")
+            .with_likelihood(Likelihood::High);
+
+        assert_eq!(explanation.summary, "Brief summary");
+        assert_eq!(explanation.technical_details, "Deep technical analysis");
+        assert_eq!(explanation.attack_scenario, "How an attacker exploits this");
+        assert_eq!(explanation.impact, "Potential damage");
+        assert_eq!(explanation.likelihood, Likelihood::High);
+    }
+
+    #[test]
+    fn vulnerability_explanation_defaults() {
+        let explanation = VulnerabilityExplanation::default();
+
+        assert!(explanation.summary.is_empty());
+        assert!(explanation.technical_details.is_empty());
+        assert!(explanation.attack_scenario.is_empty());
+        assert!(explanation.impact.is_empty());
+        assert_eq!(explanation.likelihood, Likelihood::Medium);
+    }
+
+    #[test]
+    fn likelihood_display() {
+        assert_eq!(Likelihood::Low.to_string(), "low");
+        assert_eq!(Likelihood::Medium.to_string(), "medium");
+        assert_eq!(Likelihood::High.to_string(), "high");
+    }
+
+    #[test]
+    fn likelihood_as_str() {
+        assert_eq!(Likelihood::Low.as_str(), "low");
+        assert_eq!(Likelihood::Medium.as_str(), "medium");
+        assert_eq!(Likelihood::High.as_str(), "high");
     }
 
     #[test]
     fn likelihood_parsing() {
         assert_eq!("high".parse::<Likelihood>(), Ok(Likelihood::High));
         assert_eq!("LOW".parse::<Likelihood>(), Ok(Likelihood::Low));
+        assert_eq!("MeDiUm".parse::<Likelihood>(), Ok(Likelihood::Medium));
         assert!("invalid".parse::<Likelihood>().is_err());
+        assert!("".parse::<Likelihood>().is_err());
+    }
+
+    #[test]
+    fn likelihood_default() {
+        let likelihood: Likelihood = Default::default();
+        assert_eq!(likelihood, Likelihood::Medium);
+    }
+
+    #[test]
+    fn remediation_guide_builder() {
+        let guide = RemediationGuide::new("Apply the security patch")
+            .with_immediate_actions(vec!["Stop the service".to_string()])
+            .add_immediate_action("Review logs")
+            .with_verification(vec!["Test fix".to_string()])
+            .add_verification_step("Deploy to staging")
+            .with_effort(EffortLevel::Low);
+
+        assert_eq!(guide.permanent_fix, "Apply the security patch");
+        assert_eq!(guide.immediate_actions.len(), 2);
+        assert_eq!(guide.verification.len(), 2);
+        assert_eq!(guide.effort, EffortLevel::Low);
+    }
+
+    #[test]
+    fn remediation_guide_with_code_example() {
+        let example = CodeExample::new("python", "unsafe_code()", "safe_code()")
+            .with_explanation("Added input validation");
+
+        let guide = RemediationGuide::new("Fix the vulnerability").with_code_example(example);
+
+        assert!(guide.code_example.is_some());
+        let code = guide.code_example.unwrap();
+        assert_eq!(code.language, "python");
+        assert_eq!(code.before, "unsafe_code()");
+        assert_eq!(code.after, "safe_code()");
+    }
+
+    #[test]
+    fn remediation_guide_defaults() {
+        let guide = RemediationGuide::default();
+
+        assert!(guide.permanent_fix.is_empty());
+        assert!(guide.immediate_actions.is_empty());
+        assert!(guide.code_example.is_none());
+        assert!(guide.verification.is_empty());
+        assert_eq!(guide.effort, EffortLevel::Low);
+    }
+
+    #[test]
+    fn effort_level_as_str() {
+        assert_eq!(EffortLevel::Trivial.as_str(), "trivial");
+        assert_eq!(EffortLevel::Low.as_str(), "low");
+        assert_eq!(EffortLevel::Medium.as_str(), "medium");
+        assert_eq!(EffortLevel::High.as_str(), "high");
+    }
+
+    #[test]
+    fn effort_level_default() {
+        let effort: EffortLevel = Default::default();
+        assert_eq!(effort, EffortLevel::Low);
+    }
+
+    #[test]
+    fn code_example_creation() {
+        let example = CodeExample::new("rust", "let x = unsafe { ... }", "let x = safe_fn()")
+            .with_explanation("Replaced unsafe block with safe alternative");
+
+        assert_eq!(example.language, "rust");
+        assert_eq!(example.before, "let x = unsafe { ... }");
+        assert_eq!(example.after, "let x = safe_fn()");
+        assert!(!example.explanation.is_empty());
+    }
+
+    #[test]
+    fn code_example_without_explanation() {
+        let example = CodeExample::new("javascript", "eval(input)", "safeEval(input)");
+
+        assert_eq!(example.language, "javascript");
+        assert!(example.explanation.is_empty());
+    }
+
+    #[test]
+    fn educational_context_builder() {
+        let context = EducationalContext::default()
+            .add_weakness(WeaknessInfo::new("CWE-79", "XSS", "Cross-site scripting"))
+            .add_weakness(WeaknessInfo::new("CWE-89", "SQL Injection", "SQLi"))
+            .add_pattern("Similar vulnerability in authentication")
+            .add_best_practice("Always validate input")
+            .add_resource(ResourceLink::article("OWASP Top 10", "https://owasp.org"));
+
+        assert_eq!(context.related_weaknesses.len(), 2);
+        assert_eq!(context.similar_patterns.len(), 1);
+        assert_eq!(context.best_practices.len(), 1);
+        assert_eq!(context.resources.len(), 1);
+    }
+
+    #[test]
+    fn educational_context_defaults() {
+        let context = EducationalContext::default();
+
+        assert!(context.related_weaknesses.is_empty());
+        assert!(context.similar_patterns.is_empty());
+        assert!(context.best_practices.is_empty());
+        assert!(context.resources.is_empty());
+    }
+
+    #[test]
+    fn weakness_info_creation() {
+        let weakness = WeaknessInfo::new(
+            "CWE-78",
+            "OS Command Injection",
+            "Improper neutralization of special elements",
+        );
+
+        assert_eq!(weakness.cwe_id, "CWE-78");
+        assert_eq!(weakness.name, "OS Command Injection");
+        assert!(!weakness.description.is_empty());
+    }
+
+    #[test]
+    fn weakness_info_url() {
+        let weakness = WeaknessInfo::new("CWE-78", "OS Command Injection", "Description");
+        assert!(weakness.url().contains("78"));
+        assert!(weakness.url().contains("cwe.mitre.org"));
+
+        let weakness2 = WeaknessInfo::new("78", "OS Command Injection", "Description");
+        assert!(weakness2.url().contains("78"));
+    }
+
+    #[test]
+    fn weakness_info_url_strips_prefix() {
+        let weakness1 = WeaknessInfo::new("CWE-123", "Test", "Desc");
+        let weakness2 = WeaknessInfo::new("123", "Test", "Desc");
+
+        // Both should produce the same URL
+        assert_eq!(weakness1.url(), weakness2.url());
+        assert!(weakness1.url().contains("/123.html"));
+    }
+
+    #[test]
+    fn resource_link_documentation() {
+        let resource = ResourceLink::documentation("API Docs", "https://api.example.com/docs");
+
+        assert_eq!(resource.title, "API Docs");
+        assert_eq!(resource.url, "https://api.example.com/docs");
+        assert_eq!(resource.category, ResourceCategory::Documentation);
+    }
+
+    #[test]
+    fn resource_link_article() {
+        let resource = ResourceLink::article("Security Blog Post", "https://blog.example.com");
+
+        assert_eq!(resource.category, ResourceCategory::Article);
+    }
+
+    #[test]
+    fn resource_link_tool() {
+        let resource = ResourceLink::tool("Security Scanner", "https://scanner.example.com");
+
+        assert_eq!(resource.category, ResourceCategory::Tool);
+    }
+
+    #[test]
+    fn resource_category_variants() {
+        let categories = vec![
+            ResourceCategory::Documentation,
+            ResourceCategory::Article,
+            ResourceCategory::Tool,
+            ResourceCategory::Video,
+            ResourceCategory::Course,
+        ];
+
+        // Just verify they all exist and can be created
+        assert_eq!(categories.len(), 5);
+    }
+
+    #[test]
+    fn explanation_metadata_creation() {
+        let metadata = ExplanationMetadata::new("Anthropic", "claude-3-5-sonnet")
+            .with_tokens(1500)
+            .with_response_time(2500);
+
+        assert_eq!(metadata.provider, "Anthropic");
+        assert_eq!(metadata.model, "claude-3-5-sonnet");
+        assert_eq!(metadata.tokens_used, 1500);
+        assert_eq!(metadata.response_time_ms, 2500);
+        assert!(!metadata.cached);
+    }
+
+    #[test]
+    fn explanation_metadata_cached() {
+        let metadata = ExplanationMetadata::new("TestProvider", "test-model").mark_cached();
+
+        assert!(metadata.cached);
+    }
+
+    #[test]
+    fn explanation_metadata_defaults() {
+        let metadata = ExplanationMetadata::default();
+
+        assert_eq!(metadata.provider, "unknown");
+        assert_eq!(metadata.model, "unknown");
+        assert_eq!(metadata.tokens_used, 0);
+        assert_eq!(metadata.response_time_ms, 0);
+        assert!(!metadata.cached);
+        assert!(!metadata.generated_at.is_empty());
+    }
+
+    #[test]
+    fn explanation_metadata_timestamp() {
+        let metadata = ExplanationMetadata::default();
+
+        // Verify timestamp is a valid RFC3339 format
+        assert!(chrono::DateTime::parse_from_rfc3339(&metadata.generated_at).is_ok());
+    }
+
+    #[test]
+    fn serialization_roundtrip() {
+        let original = ExplanationResponse::new("finding-123", "MCP-INJ-001")
+            .with_explanation(VulnerabilityExplanation::new("Test summary"))
+            .with_remediation(RemediationGuide::new("Fix it"));
+
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: ExplanationResponse = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(original.finding_id, deserialized.finding_id);
+        assert_eq!(original.rule_id, deserialized.rule_id);
+        assert_eq!(
+            original.explanation.summary,
+            deserialized.explanation.summary
+        );
+    }
+
+    #[test]
+    fn likelihood_serialization() {
+        let likelihood = Likelihood::High;
+        let json = serde_json::to_string(&likelihood).unwrap();
+        assert_eq!(json, "\"high\"");
+
+        let deserialized: Likelihood = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, Likelihood::High);
+    }
+
+    #[test]
+    fn effort_level_serialization() {
+        let effort = EffortLevel::Medium;
+        let json = serde_json::to_string(&effort).unwrap();
+        assert_eq!(json, "\"medium\"");
+
+        let deserialized: EffortLevel = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, EffortLevel::Medium);
+    }
+
+    #[test]
+    fn resource_category_serialization() {
+        let category = ResourceCategory::Documentation;
+        let json = serde_json::to_string(&category).unwrap();
+        assert_eq!(json, "\"documentation\"");
+
+        let deserialized: ResourceCategory = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized, ResourceCategory::Documentation);
     }
 }

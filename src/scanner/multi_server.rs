@@ -782,4 +782,442 @@ mod tests {
         assert_eq!(config.timeout, Some(180));
         assert_eq!(config.profile, Some(ScanProfile::Full));
     }
+
+    #[test]
+    fn server_scan_result_findings_by_severity() {
+        use super::super::{Finding, FindingLocation};
+
+        let config = ServerConfig::new("test", "cmd");
+        let mut results = ScanResults::new("test", ScanProfile::Standard);
+
+        // Add findings with different severities
+        results.findings.push(
+            Finding::new(
+                "TEST-001",
+                Severity::Critical,
+                "Critical Issue",
+                "Critical finding",
+            )
+            .with_location(FindingLocation::tool("test")),
+        );
+
+        results.findings.push(
+            Finding::new("TEST-002", Severity::High, "High Issue", "High finding")
+                .with_location(FindingLocation::tool("test")),
+        );
+
+        results.findings.push(
+            Finding::new(
+                "TEST-003",
+                Severity::Critical,
+                "Another Critical",
+                "Another critical finding",
+            )
+            .with_location(FindingLocation::tool("test")),
+        );
+
+        let result = ServerScanResult::success(config, results, Duration::from_secs(10));
+
+        assert_eq!(result.findings_by_severity(Severity::Critical), 2);
+        assert_eq!(result.findings_by_severity(Severity::High), 1);
+        assert_eq!(result.findings_by_severity(Severity::Medium), 0);
+        assert_eq!(result.findings_by_severity(Severity::Low), 0);
+    }
+
+    #[test]
+    fn server_scan_result_findings_by_severity_on_failure() {
+        let config = ServerConfig::new("test", "cmd");
+        let result = ServerScanResult::failure(config, "error".to_string(), Duration::from_secs(1));
+
+        assert_eq!(result.findings_by_severity(Severity::Critical), 0);
+        assert_eq!(result.findings_by_severity(Severity::High), 0);
+    }
+
+    #[test]
+    fn multi_server_results_all_findings() {
+        use super::super::{Finding, FindingLocation};
+
+        let config1 = ServerConfig::new("server1", "cmd1");
+        let mut results1 = ScanResults::new("server1", ScanProfile::Standard);
+        results1.findings.push(
+            Finding::new("TEST-001", Severity::Critical, "Issue 1", "Finding 1")
+                .with_location(FindingLocation::tool("test")),
+        );
+
+        let config2 = ServerConfig::new("server2", "cmd2");
+        let mut results2 = ScanResults::new("server2", ScanProfile::Standard);
+        results2.findings.push(
+            Finding::new("TEST-002", Severity::High, "Issue 2", "Finding 2")
+                .with_location(FindingLocation::tool("test")),
+        );
+
+        let success1 = ServerScanResult::success(config1, results1, Duration::from_secs(1));
+        let success2 = ServerScanResult::success(config2, results2, Duration::from_secs(1));
+
+        let multi_results = MultiServerResults::from_server_results(
+            vec![success1, success2],
+            Duration::from_secs(2),
+        );
+
+        let all_findings = multi_results.all_findings();
+        assert_eq!(all_findings.len(), 2);
+        assert_eq!(all_findings[0].rule_id, "TEST-001");
+        assert_eq!(all_findings[1].rule_id, "TEST-002");
+    }
+
+    #[test]
+    fn multi_server_results_all_findings_empty() {
+        let results = MultiServerResults::from_server_results(vec![], Duration::from_secs(1));
+        assert_eq!(results.all_findings().len(), 0);
+    }
+
+    #[test]
+    fn multi_server_results_all_findings_with_failures() {
+        use super::super::{Finding, FindingLocation};
+
+        let config1 = ServerConfig::new("server1", "cmd1");
+        let mut results1 = ScanResults::new("server1", ScanProfile::Standard);
+        results1.findings.push(
+            Finding::new("TEST-001", Severity::Critical, "Issue 1", "Finding 1")
+                .with_location(FindingLocation::tool("test")),
+        );
+
+        let config2 = ServerConfig::new("server2", "cmd2");
+
+        let success = ServerScanResult::success(config1, results1, Duration::from_secs(1));
+        let failure =
+            ServerScanResult::failure(config2, "error".to_string(), Duration::from_secs(1));
+
+        let multi_results =
+            MultiServerResults::from_server_results(vec![success, failure], Duration::from_secs(2));
+
+        let all_findings = multi_results.all_findings();
+        assert_eq!(all_findings.len(), 1);
+        assert_eq!(all_findings[0].rule_id, "TEST-001");
+    }
+
+    #[test]
+    fn multi_server_results_severity_aggregation() {
+        use super::super::{Finding, FindingLocation};
+
+        let config1 = ServerConfig::new("server1", "cmd1");
+        let mut results1 = ScanResults::new("server1", ScanProfile::Standard);
+        results1.findings.push(
+            Finding::new(
+                "TEST-001",
+                Severity::Critical,
+                "Critical 1",
+                "Critical finding 1",
+            )
+            .with_location(FindingLocation::tool("test")),
+        );
+        results1.findings.push(
+            Finding::new("TEST-002", Severity::High, "High 1", "High finding 1")
+                .with_location(FindingLocation::tool("test")),
+        );
+
+        let config2 = ServerConfig::new("server2", "cmd2");
+        let mut results2 = ScanResults::new("server2", ScanProfile::Standard);
+        results2.findings.push(
+            Finding::new(
+                "TEST-003",
+                Severity::Critical,
+                "Critical 2",
+                "Critical finding 2",
+            )
+            .with_location(FindingLocation::tool("test")),
+        );
+        results2.findings.push(
+            Finding::new("TEST-004", Severity::Medium, "Medium 1", "Medium finding 1")
+                .with_location(FindingLocation::tool("test")),
+        );
+        results2.findings.push(
+            Finding::new("TEST-005", Severity::Low, "Low 1", "Low finding 1")
+                .with_location(FindingLocation::tool("test")),
+        );
+
+        let success1 = ServerScanResult::success(config1, results1, Duration::from_secs(1));
+        let success2 = ServerScanResult::success(config2, results2, Duration::from_secs(1));
+
+        let multi_results = MultiServerResults::from_server_results(
+            vec![success1, success2],
+            Duration::from_secs(2),
+        );
+
+        assert_eq!(multi_results.total_findings, 5);
+        assert_eq!(multi_results.severity_counts.get("critical"), Some(&2));
+        assert_eq!(multi_results.severity_counts.get("high"), Some(&1));
+        assert_eq!(multi_results.severity_counts.get("medium"), Some(&1));
+        assert_eq!(multi_results.severity_counts.get("low"), Some(&1));
+    }
+
+    #[test]
+    fn multi_server_results_mixed_success_and_failure() {
+        use super::super::{Finding, FindingLocation};
+
+        let config1 = ServerConfig::new("server1", "cmd1");
+        let mut results1 = ScanResults::new("server1", ScanProfile::Standard);
+        results1.findings.push(
+            Finding::new("TEST-001", Severity::High, "Issue", "Finding")
+                .with_location(FindingLocation::tool("test")),
+        );
+
+        let config2 = ServerConfig::new("server2", "cmd2");
+        let config3 = ServerConfig::new("server3", "cmd3");
+
+        let success = ServerScanResult::success(config1, results1, Duration::from_secs(1));
+        let failure1 =
+            ServerScanResult::failure(config2, "timeout".to_string(), Duration::from_secs(30));
+        let failure2 = ServerScanResult::failure(
+            config3,
+            "connection refused".to_string(),
+            Duration::from_secs(5),
+        );
+
+        let multi_results = MultiServerResults::from_server_results(
+            vec![success, failure1, failure2],
+            Duration::from_secs(36),
+        );
+
+        assert_eq!(multi_results.server_count, 3);
+        assert_eq!(multi_results.success_count, 1);
+        assert_eq!(multi_results.failure_count, 2);
+        assert_eq!(multi_results.total_findings, 1);
+        assert!(!multi_results.all_success());
+
+        let failed = multi_results.failed_servers();
+        assert_eq!(failed.len(), 2);
+        assert!(failed.contains(&"server2"));
+        assert!(failed.contains(&"server3"));
+    }
+
+    #[test]
+    fn multi_server_scanner_empty_config() {
+        let scanner = MultiServerScanner::new(vec![]);
+        assert_eq!(scanner.server_count(), 0);
+    }
+
+    #[test]
+    fn multi_server_scanner_multiple_servers() {
+        let configs = vec![
+            ServerConfig::new("server1", "cmd1"),
+            ServerConfig::new("server2", "cmd2"),
+            ServerConfig::new("server3", "cmd3"),
+        ];
+        let scanner = MultiServerScanner::new(configs);
+        assert_eq!(scanner.server_count(), 3);
+    }
+
+    #[test]
+    fn multi_server_scanner_builder_pattern() {
+        let configs = vec![ServerConfig::new("test", "cmd")];
+        let scanner = MultiServerScanner::new(configs)
+            .with_concurrency(16)
+            .with_timeout(300)
+            .with_profile(ScanProfile::Full);
+
+        assert_eq!(scanner.concurrency, 16);
+        assert_eq!(scanner.default_timeout, 300);
+        assert_eq!(scanner.default_profile, ScanProfile::Full);
+    }
+
+    #[test]
+    fn multi_server_scanner_add_server_multiple() {
+        let mut scanner = MultiServerScanner::new(vec![]);
+        assert_eq!(scanner.server_count(), 0);
+
+        scanner.add_server(ServerConfig::new("server1", "cmd1"));
+        assert_eq!(scanner.server_count(), 1);
+
+        scanner.add_server(ServerConfig::new("server2", "cmd2"));
+        assert_eq!(scanner.server_count(), 2);
+
+        scanner.add_server(ServerConfig::new("server3", "cmd3"));
+        assert_eq!(scanner.server_count(), 3);
+    }
+
+    #[test]
+    fn multi_server_results_to_sarif_with_findings() {
+        use super::super::{Finding, FindingLocation};
+
+        let config = ServerConfig::new("test-server", "/usr/bin/test");
+        let mut results = ScanResults::new("test-server", ScanProfile::Standard);
+        results.findings.push(
+            Finding::new(
+                "TEST-001",
+                Severity::Critical,
+                "Critical Issue",
+                "Test finding",
+            )
+            .with_location(FindingLocation {
+                component: "test-component".to_string(),
+                identifier: "test-id".to_string(),
+                context: None,
+            })
+            .with_remediation("Fix the issue"),
+        );
+
+        let success = ServerScanResult::success(config, results, Duration::from_secs(10));
+        let multi_results =
+            MultiServerResults::from_server_results(vec![success], Duration::from_secs(10));
+
+        let sarif = multi_results.to_sarif();
+
+        assert_eq!(sarif["version"], "2.1.0");
+        assert_eq!(sarif["runs"][0]["tool"]["driver"]["name"], "mcplint-multi");
+
+        let rules = sarif["runs"][0]["tool"]["driver"]["rules"]
+            .as_array()
+            .unwrap();
+        assert_eq!(rules.len(), 1);
+        assert_eq!(rules[0]["id"], "TEST-001");
+        assert_eq!(rules[0]["name"], "Critical Issue");
+
+        let results_array = sarif["runs"][0]["results"].as_array().unwrap();
+        assert_eq!(results_array.len(), 1);
+        assert_eq!(results_array[0]["ruleId"], "TEST-001");
+        assert_eq!(results_array[0]["properties"]["server"], "test-server");
+        assert_eq!(
+            results_array[0]["properties"]["component"],
+            "test-component"
+        );
+        assert_eq!(results_array[0]["properties"]["identifier"], "test-id");
+
+        let invocations = &sarif["runs"][0]["invocations"][0];
+        assert_eq!(invocations["executionSuccessful"], true);
+        assert_eq!(invocations["properties"]["servers_scanned"], 1);
+        assert_eq!(invocations["properties"]["servers_successful"], 1);
+        assert_eq!(invocations["properties"]["servers_failed"], 0);
+        assert_eq!(invocations["properties"]["total_findings"], 1);
+    }
+
+    #[test]
+    fn multi_server_results_to_sarif_deduplicates_rules() {
+        use super::super::{Finding, FindingLocation};
+
+        let config1 = ServerConfig::new("server1", "cmd1");
+        let mut results1 = ScanResults::new("server1", ScanProfile::Standard);
+        results1.findings.push(
+            Finding::new(
+                "TEST-001",
+                Severity::High,
+                "Same Rule",
+                "Finding from server1",
+            )
+            .with_location(FindingLocation {
+                component: "comp1".to_string(),
+                identifier: "id1".to_string(),
+                context: None,
+            }),
+        );
+
+        let config2 = ServerConfig::new("server2", "cmd2");
+        let mut results2 = ScanResults::new("server2", ScanProfile::Standard);
+        results2.findings.push(
+            Finding::new(
+                "TEST-001",
+                Severity::High,
+                "Same Rule",
+                "Finding from server2",
+            )
+            .with_location(FindingLocation {
+                component: "comp2".to_string(),
+                identifier: "id2".to_string(),
+                context: None,
+            }),
+        );
+
+        let success1 = ServerScanResult::success(config1, results1, Duration::from_secs(1));
+        let success2 = ServerScanResult::success(config2, results2, Duration::from_secs(1));
+
+        let multi_results = MultiServerResults::from_server_results(
+            vec![success1, success2],
+            Duration::from_secs(2),
+        );
+
+        let sarif = multi_results.to_sarif();
+
+        let rules = sarif["runs"][0]["tool"]["driver"]["rules"]
+            .as_array()
+            .unwrap();
+        assert_eq!(rules.len(), 1, "Rules should be deduplicated");
+
+        let results_array = sarif["runs"][0]["results"].as_array().unwrap();
+        assert_eq!(results_array.len(), 2, "Both findings should be included");
+    }
+
+    #[test]
+    fn multi_server_results_to_sarif_with_failures() {
+        use super::super::{Finding, FindingLocation};
+
+        let config1 = ServerConfig::new("server1", "cmd1");
+        let mut results1 = ScanResults::new("server1", ScanProfile::Standard);
+        results1.findings.push(
+            Finding::new("TEST-001", Severity::Medium, "Issue", "Finding").with_location(
+                FindingLocation {
+                    component: "comp".to_string(),
+                    identifier: "id".to_string(),
+                    context: None,
+                },
+            ),
+        );
+
+        let config2 = ServerConfig::new("server2", "cmd2");
+
+        let success = ServerScanResult::success(config1, results1, Duration::from_secs(1));
+        let failure = ServerScanResult::failure(
+            config2,
+            "connection error".to_string(),
+            Duration::from_secs(5),
+        );
+
+        let multi_results =
+            MultiServerResults::from_server_results(vec![success, failure], Duration::from_secs(6));
+
+        let sarif = multi_results.to_sarif();
+
+        let invocations = &sarif["runs"][0]["invocations"][0];
+        assert_eq!(invocations["executionSuccessful"], false);
+        assert_eq!(invocations["properties"]["servers_failed"], 1);
+    }
+
+    #[test]
+    fn server_scan_result_finding_count_with_findings() {
+        use super::super::{Finding, FindingLocation};
+
+        let config = ServerConfig::new("test", "cmd");
+        let mut results = ScanResults::new("test", ScanProfile::Standard);
+
+        for i in 0..5 {
+            results.findings.push(
+                Finding::new(
+                    format!("TEST-{:03}", i),
+                    Severity::Medium,
+                    format!("Issue {}", i),
+                    format!("Finding {}", i),
+                )
+                .with_location(FindingLocation {
+                    component: "test".to_string(),
+                    identifier: format!("id{}", i),
+                    context: None,
+                }),
+            );
+        }
+
+        let result = ServerScanResult::success(config, results, Duration::from_secs(10));
+        assert_eq!(result.finding_count(), 5);
+    }
+
+    #[test]
+    fn multi_server_results_failed_servers_empty() {
+        let config = ServerConfig::new("server1", "cmd1");
+        let results = ScanResults::new("server1", ScanProfile::Standard);
+        let success = ServerScanResult::success(config, results, Duration::from_secs(1));
+
+        let multi_results =
+            MultiServerResults::from_server_results(vec![success], Duration::from_secs(1));
+
+        let failed = multi_results.failed_servers();
+        assert_eq!(failed.len(), 0);
+    }
 }
