@@ -36,10 +36,13 @@ pub async fn run(
     info!("Starting watch mode for MCP server: {}", server);
 
     // Resolve server from config if not a direct path/URL
-    let (server_name, resolved_cmd, mut resolved_args, resolved_env) =
-        resolve_server(server, None)?;
+    let spec = resolve_server(server, None)?;
+    let server_name = spec.name;
+    let resolved_cmd = spec.command;
+    let resolved_env = spec.env;
 
     // Merge CLI args with resolved args
+    let mut resolved_args = spec.args;
     resolved_args.extend(args.iter().cloned());
 
     // Set environment variables for spawned process
@@ -202,7 +205,11 @@ async fn run_scan(
     println!("{}", "─".repeat(60));
 
     // Resolve server from config
-    let (server_name, command, mut resolved_args, env) = resolve_server(server, None)?;
+    let spec = resolve_server(server, None)?;
+    let server_name = spec.name;
+    let command = spec.command;
+    let env = spec.env;
+    let mut resolved_args = spec.args;
     resolved_args.extend(args.iter().cloned());
 
     // Run the scan with resolved values

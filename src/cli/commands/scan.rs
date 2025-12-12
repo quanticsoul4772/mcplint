@@ -160,15 +160,17 @@ pub async fn run(config: ScanCommandConfig) -> Result<()> {
         run.profile, run.include, run.exclude, run.timeout, ai.enabled
     );
 
-    // Resolve server to get command, args, and env
-    let (name, command, resolved_args, env) =
-        resolve_server(&run.server, run.config_path.as_deref())?;
+    // Resolve server to get command, args, env, and transport
+    let spec = resolve_server(&run.server, run.config_path.as_deref())?;
+    let name = spec.name;
+    let command = spec.command;
+    let env = spec.env;
 
     // Combine resolved args with any additional args provided
-    let mut full_args = resolved_args;
+    let mut full_args = spec.args;
     full_args.extend(run.args.iter().cloned());
 
-    debug!("Resolved server '{}': {} {:?}", name, command, full_args);
+    debug!("Resolved server '{}': {} {:?} (transport: {})", name, command, full_args, spec.transport);
 
     let profile_name = run.profile.as_str();
     let scan_profile: ScanProfile = run.profile.into();
