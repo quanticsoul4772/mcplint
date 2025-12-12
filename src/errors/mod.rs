@@ -12,6 +12,10 @@ use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
 /// Main error type for mcplint with rich diagnostics
+///
+/// Note: Fields are used by miette's derive macros for error formatting,
+/// but clippy doesn't recognize this usage pattern.
+#[allow(unused_assignments)]
 #[derive(Error, Debug, Diagnostic)]
 pub enum McpLintError {
     /// Server connection failed
@@ -445,5 +449,472 @@ mod tests {
         let err = anyhow::anyhow!("Connection refused to server");
         let formatted = format_error(&err);
         assert!(formatted.contains("doctor"));
+    }
+
+    // Test all error variant creation and Display
+    #[test]
+    fn server_connection_failed_display() {
+        let err = McpLintError::ServerConnectionFailed {
+            message: "Failed to connect".to_string(),
+            suggestion: "Check configuration".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Server connection failed"));
+        assert!(display.contains("Failed to connect"));
+    }
+
+    #[test]
+    fn unknown_server_display() {
+        let err = McpLintError::UnknownServer {
+            server_name: "test-server".to_string(),
+            suggestion: "Did you mean 'filesystem'?".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Unknown server"));
+        assert!(display.contains("test-server"));
+    }
+
+    #[test]
+    fn invalid_config_display() {
+        let err = McpLintError::InvalidConfig {
+            src: NamedSource::new("test.json", "{}".to_string()),
+            span: (0, 2).into(),
+            advice: "Fix the config".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Invalid configuration"));
+        assert!(display.contains("Fix the config"));
+    }
+
+    #[test]
+    fn config_not_found_display() {
+        let err = McpLintError::ConfigNotFound {
+            suggestion: "Run mcplint init".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Configuration file not found"));
+    }
+
+    #[test]
+    fn security_violation_display() {
+        let err = McpLintError::SecurityViolation {
+            rule_id: "SEC-001".to_string(),
+            message: "Path traversal detected".to_string(),
+            fix_suggestion: Some("Sanitize input".to_string()),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Security violation"));
+        assert!(display.contains("SEC-001"));
+    }
+
+    #[test]
+    fn security_violation_without_fix_suggestion() {
+        let err = McpLintError::SecurityViolation {
+            rule_id: "SEC-002".to_string(),
+            message: "Injection detected".to_string(),
+            fix_suggestion: None,
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Security violation"));
+        assert!(display.contains("SEC-002"));
+    }
+
+    #[test]
+    fn protocol_error_display() {
+        let err = McpLintError::ProtocolError {
+            message: "Invalid JSON-RPC".to_string(),
+            suggestion: "Check protocol version".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("MCP protocol error"));
+        assert!(display.contains("Invalid JSON-RPC"));
+    }
+
+    #[test]
+    fn timeout_display() {
+        let err = McpLintError::Timeout {
+            timeout_secs: 30,
+            suggested_timeout: 60,
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Server timeout"));
+        assert!(display.contains("30 seconds"));
+    }
+
+    #[test]
+    fn process_exit_display() {
+        let err = McpLintError::ProcessExit {
+            exit_code: 1,
+            suggestion: "Check logs".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Server process exited"));
+        assert!(display.contains("code 1"));
+    }
+
+    #[test]
+    fn missing_env_var_display() {
+        let err = McpLintError::MissingEnvVar {
+            var_name: "API_KEY".to_string(),
+            context: "Required for authentication".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Missing environment variable"));
+        assert!(display.contains("API_KEY"));
+    }
+
+    #[test]
+    fn invalid_command_display() {
+        let err = McpLintError::InvalidCommand {
+            command: "scna".to_string(),
+            suggestion: "Did you mean 'scan'?".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Invalid command"));
+        assert!(display.contains("scna"));
+    }
+
+    #[test]
+    fn file_not_found_display() {
+        let err = McpLintError::FileNotFound {
+            path: "/path/to/file.txt".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("File not found"));
+        assert!(display.contains("/path/to/file.txt"));
+    }
+
+    #[test]
+    fn permission_denied_display() {
+        let err = McpLintError::PermissionDenied {
+            path: "/secure/file".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Permission denied"));
+        assert!(display.contains("/secure/file"));
+    }
+
+    #[test]
+    fn json_parse_error_display() {
+        let err = McpLintError::JsonParseError {
+            message: "Unexpected token".to_string(),
+            src: None,
+            span: None,
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Failed to parse JSON"));
+        assert!(display.contains("Unexpected token"));
+    }
+
+    #[test]
+    fn json_parse_error_with_source() {
+        let err = McpLintError::JsonParseError {
+            message: "Invalid syntax".to_string(),
+            src: Some(NamedSource::new("data.json", "{invalid}".to_string())),
+            span: Some((0, 9).into()),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Failed to parse JSON"));
+        assert!(display.contains("Invalid syntax"));
+    }
+
+    #[test]
+    fn io_error_display() {
+        let err = McpLintError::IoError {
+            message: "Failed to read file".to_string(),
+            suggestion: "Check permissions".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("IO error"));
+        assert!(display.contains("Failed to read file"));
+    }
+
+    #[test]
+    fn validation_failed_display() {
+        let err = McpLintError::ValidationFailed {
+            server: "test-server".to_string(),
+            count: 5,
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Validation failed"));
+        assert!(display.contains("5 issues"));
+    }
+
+    #[test]
+    fn scan_failed_display() {
+        let err = McpLintError::ScanFailed {
+            message: "Scanner crashed".to_string(),
+            suggestion: "Retry with --verbose".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Security scan failed"));
+        assert!(display.contains("Scanner crashed"));
+    }
+
+    #[test]
+    fn fuzz_error_display() {
+        let err = McpLintError::FuzzError {
+            message: "Corpus generation failed".to_string(),
+            suggestion: "Check input format".to_string(),
+        };
+        let display = format!("{}", err);
+        assert!(display.contains("Fuzzing error"));
+        assert!(display.contains("Corpus generation failed"));
+    }
+
+    // Test Debug implementations
+    #[test]
+    fn error_debug_format() {
+        let err = McpLintError::timeout(30);
+        let debug = format!("{:?}", err);
+        assert!(debug.contains("Timeout"));
+        assert!(debug.contains("timeout_secs"));
+    }
+
+    // Test connection_failed helper with different error types
+    #[test]
+    fn connection_failed_permission_error() {
+        let err = McpLintError::connection_failed("Permission denied");
+        if let McpLintError::ServerConnectionFailed { suggestion, .. } = err {
+            assert!(suggestion.contains("permission") || suggestion.contains("chmod"));
+        } else {
+            panic!("Expected ServerConnectionFailed");
+        }
+    }
+
+    #[test]
+    fn connection_failed_not_found_error() {
+        let err = McpLintError::connection_failed("No such file or directory");
+        if let McpLintError::ServerConnectionFailed { suggestion, .. } = err {
+            assert!(suggestion.contains("not found") || suggestion.contains("installed"));
+        } else {
+            panic!("Expected ServerConnectionFailed");
+        }
+    }
+
+    #[test]
+    fn connection_failed_spawn_error() {
+        let err = McpLintError::connection_failed("Failed to spawn process");
+        if let McpLintError::ServerConnectionFailed { suggestion, .. } = err {
+            assert!(suggestion.contains("spawn") || suggestion.contains("doctor"));
+        } else {
+            panic!("Expected ServerConnectionFailed");
+        }
+    }
+
+    #[test]
+    fn connection_failed_generic_error() {
+        let err = McpLintError::connection_failed("Unknown error");
+        if let McpLintError::ServerConnectionFailed { suggestion, .. } = err {
+            assert!(suggestion.contains("doctor") || suggestion.contains("configuration"));
+        } else {
+            panic!("Expected ServerConnectionFailed");
+        }
+    }
+
+    // Test protocol_error helper with different error types
+    #[test]
+    fn protocol_error_version_mismatch() {
+        let err = McpLintError::protocol_error("Protocol version mismatch");
+        if let McpLintError::ProtocolError { suggestion, .. } = err {
+            assert!(suggestion.contains("version") || suggestion.contains("compatible"));
+        } else {
+            panic!("Expected ProtocolError");
+        }
+    }
+
+    #[test]
+    fn protocol_error_json_parse() {
+        let err = McpLintError::protocol_error("Invalid JSON response");
+        if let McpLintError::ProtocolError { suggestion, .. } = err {
+            assert!(suggestion.contains("JSON") || suggestion.contains("stdout"));
+        } else {
+            panic!("Expected ProtocolError");
+        }
+    }
+
+    #[test]
+    fn protocol_error_initialization() {
+        let err = McpLintError::protocol_error("Failed to initialize server");
+        if let McpLintError::ProtocolError { suggestion, .. } = err {
+            assert!(suggestion.contains("initialization") || suggestion.contains("startup"));
+        } else {
+            panic!("Expected ProtocolError");
+        }
+    }
+
+    #[test]
+    fn protocol_error_generic() {
+        let err = McpLintError::protocol_error("Unknown protocol error");
+        if let McpLintError::ProtocolError { suggestion, .. } = err {
+            assert!(suggestion.contains("protocol") || suggestion.contains("specification"));
+        } else {
+            panic!("Expected ProtocolError");
+        }
+    }
+
+    // Test process_exit helper with different exit codes
+    #[test]
+    fn process_exit_code_0() {
+        let err = McpLintError::process_exit(0);
+        if let McpLintError::ProcessExit { suggestion, .. } = err {
+            assert!(suggestion.contains("successfully") || suggestion.contains("unexpectedly"));
+        } else {
+            panic!("Expected ProcessExit");
+        }
+    }
+
+    #[test]
+    fn process_exit_code_1() {
+        let err = McpLintError::process_exit(1);
+        if let McpLintError::ProcessExit { suggestion, .. } = err {
+            assert!(suggestion.contains("general error") || suggestion.contains("logs"));
+        } else {
+            panic!("Expected ProcessExit");
+        }
+    }
+
+    #[test]
+    fn process_exit_code_2() {
+        let err = McpLintError::process_exit(2);
+        if let McpLintError::ProcessExit { suggestion, .. } = err {
+            assert!(suggestion.contains("misuse") || suggestion.contains("arguments"));
+        } else {
+            panic!("Expected ProcessExit");
+        }
+    }
+
+    #[test]
+    fn process_exit_code_126() {
+        let err = McpLintError::process_exit(126);
+        if let McpLintError::ProcessExit { suggestion, .. } = err {
+            assert!(suggestion.contains("Permission") || suggestion.contains("chmod"));
+        } else {
+            panic!("Expected ProcessExit");
+        }
+    }
+
+    #[test]
+    fn process_exit_code_130() {
+        let err = McpLintError::process_exit(130);
+        if let McpLintError::ProcessExit { suggestion, .. } = err {
+            assert!(suggestion.contains("interrupted") || suggestion.contains("Ctrl+C"));
+        } else {
+            panic!("Expected ProcessExit");
+        }
+    }
+
+    #[test]
+    fn process_exit_code_137() {
+        let err = McpLintError::process_exit(137);
+        if let McpLintError::ProcessExit { suggestion, .. } = err {
+            assert!(suggestion.contains("killed") || suggestion.contains("memory"));
+        } else {
+            panic!("Expected ProcessExit");
+        }
+    }
+
+    #[test]
+    fn process_exit_code_139() {
+        let err = McpLintError::process_exit(139);
+        if let McpLintError::ProcessExit { suggestion, .. } = err {
+            assert!(suggestion.contains("segmentation fault") || suggestion.contains("bug"));
+        } else {
+            panic!("Expected ProcessExit");
+        }
+    }
+
+    #[test]
+    fn process_exit_code_unknown() {
+        let err = McpLintError::process_exit(99);
+        if let McpLintError::ProcessExit { suggestion, .. } = err {
+            assert!(suggestion.contains("code 99") || suggestion.contains("logs"));
+        } else {
+            panic!("Expected ProcessExit");
+        }
+    }
+
+    // Test missing_env_var helper
+    #[test]
+    fn missing_env_var_creation() {
+        let err = McpLintError::missing_env_var("DATABASE_URL", "Required for database connection");
+        if let McpLintError::MissingEnvVar { var_name, context } = err {
+            assert_eq!(var_name, "DATABASE_URL");
+            assert_eq!(context, "Required for database connection");
+        } else {
+            panic!("Expected MissingEnvVar");
+        }
+    }
+
+    // Test format_error with different error types
+    #[test]
+    fn format_error_timeout() {
+        let err = anyhow::anyhow!("Operation timeout after 30s");
+        let formatted = format_error(&err);
+        assert!(formatted.contains("timeout"));
+        assert!(formatted.contains("--timeout"));
+    }
+
+    #[test]
+    fn format_error_not_found() {
+        let err = anyhow::anyhow!("Server not found in configuration");
+        let formatted = format_error(&err);
+        assert!(formatted.contains("not found"));
+        assert!(formatted.contains("mcplint servers"));
+    }
+
+    #[test]
+    fn format_error_generic() {
+        let err = anyhow::anyhow!("Some random error");
+        let formatted = format_error(&err);
+        assert_eq!(formatted, "Some random error");
+    }
+
+    // Test unknown_server with empty known servers
+    #[test]
+    fn unknown_server_no_known_servers() {
+        let known: Vec<String> = vec![];
+        let err = McpLintError::unknown_server("test", &known);
+        if let McpLintError::UnknownServer {
+            server_name,
+            suggestion,
+        } = err
+        {
+            assert_eq!(server_name, "test");
+            assert!(!suggestion.is_empty());
+        } else {
+            panic!("Expected UnknownServer");
+        }
+    }
+
+    // Test edge cases for timeout
+    #[test]
+    fn timeout_large_value() {
+        let err = McpLintError::timeout(3600);
+        if let McpLintError::Timeout {
+            timeout_secs,
+            suggested_timeout,
+        } = err
+        {
+            assert_eq!(timeout_secs, 3600);
+            assert_eq!(suggested_timeout, 7200);
+        } else {
+            panic!("Expected Timeout");
+        }
+    }
+
+    #[test]
+    fn timeout_zero() {
+        let err = McpLintError::timeout(0);
+        if let McpLintError::Timeout {
+            timeout_secs,
+            suggested_timeout,
+        } = err
+        {
+            assert_eq!(timeout_secs, 0);
+            assert_eq!(suggested_timeout, 0);
+        } else {
+            panic!("Expected Timeout");
+        }
     }
 }
