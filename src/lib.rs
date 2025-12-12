@@ -43,6 +43,7 @@ pub mod reporter;
 pub mod rules;
 pub mod scanner;
 pub mod transport;
+pub mod ui;
 pub mod validator;
 
 // Re-export commonly used types
@@ -54,4 +55,5 @@ pub use fingerprinting::{
     FingerprintMetadata, NormalizedSchema, SchemaNormalizer, ToolFingerprint,
 };
 pub use scanner::{ScanEngine, ScanResults};
+pub use ui::{OutputMode, Printer, ProgressStyle, ScanProgress, SecurityTheme, Severity, Theme};
 pub use validator::ValidationEngine;
