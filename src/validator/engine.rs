@@ -2016,6 +2016,8 @@ impl ValidationEngine {
         let mut tested = false;
 
         if let Some(ref tools) = ctx.tools {
+            // Filter for tools that actually perform network requests
+            // Exclude generic "get" which matches filesystem tools like get_file_info
             let url_tools: Vec<_> = tools
                 .iter()
                 .filter(|t| {
@@ -2025,15 +2027,38 @@ impl ValidationEngine {
                         .as_ref()
                         .map(|d| d.to_lowercase())
                         .unwrap_or_default();
-                    name_lower.contains("fetch")
-                        || name_lower.contains("url")
+
+                    // Check for network-related tool names (specific patterns)
+                    let has_network_name = name_lower.contains("fetch")
                         || name_lower.contains("http")
                         || name_lower.contains("request")
-                        || name_lower.contains("get")
                         || name_lower.contains("download")
-                        || desc_lower.contains("url")
-                        || desc_lower.contains("fetch")
-                        || desc_lower.contains("http")
+                        || name_lower.contains("curl")
+                        || name_lower.contains("wget")
+                        || name_lower == "get_url"
+                        || name_lower == "get_uri"
+                        || name_lower.contains("_url")
+                        || name_lower.contains("url_")
+                        || name_lower.starts_with("url");
+
+                    // Check description for network-related content
+                    let has_network_desc = desc_lower.contains("fetch")
+                        || desc_lower.contains("http request")
+                        || desc_lower.contains("download from")
+                        || desc_lower.contains("make a request")
+                        || desc_lower.contains("call an api")
+                        || desc_lower.contains("remote server")
+                        || desc_lower.contains("web request");
+
+                    // Also check if tool has URL/URI parameters in schema
+                    let has_url_param = {
+                        let schema_str = t.input_schema.to_string().to_lowercase();
+                        schema_str.contains("\"url\"")
+                            || schema_str.contains("\"uri\"")
+                            || schema_str.contains("\"endpoint\"")
+                    };
+
+                    has_network_name || has_network_desc || has_url_param
                 })
                 .collect();
 
@@ -2051,11 +2076,19 @@ impl ValidationEngine {
 
                     if let Ok(content) = result {
                         let content_str = format!("{:?}", content).to_lowercase();
-                        if content_str.contains("root:")
-                            || content_str.contains("ami-id")
-                            || content_str.contains("instance-id")
-                            || content_str.len() > 100
-                        {
+                        // Check for specific SSRF indicators, not just response length
+                        // These indicate successful access to internal resources
+                        let has_ssrf_indicator = content_str.contains("root:")  // /etc/passwd leak
+                            || content_str.contains("ami-id")  // AWS metadata
+                            || content_str.contains("instance-id")  // AWS metadata
+                            || content_str.contains("meta-data")  // Cloud metadata
+                            || content_str.contains("169.254.169.254")  // AWS metadata IP
+                            || content_str.contains("computemetadata")  // GCP metadata
+                            || content_str.contains("metadata.google")  // GCP metadata
+                            || content_str.contains("/bin/bash")  // /etc/passwd content
+                            || content_str.contains("/usr/sbin"); // /etc/passwd content
+
+                        if has_ssrf_indicator {
                             ssrf_blocked = false;
                             break;
                         }
