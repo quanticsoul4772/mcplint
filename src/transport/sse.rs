@@ -17,8 +17,10 @@ use crate::protocol::{
 use super::{Transport, TransportConfig};
 
 /// SSE transport for communicating with remote MCP servers (legacy)
+#[derive(Debug)]
 pub struct SseTransport {
     base_url: Url,
+    #[allow(dead_code)]
     client: reqwest::Client,
     config: TransportConfig,
     request_id: AtomicU64,
@@ -162,5 +164,146 @@ mod tests {
 
         assert_eq!(id1, RequestId::Number(1));
         assert_eq!(id2, RequestId::Number(2));
+    }
+
+    // ==========================================================================
+    // Additional Tests for Coverage
+    // ==========================================================================
+
+    #[test]
+    fn parse_url_with_port() {
+        let config = TransportConfig::default();
+        let transport = SseTransport::new("https://example.com:8080/mcp", config);
+        assert!(transport.is_ok());
+    }
+
+    #[test]
+    fn parse_url_with_query_params() {
+        let config = TransportConfig::default();
+        let transport = SseTransport::new("https://example.com/mcp?param=value", config);
+        assert!(transport.is_ok());
+    }
+
+    #[test]
+    fn parse_url_with_path() {
+        let config = TransportConfig::default();
+        let transport = SseTransport::new("https://example.com/api/v1/mcp/sse", config);
+        assert!(transport.is_ok());
+    }
+
+    #[test]
+    fn invalid_url_empty_string() {
+        let config = TransportConfig::default();
+        let transport = SseTransport::new("", config);
+        assert!(transport.is_err());
+    }
+
+    #[test]
+    fn invalid_url_no_scheme() {
+        let config = TransportConfig::default();
+        let transport = SseTransport::new("example.com/mcp", config);
+        assert!(transport.is_err());
+    }
+
+    #[test]
+    fn invalid_url_missing_scheme() {
+        let config = TransportConfig::default();
+        // URLs without scheme are invalid
+        let transport = SseTransport::new("not-a-url", config);
+        assert!(transport.is_err());
+    }
+
+    #[test]
+    fn custom_timeout_config() {
+        let config = TransportConfig {
+            timeout_secs: 60,
+            max_message_size: 5 * 1024 * 1024,
+        };
+        let transport = SseTransport::new("https://example.com/mcp", config);
+        assert!(transport.is_ok());
+        let transport = transport.unwrap();
+        assert_eq!(transport.config.timeout_secs, 60);
+        assert_eq!(transport.config.max_message_size, 5 * 1024 * 1024);
+    }
+
+    #[test]
+    fn request_id_starts_at_one() {
+        let config = TransportConfig::default();
+        let transport = SseTransport::new("https://example.com/mcp", config).unwrap();
+        let id = transport.next_id();
+        assert_eq!(id, RequestId::Number(1));
+    }
+
+    #[test]
+    fn request_id_many_increments() {
+        let config = TransportConfig::default();
+        let transport = SseTransport::new("https://example.com/mcp", config).unwrap();
+
+        for i in 1..=10 {
+            let id = transport.next_id();
+            assert_eq!(id, RequestId::Number(i));
+        }
+    }
+
+    #[test]
+    fn transport_type_name() {
+        let config = TransportConfig::default();
+        let transport = SseTransport::new("https://example.com/mcp", config).unwrap();
+        assert_eq!(transport.transport_type(), "sse_legacy");
+    }
+
+    #[test]
+    fn parse_http_url() {
+        let config = TransportConfig::default();
+        let transport = SseTransport::new("http://example.com/mcp", config);
+        assert!(transport.is_ok());
+    }
+
+    #[test]
+    fn parse_localhost_url() {
+        let config = TransportConfig::default();
+        let transport = SseTransport::new("http://localhost:8080/sse", config);
+        assert!(transport.is_ok());
+    }
+
+    #[test]
+    fn parse_ipv4_url() {
+        let config = TransportConfig::default();
+        let transport = SseTransport::new("http://127.0.0.1:8080/mcp", config);
+        assert!(transport.is_ok());
+    }
+
+    #[test]
+    fn parse_ipv6_url() {
+        let config = TransportConfig::default();
+        let transport = SseTransport::new("http://[::1]:8080/mcp", config);
+        assert!(transport.is_ok());
+    }
+
+    #[test]
+    fn invalid_url_contains_error_context() {
+        let config = TransportConfig::default();
+        let result = SseTransport::new("not a url", config);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        let err_msg = format!("{:#}", err);
+        assert!(err_msg.contains("Invalid base URL"));
+    }
+
+    #[tokio::test]
+    async fn close_succeeds() {
+        let config = TransportConfig::default();
+        let mut transport = SseTransport::new("https://example.com/mcp", config).unwrap();
+        let result = transport.close().await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn recv_returns_none() {
+        let config = TransportConfig::default();
+        let mut transport = SseTransport::new("https://example.com/mcp", config).unwrap();
+        let result = transport.recv().await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
     }
 }

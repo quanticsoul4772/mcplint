@@ -852,4 +852,466 @@ mod tests {
         let json = serde_json::to_string(&kind).unwrap();
         assert_eq!(json, "\"cwe\"");
     }
+
+    // Additional Severity tests
+    #[test]
+    fn severity_color_critical() {
+        assert_eq!(Severity::Critical.color(), Color::Red);
+    }
+
+    #[test]
+    fn severity_color_high() {
+        assert_eq!(Severity::High.color(), Color::Red);
+    }
+
+    #[test]
+    fn severity_color_medium() {
+        assert_eq!(Severity::Medium.color(), Color::Yellow);
+    }
+
+    #[test]
+    fn severity_color_low() {
+        assert_eq!(Severity::Low.color(), Color::Blue);
+    }
+
+    #[test]
+    fn severity_color_info() {
+        assert_eq!(Severity::Info.color(), Color::BrightBlack);
+    }
+
+    #[test]
+    fn severity_icon_unicode_critical() {
+        assert_eq!(Severity::Critical.icon(OutputMode::Interactive), "🔴");
+    }
+
+    #[test]
+    fn severity_icon_unicode_high() {
+        assert_eq!(Severity::High.icon(OutputMode::Interactive), "🟠");
+    }
+
+    #[test]
+    fn severity_icon_unicode_medium() {
+        assert_eq!(Severity::Medium.icon(OutputMode::Interactive), "🟡");
+    }
+
+    #[test]
+    fn severity_icon_unicode_low() {
+        assert_eq!(Severity::Low.icon(OutputMode::Interactive), "🔵");
+    }
+
+    #[test]
+    fn severity_icon_unicode_info() {
+        assert_eq!(Severity::Info.icon(OutputMode::Interactive), "⚪");
+    }
+
+    #[test]
+    fn severity_icon_ascii_critical() {
+        assert_eq!(Severity::Critical.icon(OutputMode::CI), "[CRITICAL]");
+    }
+
+    #[test]
+    fn severity_icon_ascii_high() {
+        assert_eq!(Severity::High.icon(OutputMode::CI), "[HIGH]");
+    }
+
+    #[test]
+    fn severity_icon_ascii_medium() {
+        assert_eq!(Severity::Medium.icon(OutputMode::CI), "[MEDIUM]");
+    }
+
+    #[test]
+    fn severity_icon_ascii_low() {
+        assert_eq!(Severity::Low.icon(OutputMode::CI), "[LOW]");
+    }
+
+    #[test]
+    fn severity_icon_ascii_info() {
+        assert_eq!(Severity::Info.icon(OutputMode::CI), "[INFO]");
+    }
+
+    #[test]
+    fn severity_display_with_colors() {
+        let display = Severity::Critical.display(OutputMode::Interactive);
+        assert!(display.contains("CRITICAL"));
+    }
+
+    #[test]
+    fn severity_display_without_colors() {
+        let display = Severity::Critical.display(OutputMode::CI);
+        assert_eq!(display, "CRITICAL");
+    }
+
+    #[test]
+    fn severity_display_high() {
+        let display = Severity::High.display(OutputMode::CI);
+        assert_eq!(display, "HIGH");
+    }
+
+    #[test]
+    fn severity_display_medium() {
+        let display = Severity::Medium.display(OutputMode::CI);
+        assert_eq!(display, "MEDIUM");
+    }
+
+    #[test]
+    fn severity_display_low() {
+        let display = Severity::Low.display(OutputMode::CI);
+        assert_eq!(display, "LOW");
+    }
+
+    #[test]
+    fn severity_display_info() {
+        let display = Severity::Info.display(OutputMode::CI);
+        assert_eq!(display, "INFO");
+    }
+
+    // FindingMetadata tests
+    #[test]
+    fn finding_metadata_default() {
+        let metadata = FindingMetadata::default();
+        assert!(metadata.detected_at.is_none());
+        assert!(metadata.scanner_version.is_none());
+        assert!(metadata.tags.is_empty());
+    }
+
+    #[test]
+    fn finding_metadata_with_values() {
+        let mut metadata = FindingMetadata::default();
+        metadata.detected_at = Some("2025-12-12T00:00:00Z".to_string());
+        metadata.scanner_version = Some("1.0.0".to_string());
+        metadata.tags.push("test".to_string());
+
+        assert_eq!(
+            metadata.detected_at,
+            Some("2025-12-12T00:00:00Z".to_string())
+        );
+        assert_eq!(metadata.scanner_version, Some("1.0.0".to_string()));
+        assert_eq!(metadata.tags.len(), 1);
+    }
+
+    // FindingLocation default test
+    #[test]
+    fn finding_location_default() {
+        let location = FindingLocation::default();
+        assert!(location.component.is_empty());
+        assert!(location.identifier.is_empty());
+        assert!(location.context.is_none());
+    }
+
+    // Evidence::new tests
+    #[test]
+    fn evidence_new() {
+        let evidence = Evidence::new(EvidenceKind::Request, "test data", "test description");
+        assert_eq!(evidence.kind, EvidenceKind::Request);
+        assert_eq!(evidence.data, "test data");
+        assert_eq!(evidence.description, "test description");
+    }
+
+    // EvidenceKind serialization tests
+    #[test]
+    fn evidence_kind_request_serialization() {
+        let kind = EvidenceKind::Request;
+        let json = serde_json::to_string(&kind).unwrap();
+        assert_eq!(json, "\"request\"");
+    }
+
+    #[test]
+    fn evidence_kind_response_serialization() {
+        let kind = EvidenceKind::Response;
+        let json = serde_json::to_string(&kind).unwrap();
+        assert_eq!(json, "\"response\"");
+    }
+
+    #[test]
+    fn evidence_kind_configuration_serialization() {
+        let kind = EvidenceKind::Configuration;
+        let json = serde_json::to_string(&kind).unwrap();
+        assert_eq!(json, "\"configuration\"");
+    }
+
+    #[test]
+    fn evidence_kind_observation_serialization() {
+        let kind = EvidenceKind::Observation;
+        let json = serde_json::to_string(&kind).unwrap();
+        assert_eq!(json, "\"observation\"");
+    }
+
+    // ReferenceKind serialization tests
+    #[test]
+    fn reference_kind_cve_serialization() {
+        let kind = ReferenceKind::Cve;
+        let json = serde_json::to_string(&kind).unwrap();
+        assert_eq!(json, "\"cve\"");
+    }
+
+    #[test]
+    fn reference_kind_mcp_advisory_serialization() {
+        let kind = ReferenceKind::McpAdvisory;
+        let json = serde_json::to_string(&kind).unwrap();
+        assert_eq!(json, "\"mcpadvisory\"");
+    }
+
+    #[test]
+    fn reference_kind_documentation_serialization() {
+        let kind = ReferenceKind::Documentation;
+        let json = serde_json::to_string(&kind).unwrap();
+        assert_eq!(json, "\"documentation\"");
+    }
+
+    // Additional Finding builder tests
+    #[test]
+    fn finding_with_all_severities() {
+        let critical = Finding::new("TEST-001", Severity::Critical, "Title", "Desc");
+        let high = Finding::new("TEST-002", Severity::High, "Title", "Desc");
+        let medium = Finding::new("TEST-003", Severity::Medium, "Title", "Desc");
+        let low = Finding::new("TEST-004", Severity::Low, "Title", "Desc");
+        let info = Finding::new("TEST-005", Severity::Info, "Title", "Desc");
+
+        assert_eq!(critical.severity, Severity::Critical);
+        assert_eq!(high.severity, Severity::High);
+        assert_eq!(medium.severity, Severity::Medium);
+        assert_eq!(low.severity, Severity::Low);
+        assert_eq!(info.severity, Severity::Info);
+    }
+
+    #[test]
+    fn finding_complex_builder_chain() {
+        let finding = Finding::new(
+            "TEST-001",
+            Severity::High,
+            "Complex Test",
+            "Test Description",
+        )
+        .with_location(FindingLocation::tool("test_tool").with_context("field"))
+        .with_evidence(Evidence::request("req1", "desc1"))
+        .with_evidence(Evidence::response("resp1", "desc2"))
+        .with_evidence(Evidence::configuration("conf1", "desc3"))
+        .with_remediation("Fix all issues")
+        .with_cwe("78")
+        .with_reference(Reference::mcp_advisory("MCP-ADV-001"));
+
+        assert_eq!(finding.evidence.len(), 3);
+        assert_eq!(finding.references.len(), 2);
+        assert_eq!(finding.location.context, Some("field".to_string()));
+    }
+
+    // Reference URL generation tests
+    #[test]
+    fn reference_cwe_url_format() {
+        let reference = Reference::cwe("123");
+        assert_eq!(
+            reference.url,
+            Some("https://cwe.mitre.org/data/definitions/123.html".to_string())
+        );
+    }
+
+    #[test]
+    fn reference_cwe_strips_prefix() {
+        let reference = Reference::cwe("CWE-456");
+        assert_eq!(reference.id, "CWE-456");
+        assert!(reference.url.unwrap().contains("456.html"));
+    }
+
+    #[test]
+    fn reference_cve_url_format() {
+        let reference = Reference::cve("CVE-2025-9999");
+        assert_eq!(
+            reference.url,
+            Some("https://nvd.nist.gov/vuln/detail/CVE-2025-9999".to_string())
+        );
+    }
+
+    #[test]
+    fn reference_mcp_advisory_no_url() {
+        let reference = Reference::mcp_advisory("MCP-ADV-123");
+        assert_eq!(reference.id, "MCP-ADV-123");
+        assert_eq!(reference.url, None);
+    }
+
+    #[test]
+    fn reference_documentation_with_url() {
+        let reference = Reference::documentation("Test Doc", "https://example.com/docs");
+        assert_eq!(reference.id, "Test Doc");
+        assert_eq!(reference.url, Some("https://example.com/docs".to_string()));
+    }
+
+    // Severity hash test
+    #[test]
+    fn severity_hash() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(Severity::Critical);
+        set.insert(Severity::High);
+        set.insert(Severity::Critical); // duplicate
+
+        assert_eq!(set.len(), 2);
+        assert!(set.contains(&Severity::Critical));
+        assert!(set.contains(&Severity::High));
+    }
+
+    // Severity copy and clone tests
+    #[test]
+    fn severity_copy_clone() {
+        let s1 = Severity::High;
+        let s2 = s1; // copy
+        let s3 = s1.clone(); // clone
+
+        assert_eq!(s1, s2);
+        assert_eq!(s1, s3);
+    }
+
+    // EvidenceKind equality tests
+    #[test]
+    fn evidence_kind_equality() {
+        assert_eq!(EvidenceKind::Request, EvidenceKind::Request);
+        assert_ne!(EvidenceKind::Request, EvidenceKind::Response);
+    }
+
+    // ReferenceKind equality tests
+    #[test]
+    fn reference_kind_equality() {
+        assert_eq!(ReferenceKind::Cwe, ReferenceKind::Cwe);
+        assert_ne!(ReferenceKind::Cwe, ReferenceKind::Cve);
+    }
+
+    // Finding serialization edge cases
+    #[test]
+    fn finding_serialization_with_empty_fields() {
+        let finding = Finding::new("TEST-001", Severity::Info, "Title", "Description");
+        let json = serde_json::to_string(&finding).unwrap();
+        let deserialized: Finding = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.rule_id, "TEST-001");
+        assert!(deserialized.evidence.is_empty());
+        assert!(deserialized.references.is_empty());
+    }
+
+    #[test]
+    fn finding_serialization_with_all_fields() {
+        let finding = Finding::new("TEST-001", Severity::Critical, "Title", "Description")
+            .with_location(FindingLocation::tool("test"))
+            .with_evidence(Evidence::observation("data", "desc"))
+            .with_remediation("Fix it")
+            .with_cwe("78");
+
+        let json = serde_json::to_string(&finding).unwrap();
+        let deserialized: Finding = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.rule_id, "TEST-001");
+        assert_eq!(deserialized.evidence.len(), 1);
+        assert_eq!(deserialized.references.len(), 1);
+    }
+
+    // Severity deserialization tests
+    #[test]
+    fn severity_deserialization_all() {
+        let severities = vec!["info", "low", "medium", "high", "critical"];
+        let expected = vec![
+            Severity::Info,
+            Severity::Low,
+            Severity::Medium,
+            Severity::High,
+            Severity::Critical,
+        ];
+
+        for (json_str, expected_severity) in severities.iter().zip(expected.iter()) {
+            let json = format!("\"{}\"", json_str);
+            let severity: Severity = serde_json::from_str(&json).unwrap();
+            assert_eq!(severity, *expected_severity);
+        }
+    }
+
+    // Severity ordering comprehensive
+    #[test]
+    fn severity_partial_ord() {
+        use std::cmp::Ordering;
+
+        assert_eq!(
+            Severity::Critical.partial_cmp(&Severity::High),
+            Some(Ordering::Greater)
+        );
+        assert_eq!(
+            Severity::Low.partial_cmp(&Severity::High),
+            Some(Ordering::Less)
+        );
+        assert_eq!(
+            Severity::Medium.partial_cmp(&Severity::Medium),
+            Some(Ordering::Equal)
+        );
+    }
+
+    // Finding location variants
+    #[test]
+    fn finding_location_all_variants() {
+        let tool_loc = FindingLocation::tool("my_tool");
+        assert_eq!(tool_loc.component, "tool");
+
+        let resource_loc = FindingLocation::resource("resource://path");
+        assert_eq!(resource_loc.component, "resource");
+
+        let transport_loc = FindingLocation::transport("stdio");
+        assert_eq!(transport_loc.component, "transport");
+
+        let server_loc = FindingLocation::server();
+        assert_eq!(server_loc.component, "server");
+    }
+
+    // Evidence all kinds
+    #[test]
+    fn evidence_all_kinds() {
+        let req = Evidence::request("req", "desc");
+        assert_eq!(req.kind, EvidenceKind::Request);
+
+        let resp = Evidence::response("resp", "desc");
+        assert_eq!(resp.kind, EvidenceKind::Response);
+
+        let conf = Evidence::configuration("conf", "desc");
+        assert_eq!(conf.kind, EvidenceKind::Configuration);
+
+        let obs = Evidence::observation("obs", "desc");
+        assert_eq!(obs.kind, EvidenceKind::Observation);
+    }
+
+    // Multiple CWE references
+    #[test]
+    fn finding_with_multiple_cwes() {
+        let finding = Finding::new("TEST-001", Severity::High, "Title", "Description")
+            .with_cwe("78")
+            .with_cwe("89")
+            .with_cwe("22");
+
+        assert_eq!(finding.references.len(), 3);
+        assert!(finding.references.iter().any(|r| r.id == "CWE-78"));
+        assert!(finding.references.iter().any(|r| r.id == "CWE-89"));
+        assert!(finding.references.iter().any(|r| r.id == "CWE-22"));
+    }
+
+    // Severity colored_from_str edge cases
+    #[test]
+    fn severity_colored_from_str_empty() {
+        let result = Severity::colored_from_str("");
+        assert_eq!(result.to_string(), "");
+    }
+
+    #[test]
+    fn severity_colored_from_str_whitespace() {
+        let result = Severity::colored_from_str("   ");
+        assert_eq!(result.to_string(), "   ");
+    }
+
+    // Metadata serialization
+    #[test]
+    fn finding_metadata_serialization() {
+        let mut metadata = FindingMetadata::default();
+        metadata.detected_at = Some("2025-12-12T00:00:00Z".to_string());
+        metadata.scanner_version = Some("1.0.0".to_string());
+        metadata.tags = vec!["test".to_string(), "security".to_string()];
+
+        let json = serde_json::to_string(&metadata).unwrap();
+        let deserialized: FindingMetadata = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(deserialized.detected_at, metadata.detected_at);
+        assert_eq!(deserialized.scanner_version, metadata.scanner_version);
+        assert_eq!(deserialized.tags, metadata.tags);
+    }
 }

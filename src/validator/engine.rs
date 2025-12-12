@@ -4641,7 +4641,9 @@ mod tests {
     // Tests for synchronous rule execution functions
     mod sync_rule_tests {
         use super::*;
-        use crate::protocol::mcp::{Prompt, Resource};
+        use crate::protocol::mcp::{
+            Prompt, PromptsCapability, Resource, ResourcesCapability, ToolsCapability,
+        };
 
         fn create_test_tool_with_name(name: &str) -> Tool {
             Tool {
@@ -4922,6 +4924,790 @@ mod tests {
 
             // Should have multiple protocol rules executed
             assert!(results.results.len() >= 3); // At least PROTO-005, PROTO-006, PROTO-007
+        }
+
+        // Additional ValidationConfig tests
+        #[test]
+        fn validation_config_custom() {
+            let config = ValidationConfig {
+                timeout_secs: 60,
+                skip_categories: vec![ValidationCategory::Security],
+                skip_rules: vec![ValidationRuleId::Proto001],
+                strict_mode: true,
+            };
+            assert_eq!(config.timeout_secs, 60);
+            assert_eq!(config.skip_categories.len(), 1);
+            assert_eq!(config.skip_rules.len(), 1);
+            assert!(config.strict_mode);
+        }
+
+        #[test]
+        fn validation_config_clone() {
+            let config = ValidationConfig {
+                timeout_secs: 45,
+                skip_categories: vec![],
+                skip_rules: vec![],
+                strict_mode: false,
+            };
+            let cloned = config.clone();
+            assert_eq!(cloned.timeout_secs, 45);
+        }
+
+        // Additional ValidationResult tests
+        #[test]
+        fn validation_result_category_field() {
+            let rule = make_test_rule();
+            let result = ValidationResult::pass(&rule, 100);
+            assert_eq!(result.category, "protocol");
+        }
+
+        #[test]
+        fn validation_result_with_empty_details() {
+            let rule = make_test_rule();
+            let result = ValidationResult::fail(&rule, "Error", 10).with_details(vec![]);
+            assert!(result.details.is_empty());
+        }
+
+        #[test]
+        fn validation_result_with_multiple_details() {
+            let rule = make_test_rule();
+            let result = ValidationResult::warning(&rule, "Warning", 20).with_details(vec![
+                "Detail 1".to_string(),
+                "Detail 2".to_string(),
+                "Detail 3".to_string(),
+            ]);
+            assert_eq!(result.details.len(), 3);
+        }
+
+        #[test]
+        fn validation_result_clone() {
+            let rule = make_test_rule();
+            let result = ValidationResult::pass(&rule, 100);
+            let cloned = result.clone();
+            assert_eq!(cloned.rule_id, result.rule_id);
+            assert_eq!(cloned.duration_ms, 100);
+        }
+
+        // Additional ValidationResults tests
+        #[test]
+        fn validation_results_add_multiple_same_severity() {
+            let mut results = ValidationResults::new("test");
+            let rule = make_test_rule();
+
+            results.add_result(ValidationResult::pass(&rule, 10));
+            results.add_result(ValidationResult::pass(&rule, 15));
+            results.add_result(ValidationResult::pass(&rule, 20));
+
+            assert_eq!(results.passed, 3);
+            assert_eq!(results.failed, 0);
+            assert_eq!(results.warnings, 0);
+            assert_eq!(results.total_duration_ms, 45);
+        }
+
+        #[test]
+        fn validation_results_mixed_severities() {
+            let mut results = ValidationResults::new("test");
+            let rule = make_test_rule();
+
+            results.add_result(ValidationResult::pass(&rule, 10));
+            results.add_result(ValidationResult::fail(&rule, "Error 1", 20));
+            results.add_result(ValidationResult::warning(&rule, "Warning 1", 5));
+            results.add_result(ValidationResult::fail(&rule, "Error 2", 15));
+
+            assert_eq!(results.passed, 1);
+            assert_eq!(results.failed, 2);
+            assert_eq!(results.warnings, 1);
+            assert_eq!(results.total_duration_ms, 50);
+        }
+
+        #[test]
+        fn validation_results_protocol_version_and_capabilities() {
+            let mut results = ValidationResults::new("test-server");
+            results.protocol_version = Some("2024-11-05".to_string());
+            results.capabilities = Some(ServerCapabilities::default());
+
+            assert!(results.protocol_version.is_some());
+            assert_eq!(results.protocol_version.unwrap(), "2024-11-05");
+            assert!(results.capabilities.is_some());
+        }
+
+        #[test]
+        fn validation_results_empty_has_no_failures() {
+            let results = ValidationResults::new("test");
+            assert!(!results.has_failures());
+            assert_eq!(results.passed, 0);
+            assert_eq!(results.failed, 0);
+        }
+
+        // Schema rule tests - SCHEMA-002: Missing type field
+        #[test]
+        fn run_schema_rules_missing_type_field() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tool = Tool {
+                name: "test_tool".to_string(),
+                description: Some("Test".to_string()),
+                input_schema: serde_json::json!({
+                    "properties": {
+                        "arg1": { "type": "string" }
+                    }
+                }),
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(vec![tool]);
+
+            engine.run_schema_rules(&ctx, &mut results);
+
+            // Should have SCHEMA-002 warning for missing type
+            let schema002 = results.results.iter().find(|r| r.rule_id == "SCHEMA-002");
+            assert!(schema002.is_some());
+            assert_eq!(schema002.unwrap().severity, ValidationSeverity::Warning);
+        }
+
+        #[test]
+        fn run_schema_rules_with_type_field() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tool = Tool {
+                name: "test_tool".to_string(),
+                description: Some("Test".to_string()),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "arg1": { "type": "string" }
+                    }
+                }),
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(vec![tool]);
+
+            engine.run_schema_rules(&ctx, &mut results);
+
+            // Should have SCHEMA-002 pass
+            let schema002 = results.results.iter().find(|r| r.rule_id == "SCHEMA-002");
+            assert!(schema002.is_some());
+            assert_eq!(schema002.unwrap().severity, ValidationSeverity::Pass);
+        }
+
+        // Schema rule tests - SCHEMA-003: Object type missing properties
+        #[test]
+        fn run_schema_rules_object_missing_properties() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tool = Tool {
+                name: "test_tool".to_string(),
+                description: Some("Test".to_string()),
+                input_schema: serde_json::json!({
+                    "type": "object"
+                }),
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(vec![tool]);
+
+            engine.run_schema_rules(&ctx, &mut results);
+
+            // Should have SCHEMA-003 warning
+            let schema003 = results.results.iter().find(|r| r.rule_id == "SCHEMA-003");
+            assert!(schema003.is_some());
+            assert_eq!(schema003.unwrap().severity, ValidationSeverity::Warning);
+        }
+
+        #[test]
+        fn run_schema_rules_object_with_properties() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tool = Tool {
+                name: "test_tool".to_string(),
+                description: Some("Test".to_string()),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "arg1": { "type": "string" }
+                    }
+                }),
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(vec![tool]);
+
+            engine.run_schema_rules(&ctx, &mut results);
+
+            // Should have SCHEMA-003 pass
+            let schema003 = results.results.iter().find(|r| r.rule_id == "SCHEMA-003");
+            assert!(schema003.is_some());
+            assert_eq!(schema003.unwrap().severity, ValidationSeverity::Pass);
+        }
+
+        // Schema rule tests - SCHEMA-004: Invalid required array
+        #[test]
+        fn run_schema_rules_required_not_array() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tool = Tool {
+                name: "test_tool".to_string(),
+                description: Some("Test".to_string()),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "arg1": { "type": "string" }
+                    },
+                    "required": "arg1"
+                }),
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(vec![tool]);
+
+            engine.run_schema_rules(&ctx, &mut results);
+
+            // Should have SCHEMA-004 fail
+            let schema004 = results.results.iter().find(|r| r.rule_id == "SCHEMA-004");
+            assert!(schema004.is_some());
+            assert_eq!(schema004.unwrap().severity, ValidationSeverity::Fail);
+        }
+
+        #[test]
+        fn run_schema_rules_required_field_not_in_properties() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tool = Tool {
+                name: "test_tool".to_string(),
+                description: Some("Test".to_string()),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "arg1": { "type": "string" }
+                    },
+                    "required": ["arg1", "arg2"]
+                }),
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(vec![tool]);
+
+            engine.run_schema_rules(&ctx, &mut results);
+
+            // Should have SCHEMA-004 fail (arg2 not in properties)
+            let schema004 = results.results.iter().find(|r| r.rule_id == "SCHEMA-004");
+            assert!(schema004.is_some());
+            assert_eq!(schema004.unwrap().severity, ValidationSeverity::Fail);
+        }
+
+        #[test]
+        fn run_schema_rules_valid_required_array() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tool = Tool {
+                name: "test_tool".to_string(),
+                description: Some("Test".to_string()),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "arg1": { "type": "string" },
+                        "arg2": { "type": "integer" }
+                    },
+                    "required": ["arg1"]
+                }),
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(vec![tool]);
+
+            engine.run_schema_rules(&ctx, &mut results);
+
+            // Should have SCHEMA-004 pass
+            let schema004 = results.results.iter().find(|r| r.rule_id == "SCHEMA-004");
+            assert!(schema004.is_some());
+            assert_eq!(schema004.unwrap().severity, ValidationSeverity::Pass);
+        }
+
+        // Schema rule tests - SCHEMA-005: Missing descriptions
+        #[test]
+        fn run_schema_rules_tool_with_no_description() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tool = Tool {
+                name: "test_tool".to_string(),
+                description: None,
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(vec![tool]);
+
+            engine.run_schema_rules(&ctx, &mut results);
+
+            // Should have SCHEMA-005 warning
+            let schema005 = results.results.iter().find(|r| r.rule_id == "SCHEMA-005");
+            assert!(schema005.is_some());
+            assert_eq!(schema005.unwrap().severity, ValidationSeverity::Warning);
+        }
+
+        #[test]
+        fn run_schema_rules_tool_with_empty_description() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tool = Tool {
+                name: "test_tool".to_string(),
+                description: Some("".to_string()),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(vec![tool]);
+
+            engine.run_schema_rules(&ctx, &mut results);
+
+            // Should have SCHEMA-005 warning
+            let schema005 = results.results.iter().find(|r| r.rule_id == "SCHEMA-005");
+            assert!(schema005.is_some());
+            assert_eq!(schema005.unwrap().severity, ValidationSeverity::Warning);
+        }
+
+        #[test]
+        fn run_schema_rules_tool_with_description() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tool = Tool {
+                name: "test_tool".to_string(),
+                description: Some("A helpful description".to_string()),
+                input_schema: serde_json::json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(vec![tool]);
+
+            engine.run_schema_rules(&ctx, &mut results);
+
+            // Should have SCHEMA-005 pass
+            let schema005 = results.results.iter().find(|r| r.rule_id == "SCHEMA-005");
+            assert!(schema005.is_some());
+            assert_eq!(schema005.unwrap().severity, ValidationSeverity::Pass);
+        }
+
+        // Protocol rule tests - PROTO-008: Capabilities consistency edge cases
+        #[test]
+        fn run_protocol_rules_capabilities_inconsistent_tools() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let mut ctx = create_server_context_minimal();
+            ctx.init_result.capabilities.tools = Some(ToolsCapability::default());
+            ctx.tools = None; // Advertised but not available
+
+            engine.run_protocol_rules(&ctx, &mut results);
+
+            // Should have PROTO-008 warning
+            let proto008 = results.results.iter().find(|r| r.rule_id == "PROTO-008");
+            assert!(proto008.is_some());
+            assert_eq!(proto008.unwrap().severity, ValidationSeverity::Warning);
+        }
+
+        #[test]
+        fn run_protocol_rules_capabilities_inconsistent_resources() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let mut ctx = create_server_context_minimal();
+            ctx.init_result.capabilities.resources = Some(ResourcesCapability::default());
+            ctx.resources = None; // Advertised but not available
+
+            engine.run_protocol_rules(&ctx, &mut results);
+
+            // Should have PROTO-008 warning
+            let proto008 = results.results.iter().find(|r| r.rule_id == "PROTO-008");
+            assert!(proto008.is_some());
+            assert_eq!(proto008.unwrap().severity, ValidationSeverity::Warning);
+        }
+
+        #[test]
+        fn run_protocol_rules_capabilities_inconsistent_prompts() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let mut ctx = create_server_context_minimal();
+            ctx.init_result.capabilities.prompts = Some(PromptsCapability::default());
+            ctx.prompts = None; // Advertised but not available
+
+            engine.run_protocol_rules(&ctx, &mut results);
+
+            // Should have PROTO-008 warning
+            let proto008 = results.results.iter().find(|r| r.rule_id == "PROTO-008");
+            assert!(proto008.is_some());
+            assert_eq!(proto008.unwrap().severity, ValidationSeverity::Warning);
+        }
+
+        // Additional protocol rule edge cases
+        #[test]
+        fn run_protocol_rules_tool_with_non_object_schema() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tool = create_test_tool_with_invalid_schema("bad_tool");
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(vec![tool]);
+
+            engine.run_protocol_rules(&ctx, &mut results);
+
+            // Should have PROTO-005 fail
+            let proto005 = results.results.iter().find(|r| r.rule_id == "PROTO-005");
+            assert!(proto005.is_some());
+            assert_eq!(proto005.unwrap().severity, ValidationSeverity::Fail);
+        }
+
+        #[test]
+        fn run_protocol_rules_resource_with_empty_name() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let resources = ListResourcesResult {
+                resources: vec![create_test_resource("file:///test.txt", "")],
+                next_cursor: None,
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.resources = Some(resources);
+
+            engine.run_protocol_rules(&ctx, &mut results);
+
+            // Should have PROTO-006 fail
+            let proto006 = results.results.iter().find(|r| r.rule_id == "PROTO-006");
+            assert!(proto006.is_some());
+            assert_eq!(proto006.unwrap().severity, ValidationSeverity::Fail);
+        }
+
+        // JSON Schema validation edge cases
+        #[test]
+        fn validate_json_schema_valid_complex() {
+            let schema = serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "minLength": 1
+                    },
+                    "age": {
+                        "type": "integer",
+                        "minimum": 0
+                    },
+                    "tags": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                    }
+                },
+                "required": ["name"]
+            });
+
+            assert!(validate_json_schema(&schema).is_ok());
+        }
+
+        #[test]
+        fn validate_json_schema_valid_nested() {
+            let schema = serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "address": {
+                        "type": "object",
+                        "properties": {
+                            "street": { "type": "string" },
+                            "city": { "type": "string" }
+                        }
+                    }
+                }
+            });
+
+            assert!(validate_json_schema(&schema).is_ok());
+        }
+
+        #[test]
+        fn validate_json_schema_invalid_boolean() {
+            let schema = serde_json::json!(true);
+            assert!(validate_json_schema(&schema).is_err());
+        }
+
+        #[test]
+        fn validate_json_schema_invalid_number() {
+            let schema = serde_json::json!(42);
+            assert!(validate_json_schema(&schema).is_err());
+        }
+
+        // ValidationEngine helper method tests
+        #[test]
+        fn validation_engine_get_all_rules() {
+            let config = ValidationConfig::default();
+            let engine = ValidationEngine::new(config);
+
+            // Should have all rules loaded
+            assert!(engine.rules.len() > 50); // We know there are 56+ rules
+        }
+
+        #[test]
+        fn validation_engine_get_rule_by_different_ids() {
+            let config = ValidationConfig::default();
+            let engine = ValidationEngine::new(config);
+
+            assert!(engine.get_rule(ValidationRuleId::Proto001).is_some());
+            assert!(engine.get_rule(ValidationRuleId::Schema001).is_some());
+            assert!(engine.get_rule(ValidationRuleId::Seq001).is_some());
+            assert!(engine.get_rule(ValidationRuleId::Tool001).is_some());
+            assert!(engine.get_rule(ValidationRuleId::Res001).is_some());
+        }
+
+        // Serialization round-trip tests
+        #[test]
+        fn validation_result_deserialization() {
+            let rule = make_test_rule();
+            let result = ValidationResult::fail(&rule, "Test error", 100);
+
+            let json = serde_json::to_string(&result).unwrap();
+            let deserialized: ValidationResult = serde_json::from_str(&json).unwrap();
+
+            assert_eq!(deserialized.rule_id, result.rule_id);
+            assert_eq!(deserialized.severity, result.severity);
+            assert_eq!(deserialized.message, result.message);
+            assert_eq!(deserialized.duration_ms, result.duration_ms);
+        }
+
+        #[test]
+        fn validation_results_deserialization() {
+            let mut results = ValidationResults::new("test-server");
+            results.protocol_version = Some("2024-11-05".to_string());
+            results.passed = 10;
+            results.failed = 2;
+            results.warnings = 3;
+
+            let json = serde_json::to_string(&results).unwrap();
+            let deserialized: ValidationResults = serde_json::from_str(&json).unwrap();
+
+            assert_eq!(deserialized.server, results.server);
+            assert_eq!(deserialized.protocol_version, results.protocol_version);
+            assert_eq!(deserialized.passed, results.passed);
+            assert_eq!(deserialized.failed, results.failed);
+            assert_eq!(deserialized.warnings, results.warnings);
+        }
+
+        #[test]
+        fn validation_severity_all_variants_serialization() {
+            let severities = vec![
+                ValidationSeverity::Pass,
+                ValidationSeverity::Fail,
+                ValidationSeverity::Warning,
+                ValidationSeverity::Info,
+                ValidationSeverity::Skip,
+            ];
+
+            for severity in severities {
+                let json = serde_json::to_string(&severity).unwrap();
+                let deserialized: ValidationSeverity = serde_json::from_str(&json).unwrap();
+                assert_eq!(deserialized, severity);
+            }
+        }
+
+        // Multiple schema issues tests
+        #[test]
+        fn run_schema_rules_multiple_issues() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let tool1 = Tool {
+                name: "tool1".to_string(),
+                description: None, // Missing description
+                input_schema: serde_json::json!({
+                    "type": "object"
+                    // Missing properties
+                }),
+            };
+
+            let tool2 = Tool {
+                name: "tool2".to_string(),
+                description: Some("".to_string()), // Empty description
+                input_schema: serde_json::json!({
+                    "properties": {} // Missing type
+                }),
+            };
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(vec![tool1, tool2]);
+
+            engine.run_schema_rules(&ctx, &mut results);
+
+            // Should have multiple warnings/failures
+            assert!(results.warnings > 0 || results.failed > 0);
+        }
+
+        // Edge case: Empty tool lists
+        #[test]
+        fn run_protocol_rules_with_empty_tool_list() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(vec![]);
+
+            engine.run_protocol_rules(&ctx, &mut results);
+
+            // Should pass with empty list (no tools to validate)
+            let proto005 = results.results.iter().find(|r| r.rule_id == "PROTO-005");
+            assert!(proto005.is_some());
+            assert_eq!(proto005.unwrap().severity, ValidationSeverity::Pass);
+        }
+
+        #[test]
+        fn run_schema_rules_with_empty_tool_list() {
+            let engine = ValidationEngine::new(ValidationConfig::default());
+            let mut results = ValidationResults::new("test");
+
+            let mut ctx = create_server_context_minimal();
+            ctx.tools = Some(vec![]);
+
+            engine.run_schema_rules(&ctx, &mut results);
+
+            // Should pass with empty list
+            assert!(results.results.len() > 0);
+            assert!(results
+                .results
+                .iter()
+                .all(|r| r.severity == ValidationSeverity::Pass));
+        }
+
+        // ValidationResults accumulation tests
+        #[test]
+        fn validation_results_large_number_of_results() {
+            let mut results = ValidationResults::new("test");
+            let rule = make_test_rule();
+
+            for i in 0..100 {
+                let severity = match i % 3 {
+                    0 => ValidationResult::pass(&rule, 1),
+                    1 => ValidationResult::fail(&rule, "Error", 2),
+                    _ => ValidationResult::warning(&rule, "Warning", 3),
+                };
+                results.add_result(severity);
+            }
+
+            // Check counts
+            assert!(results.passed > 0);
+            assert!(results.failed > 0);
+            assert!(results.warnings > 0);
+            assert_eq!(results.results.len(), 100);
+        }
+
+        // ValidationResult message edge cases
+        #[test]
+        fn validation_result_with_long_message() {
+            let rule = make_test_rule();
+            let long_message = "This is a very long error message ".repeat(100);
+            let result = ValidationResult::fail(&rule, long_message.clone(), 10);
+
+            assert!(result.message.is_some());
+            assert_eq!(result.message.unwrap(), long_message);
+        }
+
+        #[test]
+        fn validation_result_with_special_characters() {
+            let rule = make_test_rule();
+            let message = "Error: \"quoted\" & 'special' <chars> [brackets] {braces}";
+            let result = ValidationResult::warning(&rule, message, 10);
+
+            assert_eq!(result.message, Some(message.to_string()));
+        }
+
+        // Clone and Debug trait tests
+        #[test]
+        fn validation_result_debug_format() {
+            let rule = make_test_rule();
+            let result = ValidationResult::pass(&rule, 100);
+            let debug_str = format!("{:?}", result);
+
+            assert!(debug_str.contains("ValidationResult"));
+            assert!(debug_str.contains("PROTO-001"));
+        }
+
+        #[test]
+        fn validation_results_debug_format() {
+            let results = ValidationResults::new("test-server");
+            let debug_str = format!("{:?}", results);
+
+            assert!(debug_str.contains("ValidationResults"));
+            assert!(debug_str.contains("test-server"));
+        }
+
+        #[test]
+        fn server_context_creation() {
+            let init_result = InitializeResult {
+                protocol_version: "2024-11-05".to_string(),
+                capabilities: ServerCapabilities::default(),
+                server_info: Implementation::new("test", "1.0.0"),
+                instructions: Some("Test instructions".to_string()),
+            };
+
+            let ctx = ServerContext {
+                init_result: init_result.clone(),
+                tools: None,
+                resources: None,
+                prompts: None,
+            };
+
+            assert_eq!(ctx.init_result.protocol_version, "2024-11-05");
+            assert!(ctx.init_result.instructions.is_some());
+            assert!(ctx.tools.is_none());
+        }
+
+        // Additional schema validation edge cases
+        #[test]
+        fn validate_json_schema_with_definitions() {
+            let schema = serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "user": { "$ref": "#/definitions/User" }
+                },
+                "definitions": {
+                    "User": {
+                        "type": "object",
+                        "properties": {
+                            "name": { "type": "string" }
+                        }
+                    }
+                }
+            });
+
+            assert!(validate_json_schema(&schema).is_ok());
+        }
+
+        #[test]
+        fn validate_json_schema_with_additional_properties() {
+            let schema = serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "name": { "type": "string" }
+                },
+                "additionalProperties": false
+            });
+
+            assert!(validate_json_schema(&schema).is_ok());
         }
     }
 }

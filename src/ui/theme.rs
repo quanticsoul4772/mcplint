@@ -172,4 +172,100 @@ mod tests {
         assert_eq!(SecurityTheme::arrow(), "→");
         assert_eq!(SecurityTheme::bullet(), "•");
     }
+
+    #[test]
+    fn security_theme_severity_styling() {
+        let text = "Test message";
+
+        // Test all severity levels
+        let critical = SecurityTheme::severity(text, Severity::Critical);
+        assert!(!critical.is_empty());
+
+        let high = SecurityTheme::severity(text, Severity::High);
+        assert!(!high.is_empty());
+
+        let medium = SecurityTheme::severity(text, Severity::Medium);
+        assert!(!medium.is_empty());
+
+        let low = SecurityTheme::severity(text, Severity::Low);
+        assert!(!low.is_empty());
+
+        let info = SecurityTheme::severity(text, Severity::Info);
+        assert!(!info.is_empty());
+    }
+
+    #[test]
+    fn security_theme_success_styling() {
+        let styled = SecurityTheme::success("Success message");
+        assert!(styled.to_string().contains("Success message"));
+    }
+
+    #[test]
+    fn security_theme_error_styling() {
+        let styled = SecurityTheme::error("Error message");
+        assert!(styled.to_string().contains("Error message"));
+    }
+
+    #[test]
+    fn security_theme_warning_styling() {
+        let styled = SecurityTheme::warning("Warning message");
+        assert!(styled.to_string().contains("Warning message"));
+    }
+
+    #[test]
+    fn security_theme_info_styling() {
+        let styled = SecurityTheme::info("Info message");
+        assert!(styled.to_string().contains("Info message"));
+    }
+
+    #[test]
+    fn security_theme_dimmed_styling() {
+        let styled = SecurityTheme::dimmed("Dimmed text");
+        assert!(styled.to_string().contains("Dimmed text"));
+    }
+
+    #[test]
+    fn security_theme_highlight_styling() {
+        let styled = SecurityTheme::highlight("Highlighted text");
+        assert!(styled.to_string().contains("Highlighted text"));
+    }
+
+    #[test]
+    fn security_theme_code_styling() {
+        let styled = SecurityTheme::code("code_snippet()");
+        assert!(styled.to_string().contains("code_snippet()"));
+    }
+
+    #[test]
+    fn security_theme_separator() {
+        let sep = SecurityTheme::separator();
+        let sep_str = sep.to_string();
+        // Separator should contain repeated characters
+        assert!(sep_str.len() > 10);
+    }
+
+    #[test]
+    fn theme_clone() {
+        let theme1 = Theme::default();
+        let theme2 = theme1.clone();
+        assert_eq!(theme1.colors_enabled, theme2.colors_enabled);
+        assert_eq!(theme1.unicode_enabled, theme2.unicode_enabled);
+    }
+
+    #[test]
+    fn theme_debug() {
+        let theme = Theme::default();
+        let debug_str = format!("{:?}", theme);
+        assert!(debug_str.contains("Theme"));
+    }
+
+    #[test]
+    fn theme_custom() {
+        let theme = Theme {
+            colors_enabled: true,
+            unicode_enabled: false,
+        };
+        assert!(theme.colors_enabled);
+        assert!(!theme.unicode_enabled);
+    }
 }

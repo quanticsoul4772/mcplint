@@ -263,4 +263,234 @@ mod tests {
         // Mode depends on environment, just verify it doesn't panic
         let _ = printer.mode();
     }
+
+    #[test]
+    fn output_mode_detect() {
+        // Just verify detection doesn't panic
+        let _mode = OutputMode::detect();
+    }
+
+    #[test]
+    fn output_mode_default() {
+        let mode = OutputMode::default();
+        // Should be one of the valid modes
+        assert!(matches!(
+            mode,
+            OutputMode::Interactive | OutputMode::CI | OutputMode::Plain
+        ));
+    }
+
+    #[test]
+    fn output_mode_equality() {
+        assert_eq!(OutputMode::Interactive, OutputMode::Interactive);
+        assert_eq!(OutputMode::CI, OutputMode::CI);
+        assert_eq!(OutputMode::Plain, OutputMode::Plain);
+        assert_ne!(OutputMode::Interactive, OutputMode::CI);
+        assert_ne!(OutputMode::CI, OutputMode::Plain);
+    }
+
+    #[test]
+    fn output_mode_debug() {
+        let mode = OutputMode::Interactive;
+        let debug_str = format!("{:?}", mode);
+        assert!(debug_str.contains("Interactive"));
+    }
+
+    #[test]
+    fn output_mode_clone_copy() {
+        let mode1 = OutputMode::Interactive;
+        let mode2 = mode1;
+        assert_eq!(mode1, mode2);
+    }
+
+    #[test]
+    fn printer_println() {
+        let printer = Printer::with_mode(OutputMode::CI);
+        // Should not panic
+        printer.println("Test message");
+    }
+
+    #[test]
+    fn printer_print() {
+        let printer = Printer::with_mode(OutputMode::CI);
+        // Should not panic
+        printer.print("Test message");
+    }
+
+    #[test]
+    fn printer_newline() {
+        let printer = Printer::with_mode(OutputMode::CI);
+        printer.newline();
+    }
+
+    #[test]
+    fn printer_separator_ci() {
+        let printer = Printer::with_mode(OutputMode::CI);
+        printer.separator();
+    }
+
+    #[test]
+    fn printer_separator_interactive() {
+        let printer = Printer::with_mode(OutputMode::Interactive);
+        printer.separator();
+    }
+
+    #[test]
+    fn printer_header_ci() {
+        let printer = Printer::with_mode(OutputMode::CI);
+        printer.header("Test Header");
+    }
+
+    #[test]
+    fn printer_header_interactive() {
+        let printer = Printer::with_mode(OutputMode::Interactive);
+        printer.header("Test Header");
+    }
+
+    #[test]
+    fn printer_success_ci() {
+        let printer = Printer::with_mode(OutputMode::CI);
+        printer.success("Operation successful");
+    }
+
+    #[test]
+    fn printer_success_interactive() {
+        let printer = Printer::with_mode(OutputMode::Interactive);
+        printer.success("Operation successful");
+    }
+
+    #[test]
+    fn printer_error_ci() {
+        let printer = Printer::with_mode(OutputMode::CI);
+        printer.error("Error occurred");
+    }
+
+    #[test]
+    fn printer_error_interactive() {
+        let printer = Printer::with_mode(OutputMode::Interactive);
+        printer.error("Error occurred");
+    }
+
+    #[test]
+    fn printer_warning_ci() {
+        let printer = Printer::with_mode(OutputMode::CI);
+        printer.warning("Warning message");
+    }
+
+    #[test]
+    fn printer_warning_interactive() {
+        let printer = Printer::with_mode(OutputMode::Interactive);
+        printer.warning("Warning message");
+    }
+
+    #[test]
+    fn printer_info_ci() {
+        let printer = Printer::with_mode(OutputMode::CI);
+        printer.info("Info message");
+    }
+
+    #[test]
+    fn printer_info_interactive() {
+        let printer = Printer::with_mode(OutputMode::Interactive);
+        printer.info("Info message");
+    }
+
+    #[test]
+    fn printer_bullet_ci() {
+        let printer = Printer::with_mode(OutputMode::CI);
+        printer.bullet("Bullet point");
+    }
+
+    #[test]
+    fn printer_bullet_interactive() {
+        let printer = Printer::with_mode(OutputMode::Interactive);
+        printer.bullet("Bullet point");
+    }
+
+    #[test]
+    fn printer_kv_ci() {
+        let printer = Printer::with_mode(OutputMode::CI);
+        printer.kv("Key", "Value");
+    }
+
+    #[test]
+    fn printer_kv_interactive() {
+        let printer = Printer::with_mode(OutputMode::Interactive);
+        printer.kv("Key", "Value");
+    }
+
+    #[test]
+    fn printer_section_ci() {
+        let printer = Printer::with_mode(OutputMode::CI);
+        printer.section("Section", "Content");
+    }
+
+    #[test]
+    fn printer_section_interactive() {
+        let printer = Printer::with_mode(OutputMode::Interactive);
+        printer.section("Section", "Content");
+    }
+
+    #[test]
+    fn printer_dimmed_ci() {
+        let printer = Printer::with_mode(OutputMode::CI);
+        printer.dimmed("Dimmed text");
+    }
+
+    #[test]
+    fn printer_dimmed_interactive() {
+        let printer = Printer::with_mode(OutputMode::Interactive);
+        printer.dimmed("Dimmed text");
+    }
+
+    #[test]
+    fn printer_clone() {
+        let printer1 = Printer::with_mode(OutputMode::CI);
+        let printer2 = printer1.clone();
+        assert_eq!(printer1.mode(), printer2.mode());
+    }
+
+    #[test]
+    fn printer_debug() {
+        let printer = Printer::with_mode(OutputMode::Interactive);
+        let debug_str = format!("{:?}", printer);
+        assert!(debug_str.contains("Printer"));
+    }
+
+    #[test]
+    fn printer_new() {
+        let printer = Printer::new();
+        // Should not panic and should return a valid mode
+        let mode = printer.mode();
+        assert!(matches!(
+            mode,
+            OutputMode::Interactive | OutputMode::CI | OutputMode::Plain
+        ));
+    }
+
+    #[test]
+    fn printer_all_modes_complete_workflow() {
+        for mode in [OutputMode::Interactive, OutputMode::CI, OutputMode::Plain] {
+            let printer = Printer::with_mode(mode);
+            printer.header("Header");
+            printer.separator();
+            printer.success("Success");
+            printer.error("Error");
+            printer.warning("Warning");
+            printer.info("Info");
+            printer.bullet("Bullet");
+            printer.kv("Key", "Value");
+            printer.section("Section", "Content");
+            printer.dimmed("Dimmed");
+            printer.newline();
+        }
+    }
+
+    #[test]
+    fn output_mode_plain_flags() {
+        let mode = OutputMode::Plain;
+        assert!(!mode.colors_enabled());
+        assert!(!mode.unicode_enabled());
+        assert!(!mode.progress_enabled());
+    }
 }

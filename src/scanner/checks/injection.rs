@@ -860,4 +860,503 @@ mod tests {
         let finding = checker.check_command_injection(&ctx).unwrap();
         assert!(!finding.evidence.is_empty());
     }
+
+    // Additional edge case tests for command injection
+    #[test]
+    fn command_injection_run_pattern() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("run_script", None, make_string_schema()));
+
+        let finding = checker.check_command_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn command_injection_multiple_patterns_in_name() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("shell_exec_command", None, make_string_schema()));
+
+        let finding = checker.check_command_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn command_injection_description_with_no_pattern_in_name() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "process_data",
+            Some("Execute shell commands"),
+            make_string_schema(),
+        ));
+
+        let finding = checker.check_command_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    // SQL injection edge cases
+    #[test]
+    fn sql_injection_query_pattern() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("query_database", None, make_string_schema()));
+
+        let finding = checker.check_sql_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn sql_injection_sql_pattern() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("sql_runner", None, make_string_schema()));
+
+        let finding = checker.check_sql_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn sql_injection_description_pattern() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "data_fetcher",
+            Some("Runs database queries"),
+            make_string_schema(),
+        ));
+
+        let finding = checker.check_sql_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    // Path traversal edge cases
+    #[test]
+    fn path_traversal_path_pattern() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("path_reader", None, make_path_schema()));
+
+        let finding = checker.check_path_traversal(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn path_traversal_read_pattern() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("read_data", None, make_path_schema()));
+
+        let finding = checker.check_path_traversal(&ctx);
+        assert!(finding.is_some());
+    }
+
+    // Schema edge cases
+    #[test]
+    fn empty_schema_no_findings() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("exec_command", None, serde_json::json!({})));
+
+        let finding = checker.check_command_injection(&ctx);
+        assert!(finding.is_none());
+    }
+
+    #[test]
+    fn schema_with_non_string_properties() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "count": { "type": "integer" },
+                "enabled": { "type": "boolean" }
+            }
+        });
+        ctx.tools.push(make_tool("exec_command", None, schema));
+
+        let finding = checker.check_command_injection(&ctx);
+        assert!(finding.is_none());
+    }
+
+    // Multiple tools edge cases
+    #[test]
+    fn first_unsafe_tool_detected() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("safe_tool1", None, make_string_schema()));
+        ctx.tools
+            .push(make_tool("safe_tool2", None, make_string_schema()));
+        ctx.tools
+            .push(make_tool("exec_dangerous", None, make_string_schema()));
+        ctx.tools
+            .push(make_tool("exec_also_dangerous", None, make_string_schema()));
+
+        let finding = checker.check_command_injection(&ctx);
+        assert!(finding.is_some());
+        let f = finding.unwrap();
+        assert!(f.description.contains("exec_dangerous"));
+    }
+
+    // Description case sensitivity
+    #[test]
+    fn command_injection_case_insensitive_description() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "processor",
+            Some("Executes SHELL Commands"),
+            make_string_schema(),
+        ));
+
+        let finding = checker.check_command_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    // Complex schemas
+    #[test]
+    fn command_injection_nested_schema_properties() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "config": {
+                    "type": "object",
+                    "properties": {
+                        "command": { "type": "string" }
+                    }
+                },
+                "options": { "type": "string" }
+            }
+        });
+        ctx.tools.push(make_tool("shell_runner", None, schema));
+
+        let finding = checker.check_command_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    // Pattern matching comprehensive
+    #[test]
+    fn all_command_injection_patterns() {
+        let checker = DefaultInjectionChecks;
+        let patterns = vec![
+            "exec",
+            "shell",
+            "command",
+            "run",
+            "system",
+            "spawn",
+            "popen",
+            "bash",
+            "sh",
+            "cmd",
+            "powershell",
+        ];
+
+        for pattern in patterns {
+            let mut ctx = ServerContext::for_test("test");
+            ctx.tools
+                .push(make_tool(pattern, None, make_string_schema()));
+
+            let finding = checker.check_command_injection(&ctx);
+            assert!(
+                finding.is_some(),
+                "Pattern '{}' should trigger finding",
+                pattern
+            );
+        }
+    }
+
+    #[test]
+    fn all_sql_injection_patterns() {
+        let checker = DefaultInjectionChecks;
+        let patterns = vec![
+            "sql",
+            "query",
+            "database",
+            "db",
+            "mysql",
+            "postgres",
+            "sqlite",
+            "mongodb",
+            "execute_query",
+        ];
+
+        for pattern in patterns {
+            let mut ctx = ServerContext::for_test("test");
+            ctx.tools
+                .push(make_tool(pattern, None, make_string_schema()));
+
+            let finding = checker.check_sql_injection(&ctx);
+            assert!(
+                finding.is_some(),
+                "Pattern '{}' should trigger finding",
+                pattern
+            );
+        }
+    }
+
+    #[test]
+    fn all_path_traversal_patterns() {
+        let checker = DefaultInjectionChecks;
+        let patterns = vec![
+            "file",
+            "path",
+            "read",
+            "write",
+            "load",
+            "save",
+            "open",
+            "directory",
+            "folder",
+            "fs",
+        ];
+
+        for pattern in patterns {
+            let mut ctx = ServerContext::for_test("test");
+            ctx.tools.push(make_tool(pattern, None, make_path_schema()));
+
+            let finding = checker.check_path_traversal(&ctx);
+            assert!(
+                finding.is_some(),
+                "Pattern '{}' should trigger finding",
+                pattern
+            );
+        }
+    }
+
+    // SSRF edge cases with synchronous checks
+    #[test]
+    fn ssrf_uri_pattern_in_schema() {
+        let mut ctx = ServerContext::for_test("test");
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "uri": { "type": "string" }
+            }
+        });
+        ctx.tools.push(make_tool("fetch_resource", None, schema));
+
+        let tool = &ctx.tools[0];
+        assert!(has_url_parameters(&tool.input_schema));
+    }
+
+    #[test]
+    fn ssrf_href_pattern_in_schema() {
+        let mut ctx = ServerContext::for_test("test");
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "href": { "type": "string" }
+            }
+        });
+        ctx.tools.push(make_tool("http_get", None, schema));
+
+        let tool = &ctx.tools[0];
+        assert!(has_url_parameters(&tool.input_schema));
+    }
+
+    #[test]
+    fn ssrf_link_pattern_in_schema() {
+        let mut ctx = ServerContext::for_test("test");
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "link": { "type": "string" }
+            }
+        });
+        ctx.tools.push(make_tool("fetch_link", None, schema));
+
+        let tool = &ctx.tools[0];
+        assert!(has_url_parameters(&tool.input_schema));
+    }
+
+    #[test]
+    fn ssrf_endpoint_pattern_in_schema() {
+        let mut ctx = ServerContext::for_test("test");
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "endpoint": { "type": "string" }
+            }
+        });
+        ctx.tools.push(make_tool("call_endpoint", None, schema));
+
+        let tool = &ctx.tools[0];
+        assert!(has_url_parameters(&tool.input_schema));
+    }
+
+    // Tool name variations
+    #[test]
+    fn tool_name_with_underscores() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "execute_shell_command",
+            None,
+            make_string_schema(),
+        ));
+
+        let finding = checker.check_command_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn tool_name_with_mixed_case() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("ExecuteShellCommand", None, make_string_schema()));
+
+        let finding = checker.check_command_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    // Empty description edge case
+    #[test]
+    fn tool_with_none_description() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("exec", None, make_string_schema()));
+
+        let finding = checker.check_command_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    // Finding structure validation
+    #[test]
+    fn command_injection_finding_structure() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("exec_command", None, make_string_schema()));
+
+        let finding = checker.check_command_injection(&ctx).unwrap();
+
+        assert_eq!(finding.rule_id, "MCP-INJ-001");
+        assert_eq!(finding.severity, Severity::Critical);
+        assert_eq!(finding.title, "Potential Command Injection");
+        assert!(!finding.description.is_empty());
+        assert!(!finding.remediation.is_empty());
+        assert!(!finding.evidence.is_empty());
+        assert_eq!(finding.location.component, "tool");
+        assert_eq!(finding.location.identifier, "exec_command");
+    }
+
+    #[test]
+    fn sql_injection_finding_structure() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("execute_query", None, make_string_schema()));
+
+        let finding = checker.check_sql_injection(&ctx).unwrap();
+
+        assert_eq!(finding.rule_id, "MCP-INJ-002");
+        assert_eq!(finding.severity, Severity::Critical);
+        assert_eq!(finding.title, "Potential SQL Injection");
+    }
+
+    #[test]
+    fn path_traversal_finding_structure() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("read_file", None, make_path_schema()));
+
+        let finding = checker.check_path_traversal(&ctx).unwrap();
+
+        assert_eq!(finding.rule_id, "MCP-INJ-003");
+        assert_eq!(finding.severity, Severity::High);
+        assert_eq!(finding.title, "Potential Path Traversal");
+    }
+
+    // Multiple pattern matches should stop at first
+    #[test]
+    fn stops_at_first_pattern_match() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        // Tool has multiple patterns but should match on first
+        ctx.tools.push(make_tool(
+            "exec",
+            Some("shell command runner"),
+            make_string_schema(),
+        ));
+
+        let finding = checker.check_command_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    // Schema helper validation
+    #[test]
+    fn has_string_parameters_mixed_types() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "id": { "type": "integer" },
+                "name": { "type": "string" },
+                "enabled": { "type": "boolean" }
+            }
+        });
+        assert!(has_string_parameters(&schema));
+    }
+
+    #[test]
+    fn has_path_parameters_dir_variant() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "dir": { "type": "string" }
+            }
+        });
+        assert!(has_path_parameters(&schema));
+    }
+
+    // Context coverage
+    #[test]
+    fn server_context_empty_tools() {
+        let checker = DefaultInjectionChecks;
+        let ctx = ServerContext::for_test("test");
+
+        assert!(checker.check_command_injection(&ctx).is_none());
+        assert!(checker.check_sql_injection(&ctx).is_none());
+        assert!(checker.check_path_traversal(&ctx).is_none());
+    }
+
+    // Case sensitivity edge cases
+    #[test]
+    fn pattern_matching_uppercase_name() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("EXEC_COMMAND", None, make_string_schema()));
+
+        let finding = checker.check_command_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn pattern_matching_uppercase_description() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "processor",
+            Some("EXECUTES SHELL COMMANDS"),
+            make_string_schema(),
+        ));
+
+        let finding = checker.check_command_injection(&ctx);
+        assert!(finding.is_some());
+    }
 }
