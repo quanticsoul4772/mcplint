@@ -62,6 +62,8 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+use crate::ui::{OutputMode, Printer};
+
 /// Fuzzing session results
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FuzzResults {
@@ -97,21 +99,33 @@ pub struct FuzzCrash {
 }
 
 impl FuzzResults {
-    /// Print results as formatted text
+    /// Print results as formatted text (uses auto-detected output mode)
     pub fn print_text(&self) {
+        self.print_text_with_mode(OutputMode::detect());
+    }
+
+    /// Print results as formatted text with specific output mode
+    pub fn print_text_with_mode(&self, mode: OutputMode) {
         use colored::Colorize;
 
-        println!("{}", "Fuzzing Results".cyan().bold());
-        println!("{}", "=".repeat(50));
-        println!();
+        let printer = Printer::with_mode(mode);
 
-        println!("  Server: {}", self.server.yellow());
-        println!("  Duration: {}s", self.duration_secs);
-        println!("  Iterations: {}", self.iterations);
-        println!("  Interesting inputs: {}", self.interesting_inputs);
-        println!();
+        printer.header("Fuzzing Results");
+        printer.separator();
+        printer.newline();
 
-        println!("{}", "Coverage:".yellow());
+        printer.kv("Server", &self.server);
+        printer.kv("Duration", &format!("{}s", self.duration_secs));
+        printer.kv("Iterations", &self.iterations.to_string());
+        printer.kv("Interesting inputs", &self.interesting_inputs.to_string());
+        printer.newline();
+
+        // Coverage section
+        if mode.colors_enabled() {
+            println!("{}", "Coverage:".yellow());
+        } else {
+            println!("Coverage:");
+        }
         println!("  Paths explored: {}", self.coverage.paths_explored);
         println!(
             "  Edge coverage: {:.1}%",
@@ -121,24 +135,37 @@ impl FuzzResults {
             "  New coverage rate: {:.2}%",
             self.coverage.new_coverage_rate * 100.0
         );
-        println!();
+        printer.newline();
 
         if self.crashes.is_empty() {
-            println!("{}", "No crashes found ✓".green().bold());
+            let msg = if mode.unicode_enabled() {
+                "No crashes found ✓"
+            } else {
+                "No crashes found [OK]"
+            };
+            printer.success(msg);
         } else {
-            println!(
-                "{}",
-                format!("Crashes found: {}", self.crashes.len())
-                    .red()
-                    .bold()
-            );
+            let crash_msg = format!("Crashes found: {}", self.crashes.len());
+            if mode.colors_enabled() {
+                println!("{}", crash_msg.red().bold());
+            } else {
+                println!("{}", crash_msg);
+            }
             for crash in &self.crashes {
-                println!();
+                printer.newline();
+                let crash_label = if mode.colors_enabled() {
+                    "[CRASH]".red().bold().to_string()
+                } else {
+                    "[CRASH]".to_string()
+                };
+                let crash_type = if mode.colors_enabled() {
+                    crash.crash_type.red().to_string()
+                } else {
+                    crash.crash_type.clone()
+                };
                 println!(
                     "  {} {} (iteration {})",
-                    "[CRASH]".red().bold(),
-                    crash.crash_type.red(),
-                    crash.iteration
+                    crash_label, crash_type, crash.iteration
                 );
                 // Truncate input for display
                 let input_display = if crash.input.len() > 100 {
@@ -146,33 +173,29 @@ impl FuzzResults {
                 } else {
                     crash.input.clone()
                 };
-                println!("  Input: {}", input_display.dimmed());
+                if mode.colors_enabled() {
+                    println!("  Input: {}", input_display.dimmed());
+                } else {
+                    println!("  Input: {}", input_display);
+                }
                 println!("  Error: {}", crash.error);
             }
         }
 
-        println!();
-        println!("{}", "─".repeat(50));
+        printer.newline();
+        printer.separator();
 
+        // Final status message
         if !self.crashes.is_empty() {
-            println!(
-                "\n{}",
-                format!(
-                    "Server has {} crash(es) - review recommended!",
-                    self.crashes.len()
-                )
-                .red()
-                .bold()
-            );
+            printer.error(&format!(
+                "Server has {} crash(es) - review recommended!",
+                self.crashes.len()
+            ));
         } else if self.coverage.paths_explored > 0 {
-            println!(
-                "\n{}",
-                format!(
-                    "Explored {} unique paths with no crashes.",
-                    self.coverage.paths_explored
-                )
-                .green()
-            );
+            printer.success(&format!(
+                "Explored {} unique paths with no crashes.",
+                self.coverage.paths_explored
+            ));
         }
     }
 

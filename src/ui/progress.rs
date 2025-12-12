@@ -7,6 +7,7 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle as IndicatifStyle};
 use std::time::Duration;
 
 /// Style presets for progress indicators
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProgressStyle {
     /// Spinner for indeterminate operations (connecting, initializing)
@@ -23,6 +24,7 @@ pub enum ProgressStyle {
 
 impl ProgressStyle {
     /// Get the indicatif template for this style
+    #[allow(dead_code)]
     fn template(&self, unicode: bool) -> &'static str {
         match (self, unicode) {
             (ProgressStyle::Spinner, true) => "{spinner:.cyan} {msg}",
@@ -38,6 +40,7 @@ impl ProgressStyle {
     }
 
     /// Get spinner characters for this style
+    #[allow(dead_code)]
     fn tick_chars(&self, unicode: bool) -> &'static str {
         match self {
             ProgressStyle::SecurityScan if unicode => "🔒🔓🔐🔏",
@@ -48,6 +51,7 @@ impl ProgressStyle {
 }
 
 /// Progress indicator for scan operations
+#[allow(dead_code)]
 pub struct ScanProgress {
     bar: Option<ProgressBar>,
     mode: OutputMode,
@@ -56,6 +60,7 @@ pub struct ScanProgress {
 
 impl ScanProgress {
     /// Create a new scan progress indicator
+    #[allow(dead_code)]
     pub fn new(mode: OutputMode, style: ProgressStyle) -> Self {
         Self {
             bar: None,
@@ -65,11 +70,13 @@ impl ScanProgress {
     }
 
     /// Create a spinner (indeterminate progress)
+    #[allow(dead_code)]
     pub fn spinner(mode: OutputMode) -> Self {
         Self::new(mode, ProgressStyle::Spinner)
     }
 
     /// Create a progress bar with known length
+    #[allow(dead_code)]
     pub fn bar(mode: OutputMode, len: u64) -> Self {
         let mut progress = Self::new(mode, ProgressStyle::Bar);
         progress.start(len);
@@ -77,6 +84,7 @@ impl ScanProgress {
     }
 
     /// Start the progress indicator
+    #[allow(dead_code)]
     pub fn start(&mut self, len: u64) {
         if !self.mode.progress_enabled() {
             return;
@@ -105,6 +113,7 @@ impl ScanProgress {
     }
 
     /// Start a spinner with a message
+    #[allow(dead_code)]
     pub fn start_spinner(&mut self, msg: &str) {
         if !self.mode.progress_enabled() {
             return;
@@ -126,6 +135,7 @@ impl ScanProgress {
     }
 
     /// Update progress position
+    #[allow(dead_code)]
     pub fn set_position(&self, pos: u64) {
         if let Some(bar) = &self.bar {
             bar.set_position(pos);
@@ -133,6 +143,7 @@ impl ScanProgress {
     }
 
     /// Increment progress by one
+    #[allow(dead_code)]
     pub fn inc(&self) {
         if let Some(bar) = &self.bar {
             bar.inc(1);
@@ -140,6 +151,7 @@ impl ScanProgress {
     }
 
     /// Increment progress by a specific amount
+    #[allow(dead_code)]
     pub fn inc_by(&self, delta: u64) {
         if let Some(bar) = &self.bar {
             bar.inc(delta);
@@ -147,6 +159,7 @@ impl ScanProgress {
     }
 
     /// Set the progress message
+    #[allow(dead_code)]
     pub fn set_message(&self, msg: &str) {
         if let Some(bar) = &self.bar {
             bar.set_message(msg.to_string());
@@ -154,6 +167,7 @@ impl ScanProgress {
     }
 
     /// Update the total length
+    #[allow(dead_code)]
     pub fn set_length(&self, len: u64) {
         if let Some(bar) = &self.bar {
             bar.set_length(len);
@@ -161,6 +175,7 @@ impl ScanProgress {
     }
 
     /// Finish with a success message
+    #[allow(dead_code)]
     pub fn finish_with_message(&self, msg: &str) {
         if let Some(bar) = &self.bar {
             bar.finish_with_message(msg.to_string());
@@ -168,6 +183,7 @@ impl ScanProgress {
     }
 
     /// Finish and clear the progress bar
+    #[allow(dead_code)]
     pub fn finish_and_clear(&self) {
         if let Some(bar) = &self.bar {
             bar.finish_and_clear();
@@ -175,6 +191,7 @@ impl ScanProgress {
     }
 
     /// Finish the progress bar (keeps it visible)
+    #[allow(dead_code)]
     pub fn finish(&self) {
         if let Some(bar) = &self.bar {
             bar.finish();
@@ -182,6 +199,7 @@ impl ScanProgress {
     }
 
     /// Suspend the progress bar to print other output
+    #[allow(dead_code)]
     pub fn suspend<F, R>(&self, f: F) -> R
     where
         F: FnOnce() -> R,
@@ -194,6 +212,7 @@ impl ScanProgress {
     }
 
     /// Check if progress is enabled
+    #[allow(dead_code)]
     pub fn is_enabled(&self) -> bool {
         self.bar.is_some()
     }
@@ -276,6 +295,7 @@ impl ConnectionSpinner {
     }
 
     /// Update phase: scanning
+    #[allow(dead_code)]
     pub fn phase_scanning(&mut self, check_name: &str) {
         if let Some(bar) = &self.bar {
             let icon = if self.mode.unicode_enabled() { "🔍" } else { ">" };
@@ -308,6 +328,7 @@ impl ConnectionSpinner {
     }
 
     /// Finish and clear (for non-interactive follow-up)
+    #[allow(dead_code)]
     pub fn finish_and_clear(&self) {
         if let Some(bar) = &self.bar {
             bar.finish_and_clear();
@@ -315,6 +336,7 @@ impl ConnectionSpinner {
     }
 
     /// Get whether this spinner is enabled
+    #[allow(dead_code)]
     pub fn is_enabled(&self) -> bool {
         self.bar.is_some()
     }

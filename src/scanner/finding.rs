@@ -2,9 +2,11 @@
 //!
 //! Defines the structures for representing security findings from scans.
 
-use colored::{ColoredString, Colorize};
+use colored::{Color, ColoredString, Colorize};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+use crate::ui::OutputMode;
 
 /// Severity level for security findings
 #[derive(
@@ -77,6 +79,55 @@ impl Severity {
         Self::parse(s)
             .map(|sev| sev.colored_display())
             .unwrap_or_else(|| s.normal())
+    }
+
+    /// Get the color associated with this severity
+    #[allow(dead_code)]
+    pub fn color(&self) -> Color {
+        match self {
+            Severity::Info => Color::BrightBlack,
+            Severity::Low => Color::Blue,
+            Severity::Medium => Color::Yellow,
+            Severity::High => Color::Red,
+            Severity::Critical => Color::Red,
+        }
+    }
+
+    /// Get icon for this severity (unicode or ASCII based on mode)
+    #[allow(dead_code)]
+    pub fn icon(&self, mode: OutputMode) -> &'static str {
+        if mode.unicode_enabled() {
+            match self {
+                Severity::Info => "⚪",
+                Severity::Low => "🔵",
+                Severity::Medium => "🟡",
+                Severity::High => "🟠",
+                Severity::Critical => "🔴",
+            }
+        } else {
+            match self {
+                Severity::Info => "[INFO]",
+                Severity::Low => "[LOW]",
+                Severity::Medium => "[MEDIUM]",
+                Severity::High => "[HIGH]",
+                Severity::Critical => "[CRITICAL]",
+            }
+        }
+    }
+
+    /// Return a mode-aware display string for terminal output
+    pub fn display(&self, mode: OutputMode) -> String {
+        if mode.colors_enabled() {
+            self.colored_display().to_string()
+        } else {
+            match self {
+                Severity::Critical => "CRITICAL".to_string(),
+                Severity::High => "HIGH".to_string(),
+                Severity::Medium => "MEDIUM".to_string(),
+                Severity::Low => "LOW".to_string(),
+                Severity::Info => "INFO".to_string(),
+            }
+        }
     }
 }
 
