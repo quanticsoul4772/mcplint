@@ -76,6 +76,34 @@ pub enum OutputFormat {
     Gitlab,
 }
 
+/// Shell type for completions generation
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub enum CompletionShell {
+    /// Bash shell
+    Bash,
+    /// Zsh shell
+    Zsh,
+    /// Fish shell
+    Fish,
+    /// PowerShell
+    #[value(name = "powershell")]
+    PowerShell,
+    /// Elvish shell
+    Elvish,
+}
+
+impl From<CompletionShell> for clap_complete::Shell {
+    fn from(shell: CompletionShell) -> Self {
+        match shell {
+            CompletionShell::Bash => clap_complete::Shell::Bash,
+            CompletionShell::Zsh => clap_complete::Shell::Zsh,
+            CompletionShell::Fish => clap_complete::Shell::Fish,
+            CompletionShell::PowerShell => clap_complete::Shell::PowerShell,
+            CompletionShell::Elvish => clap_complete::Shell::Elvish,
+        }
+    }
+}
+
 #[derive(Subcommand)]
 enum Commands {
     /// Validate MCP server protocol compliance
@@ -89,7 +117,7 @@ enum Commands {
         config: Option<std::path::PathBuf>,
 
         /// Check specific protocol features only
-        #[arg(short, long)]
+        #[arg(short = 'F', long)]
         features: Option<Vec<String>>,
 
         /// Timeout for server operations (seconds)
@@ -351,6 +379,17 @@ enum Commands {
         /// Search for recipes by keyword
         #[arg(short, long)]
         search: Option<String>,
+    },
+
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: CompletionShell,
+
+        /// Install completions to default location
+        #[arg(long)]
+        install: bool,
     },
 }
 
@@ -768,6 +807,42 @@ async fn main() -> Result<()> {
                 help.show_recipe(&name, mode);
             } else {
                 help.show_list(mode);
+            }
+        }
+        Commands::Completions { shell, install } => {
+            use clap::CommandFactory;
+            let clap_shell: clap_complete::Shell = shell.into();
+            let mut cmd = Cli::command();
+
+            if install {
+                // Install to default location
+                if let Some(dir) = cli::completions::get_completions_dir(clap_shell) {
+                    if !dir.exists() {
+                        std::fs::create_dir_all(&dir)?;
+                    }
+                    let filename = cli::completions::get_completions_filename(clap_shell);
+                    let path = dir.join(filename);
+                    cli::completions::save_completions(clap_shell, &mut cmd, &path)?;
+                    println!(
+                        "{} Completions installed to: {}",
+                        "✔".green(),
+                        path.display()
+                    );
+                    println!();
+                    println!("{}", "Installation instructions:".cyan().bold());
+                    println!("{}", cli::completions::get_install_instructions(clap_shell));
+                } else {
+                    eprintln!(
+                        "{} Could not determine default completions directory for {:?}",
+                        "✖".red(),
+                        shell
+                    );
+                    eprintln!("Use without --install to print completions to stdout");
+                    std::process::exit(1);
+                }
+            } else {
+                // Print to stdout
+                cli::completions::print_completions(clap_shell, &mut cmd);
             }
         }
     }
