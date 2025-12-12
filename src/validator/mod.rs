@@ -17,6 +17,7 @@ use colored::Colorize;
 use serde::{Deserialize, Serialize};
 
 use crate::transport::TransportType;
+use crate::ui::{OutputMode, Printer};
 
 /// Protocol validation results (legacy structure for compatibility)
 #[allow(dead_code)]
@@ -94,7 +95,15 @@ impl ProtocolValidator {
 }
 
 impl ValidationResults {
+    /// Print results as formatted text (uses auto-detected output mode)
     pub fn print_text(&self) {
+        self.print_text_with_mode(OutputMode::detect());
+    }
+
+    /// Print results as formatted text with specific output mode
+    pub fn print_text_with_mode(&self, mode: OutputMode) {
+        let printer = Printer::with_mode(mode);
+
         // Get rule definitions for remediation lookup
         let all_rules = rules::get_all_rules();
         let rule_map: std::collections::HashMap<String, &rules::ValidationRule> =
@@ -118,60 +127,102 @@ impl ValidationResults {
             .collect();
 
         // Show summary first
-        println!();
-        println!("{}", "━".repeat(70));
+        printer.newline();
+        printer.separator();
+
         if self.failed > 0 {
-            println!(
-                "  {} {} failures, {} warnings, {} passed",
-                "VALIDATION FAILED:".red().bold(),
-                self.failed.to_string().red().bold(),
-                self.warnings.to_string().yellow(),
-                self.passed.to_string().green()
-            );
+            if mode.colors_enabled() {
+                println!(
+                    "  {} {} failures, {} warnings, {} passed",
+                    "VALIDATION FAILED:".red().bold(),
+                    self.failed.to_string().red().bold(),
+                    self.warnings.to_string().yellow(),
+                    self.passed.to_string().green()
+                );
+            } else {
+                println!(
+                    "  VALIDATION FAILED: {} failures, {} warnings, {} passed",
+                    self.failed, self.warnings, self.passed
+                );
+            }
         } else if self.warnings > 0 {
-            println!(
-                "  {} {} warnings, {} passed",
-                "VALIDATION PASSED WITH WARNINGS:".yellow().bold(),
-                self.warnings.to_string().yellow().bold(),
-                self.passed.to_string().green()
-            );
-        } else {
+            if mode.colors_enabled() {
+                println!(
+                    "  {} {} warnings, {} passed",
+                    "VALIDATION PASSED WITH WARNINGS:".yellow().bold(),
+                    self.warnings.to_string().yellow().bold(),
+                    self.passed.to_string().green()
+                );
+            } else {
+                println!(
+                    "  VALIDATION PASSED WITH WARNINGS: {} warnings, {} passed",
+                    self.warnings, self.passed
+                );
+            }
+        } else if mode.colors_enabled() {
             println!(
                 "  {} All {} checks passed",
                 "VALIDATION PASSED:".green().bold(),
                 self.passed.to_string().green().bold()
             );
+        } else {
+            println!("  VALIDATION PASSED: All {} checks passed", self.passed);
         }
-        println!("{}", "━".repeat(70));
+        printer.separator();
 
         // Show failures first (most important)
         if !failures.is_empty() {
-            println!();
-            println!("{}", "  ✗ FAILURES".red().bold());
-            println!("{}", "  ─".repeat(34).red());
+            printer.newline();
+            let fail_header = if mode.unicode_enabled() {
+                "  ✗ FAILURES"
+            } else {
+                "  [X] FAILURES"
+            };
+            if mode.colors_enabled() {
+                println!("{}", fail_header.red().bold());
+                println!("{}", "  ─".repeat(34).red());
+            } else {
+                println!("{}", fail_header);
+                println!("{}", "  -".repeat(34));
+            }
             for result in &failures {
-                self.print_issue(result, &rule_map, true);
+                self.print_issue_with_mode(result, &rule_map, true, mode);
             }
         }
 
         // Show warnings next
         if !warnings.is_empty() {
-            println!();
-            println!("{}", "  ⚠ WARNINGS".yellow().bold());
-            println!("{}", "  ─".repeat(34).yellow());
+            printer.newline();
+            let warn_header = if mode.unicode_enabled() {
+                "  ⚠ WARNINGS"
+            } else {
+                "  [!] WARNINGS"
+            };
+            if mode.colors_enabled() {
+                println!("{}", warn_header.yellow().bold());
+                println!("{}", "  ─".repeat(34).yellow());
+            } else {
+                println!("{}", warn_header);
+                println!("{}", "  -".repeat(34));
+            }
             for result in &warnings {
-                self.print_issue(result, &rule_map, false);
+                self.print_issue_with_mode(result, &rule_map, false, mode);
             }
         }
 
         // Show passing tests (collapsed summary)
         if !passing.is_empty() && (self.failed > 0 || self.warnings > 0) {
-            println!();
-            println!(
-                "  {} {} checks passed",
-                "✓".green(),
-                passing.len().to_string().green()
-            );
+            printer.newline();
+            let check_mark = if mode.unicode_enabled() { "✓" } else { "[OK]" };
+            if mode.colors_enabled() {
+                println!(
+                    "  {} {} checks passed",
+                    check_mark.green(),
+                    passing.len().to_string().green()
+                );
+            } else {
+                println!("  {} {} checks passed", check_mark, passing.len());
+            }
 
             // Group by category for compact display
             let mut by_cat: std::collections::HashMap<&str, Vec<&ValidationResult>> =
@@ -181,65 +232,99 @@ impl ValidationResults {
             }
             for (cat, results) in by_cat.iter() {
                 let ids: Vec<_> = results.iter().map(|r| r.rule_id.as_str()).collect();
-                println!("    {}: {}", cat.dimmed(), ids.join(", ").dimmed());
+                if mode.colors_enabled() {
+                    println!("    {}: {}", cat.dimmed(), ids.join(", ").dimmed());
+                } else {
+                    println!("    {}: {}", cat, ids.join(", "));
+                }
             }
         } else if passing.is_empty() && failures.is_empty() && warnings.is_empty() {
-            println!();
-            println!("  {}", "No validation checks were run.".dimmed());
+            printer.newline();
+            if mode.colors_enabled() {
+                println!("  {}", "No validation checks were run.".dimmed());
+            } else {
+                println!("  No validation checks were run.");
+            }
         } else if failures.is_empty() && warnings.is_empty() {
             // All passed - show brief summary
-            println!();
-            println!(
-                "  {} All {} protocol checks passed",
-                "✓".green().bold(),
-                self.passed
-            );
+            printer.newline();
+            let check_mark = if mode.unicode_enabled() { "✓" } else { "[OK]" };
+            if mode.colors_enabled() {
+                println!(
+                    "  {} All {} protocol checks passed",
+                    check_mark.green().bold(),
+                    self.passed
+                );
+            } else {
+                println!("  {} All {} protocol checks passed", check_mark, self.passed);
+            }
         }
 
-        println!();
+        printer.newline();
     }
 
-    fn print_issue(
+    fn print_issue_with_mode(
         &self,
         result: &ValidationResult,
         rule_map: &std::collections::HashMap<String, &rules::ValidationRule>,
         is_failure: bool,
+        mode: OutputMode,
     ) {
-        let icon = if is_failure {
-            "✗".red()
+        let (icon, icon_plain) = if is_failure {
+            ("✗", "[X]")
         } else {
-            "⚠".yellow()
-        };
-        let rule_id_colored = if is_failure {
-            result.rule_id.red().bold()
-        } else {
-            result.rule_id.yellow().bold()
+            ("⚠", "[!]")
         };
 
         // Rule ID and name
         println!();
-        println!(
-            "  {} {} - {}",
-            icon,
-            rule_id_colored,
-            result.rule_name.bold()
-        );
+        if mode.colors_enabled() {
+            let icon_display = if mode.unicode_enabled() { icon } else { icon_plain };
+            let icon_colored = if is_failure {
+                icon_display.red()
+            } else {
+                icon_display.yellow()
+            };
+            let rule_id_colored = if is_failure {
+                result.rule_id.red().bold()
+            } else {
+                result.rule_id.yellow().bold()
+            };
+            println!(
+                "  {} {} - {}",
+                icon_colored,
+                rule_id_colored,
+                result.rule_name.bold()
+            );
+        } else {
+            let icon_display = if mode.unicode_enabled() { icon } else { icon_plain };
+            println!("  {} {} - {}", icon_display, result.rule_id, result.rule_name);
+        }
 
         // What happened
         if let Some(ref msg) = result.message {
-            println!("    {}: {}", "Issue".white().bold(), msg);
+            if mode.colors_enabled() {
+                println!("    {}: {}", "Issue".white().bold(), msg);
+            } else {
+                println!("    Issue: {}", msg);
+            }
         }
 
         // Details
         if !result.details.is_empty() {
+            let bullet = if mode.unicode_enabled() { "•" } else { "-" };
             for detail in &result.details {
-                println!("    • {}", detail);
+                println!("    {} {}", bullet, detail);
             }
         }
 
         // How to fix (from rule definition)
         if let Some(rule) = rule_map.get(&result.rule_id) {
-            println!("    {}: {}", "Fix".cyan().bold(), rule.remediation);
+            if mode.colors_enabled() {
+                println!("    {}: {}", "Fix".cyan().bold(), rule.remediation);
+            } else {
+                println!("    Fix: {}", rule.remediation);
+            }
         }
     }
 

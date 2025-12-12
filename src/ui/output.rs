@@ -90,6 +90,7 @@ impl Printer {
     }
 
     /// Print to stdout without newline
+    #[allow(dead_code)]
     pub fn print(&self, message: &str) {
         print!("{}", message);
         let _ = io::stdout().flush();
@@ -150,6 +151,7 @@ impl Printer {
     }
 
     /// Print a warning message
+    #[allow(dead_code)]
     pub fn warning(&self, message: &str) {
         use colored::Colorize;
         let symbol = if self.mode.unicode_enabled() {
@@ -165,6 +167,7 @@ impl Printer {
     }
 
     /// Print an info message
+    #[allow(dead_code)]
     pub fn info(&self, message: &str) {
         use colored::Colorize;
         let symbol = if self.mode.unicode_enabled() {
@@ -180,6 +183,7 @@ impl Printer {
     }
 
     /// Print a bullet point item
+    #[allow(dead_code)]
     pub fn bullet(&self, message: &str) {
         let symbol = if self.mode.unicode_enabled() {
             "•"
@@ -200,6 +204,7 @@ impl Printer {
     }
 
     /// Print a labeled section header
+    #[allow(dead_code)]
     pub fn section(&self, label: &str, value: &str) {
         use colored::Colorize;
         if self.mode.colors_enabled() {
@@ -210,6 +215,7 @@ impl Printer {
     }
 
     /// Print dimmed/secondary text
+    #[allow(dead_code)]
     pub fn dimmed(&self, message: &str) {
         use colored::Colorize;
         if self.mode.colors_enabled() {

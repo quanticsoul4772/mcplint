@@ -23,23 +23,38 @@ pub use finding::{
 use anyhow::Result;
 use colored::Colorize;
 
-impl ScanResults {
-    pub fn print_text(&self) {
-        println!("{}", "Security Scan Results".cyan().bold());
-        println!("{}", "=".repeat(60));
-        println!();
+use crate::ui::{OutputMode, Printer};
 
-        println!("  Server: {}", self.server.yellow());
-        println!("  Profile: {}", self.profile.green());
-        println!("  Checks: {}", self.total_checks);
-        println!("  Duration: {}ms", self.duration_ms);
-        println!();
+impl ScanResults {
+    /// Print results as formatted text (uses auto-detected output mode)
+    pub fn print_text(&self) {
+        self.print_text_with_mode(OutputMode::detect());
+    }
+
+    /// Print results as formatted text with specific output mode
+    pub fn print_text_with_mode(&self, mode: OutputMode) {
+        let printer = Printer::with_mode(mode);
+
+        printer.header("Security Scan Results");
+        printer.separator();
+        printer.newline();
+
+        printer.kv("Server", &self.server);
+        printer.kv("Profile", &self.profile);
+        printer.kv("Checks", &self.total_checks.to_string());
+        printer.kv("Duration", &format!("{}ms", self.duration_ms));
+        printer.newline();
 
         if self.findings.is_empty() {
-            println!("{}", "  No vulnerabilities found ✓".green().bold());
+            let msg = if mode.unicode_enabled() {
+                "No vulnerabilities found ✓"
+            } else {
+                "No vulnerabilities found [OK]"
+            };
+            printer.success(msg);
         } else {
-            println!(
-                "  {} {} found:",
+            let count_msg = format!(
+                "{} {} found:",
                 self.findings.len(),
                 if self.findings.len() == 1 {
                     "vulnerability"
@@ -47,60 +62,84 @@ impl ScanResults {
                     "vulnerabilities"
                 }
             );
-            println!();
+            printer.println(&format!("  {}", count_msg));
+            printer.newline();
 
             for finding in &self.findings {
-                println!(
-                    "  [{}] {} ({})",
-                    finding.severity.colored_display(),
-                    finding.title,
-                    finding.rule_id.dimmed()
-                );
+                // Severity display
+                let severity_display = finding.severity.display(mode);
+                let rule_display = if mode.colors_enabled() {
+                    finding.rule_id.dimmed().to_string()
+                } else {
+                    finding.rule_id.clone()
+                };
+                println!("  [{}] {} ({})", severity_display, finding.title, rule_display);
                 println!("    {}", finding.description);
 
                 if !finding.location.component.is_empty() {
-                    println!(
-                        "    Location: {}: {}",
-                        finding.location.component.cyan(),
-                        finding.location.identifier
-                    );
+                    let component = if mode.colors_enabled() {
+                        finding.location.component.cyan().to_string()
+                    } else {
+                        finding.location.component.clone()
+                    };
+                    println!("    Location: {}: {}", component, finding.location.identifier);
                 }
 
                 if !finding.remediation.is_empty() {
-                    println!("    Fix: {}", finding.remediation.green());
+                    let fix = if mode.colors_enabled() {
+                        finding.remediation.green().to_string()
+                    } else {
+                        finding.remediation.clone()
+                    };
+                    println!("    Fix: {}", fix);
                 }
 
                 if !finding.references.is_empty() {
                     let refs: Vec<String> =
                         finding.references.iter().map(|r| r.id.clone()).collect();
-                    println!("    References: {}", refs.join(", ").dimmed());
+                    let refs_str = refs.join(", ");
+                    let refs_display = if mode.colors_enabled() {
+                        refs_str.dimmed().to_string()
+                    } else {
+                        refs_str
+                    };
+                    println!("    References: {}", refs_display);
                 }
 
-                println!();
+                printer.newline();
             }
         }
 
-        println!("{}", "─".repeat(60));
-        println!(
-            "Summary: {} critical, {} high, {} medium, {} low, {} info",
-            self.summary.critical.to_string().red(),
-            self.summary.high.to_string().red(),
-            self.summary.medium.to_string().yellow(),
-            self.summary.low.to_string().blue(),
-            self.summary.info.to_string().dimmed()
-        );
+        printer.separator();
 
-        if self.has_critical_or_high() {
+        // Summary line - mode-aware
+        if mode.colors_enabled() {
             println!(
-                "\n{}",
-                "Server has critical/high severity vulnerabilities!"
-                    .red()
-                    .bold()
+                "Summary: {} critical, {} high, {} medium, {} low, {} info",
+                self.summary.critical.to_string().red(),
+                self.summary.high.to_string().red(),
+                self.summary.medium.to_string().yellow(),
+                self.summary.low.to_string().blue(),
+                self.summary.info.to_string().dimmed()
             );
-        } else if self.total_findings() > 0 {
-            println!("\n{}", "Server has security issues to address.".yellow());
         } else {
-            println!("\n{}", "No security issues detected.".green().bold());
+            println!(
+                "Summary: {} critical, {} high, {} medium, {} low, {} info",
+                self.summary.critical,
+                self.summary.high,
+                self.summary.medium,
+                self.summary.low,
+                self.summary.info
+            );
+        }
+
+        // Final status message
+        if self.has_critical_or_high() {
+            printer.error("Server has critical/high severity vulnerabilities!");
+        } else if self.total_findings() > 0 {
+            printer.warning("Server has security issues to address.");
+        } else {
+            printer.success("No security issues detected.");
         }
     }
 

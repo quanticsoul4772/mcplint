@@ -54,6 +54,6 @@ pub use fingerprinting::{
     ChangeSeverity, ChangeType, FingerprintComparator, FingerprintDiff, FingerprintHasher,
     FingerprintMetadata, NormalizedSchema, SchemaNormalizer, ToolFingerprint,
 };
-pub use scanner::{ScanEngine, ScanResults};
-pub use ui::{OutputMode, Printer, ProgressStyle, ScanProgress, SecurityTheme, Severity, Theme};
+pub use scanner::{ScanEngine, ScanResults, Severity};
+pub use ui::{OutputMode, Printer, ProgressStyle, ScanProgress, SecurityTheme, Theme};
 pub use validator::ValidationEngine;
