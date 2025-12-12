@@ -9,28 +9,33 @@ Security testing tool for Model Context Protocol (MCP) servers.
 
 ## Features
 
-- Protocol validation - verify MCP compliance
-- Security scanning - detect vulnerabilities
-- Coverage-guided fuzzing - find crashes and edge cases
-- Tool fingerprinting - detect schema changes and breaking API updates
-- AI-powered explanations - understand findings with remediation guidance
-- CI/CD integration - SARIF, JUnit, GitLab output formats
-- Config file support - reads Claude Desktop config to find servers
+- **Protocol validation** - verify MCP compliance with 56 validation rules
+- **Security scanning** - detect vulnerabilities with 20+ detection rules
+- **Multi-server scanning** - parallel scanning with aggregated results
+- **Coverage-guided fuzzing** - find crashes and edge cases
+- **Tool fingerprinting** - detect schema changes and breaking API updates
+- **AI-powered explanations** - understand findings with remediation guidance
+- **Watch mode** - differential display showing new/fixed issues
+- **Shell completions** - bash, zsh, fish, PowerShell, elvish
+- **CI/CD integration** - SARIF, JUnit, GitLab output formats
+- **Smart context detection** - auto-detects TTY, CI, NO_COLOR modes
+- **Config file support** - reads Claude Desktop config to find servers
 
 ## Installation
 
 ```bash
+# From crates.io
+cargo install mcplint
+
+# From source
 cargo install --path .
-```
 
-Or build from source:
-
-```bash
+# Or build manually
 cargo build --release
 ./target/release/mcplint --help
 ```
 
-## Usage
+## Quick Start
 
 ```bash
 # List servers from Claude Desktop config
@@ -38,41 +43,40 @@ mcplint servers
 
 # Validate a server
 mcplint validate <server>
-mcplint validate filesystem
-mcplint validate                    # validates all servers from config
 
 # Security scan
 mcplint scan <server>
 
-# Fuzz a server
-mcplint fuzz <server>
+# Scan all servers in parallel
+mcplint multi-scan --all
 
-# AI-powered explanations
-mcplint explain <server>
-
-# Watch mode
+# Watch mode with differential display
 mcplint watch <server>
-
-# List security rules
-mcplint rules
-mcplint rules --details
-
-# Environment check
-mcplint doctor
-
-# Cache management
-mcplint cache stats
-mcplint cache clear
-
-# Tool fingerprinting
-mcplint fingerprint generate <server>
-mcplint fingerprint compare <server> --baseline baseline.json
-
-# Generate config
-mcplint init
 ```
 
 ## Commands
+
+```bash
+# Core commands
+mcplint validate <server>            # Validate protocol compliance
+mcplint scan <server>                # Security scan
+mcplint multi-scan --all             # Parallel multi-server scan
+mcplint fuzz <server>                # Coverage-guided fuzzing
+mcplint explain <server>             # AI-powered explanations
+mcplint watch <server>               # Watch mode with live diffs
+
+# Utility commands
+mcplint servers                      # List configured servers
+mcplint rules --details              # List all security rules
+mcplint doctor                       # Environment check
+mcplint fingerprint generate <s>     # Generate tool fingerprints
+mcplint cache stats                  # Cache statistics
+mcplint completions <shell>          # Generate shell completions
+mcplint how-do-i <query>             # Contextual help
+mcplint init                         # Generate config file
+```
+
+## Command Reference
 
 ### validate
 
@@ -101,7 +105,33 @@ Options:
   -t, --timeout <seconds>    Timeout [default: 60]
   --baseline <path>          Compare against baseline file
   --save-baseline <path>     Save results as baseline
+  --update-baseline          Update existing baseline
+  --diff-only                Show only diff summary
   --fail-on <severities>     Fail only on specified severities
+  --explain                  Generate AI-powered explanations
+  --ai-provider <provider>   AI provider for explanations
+```
+
+### multi-scan
+
+Scan multiple MCP servers in parallel.
+
+```bash
+mcplint multi-scan [options]
+
+Options:
+  -s, --servers <list>       Server names (comma-separated)
+  --all                      Scan all configured servers
+  -j, --concurrency <n>      Maximum concurrent scans [default: 4]
+  -p, --profile <profile>    Scan profile for all servers
+  -t, --timeout <seconds>    Timeout per server [default: 60]
+  --fail-on <severities>     Fail only on specified severities
+  -f, --format <format>      Output format (sarif for CI/CD)
+
+# Examples
+mcplint multi-scan --all --profile standard
+mcplint multi-scan -s server1,server2 --format sarif
+mcplint multi-scan --all --fail-on critical,high
 ```
 
 ### fuzz
@@ -172,6 +202,40 @@ List MCP servers from Claude Desktop config.
 
 ```bash
 mcplint servers
+```
+
+### watch
+
+Watch files and rescan on changes with differential display.
+
+```bash
+mcplint watch <server> [options]
+
+Options:
+  -w, --watch <path>         Paths to watch [default: .]
+  -p, --profile <profile>    Scan profile [default: quick]
+  -d, --debounce <ms>        Debounce delay [default: 500]
+  -c, --clear                Clear screen before each scan
+
+# Shows differential output:
+# ❌ NEW ISSUES - newly detected vulnerabilities
+# ✅ FIXED - previously detected issues now resolved
+```
+
+### completions
+
+Generate shell completions with server name support.
+
+```bash
+mcplint completions <shell>
+
+Shells: bash, zsh, fish, powershell, elvish
+
+# Installation examples
+mcplint completions bash >> ~/.bashrc
+mcplint completions zsh >> ~/.zshrc
+mcplint completions fish > ~/.config/fish/completions/mcplint.fish
+mcplint completions powershell >> $PROFILE
 ```
 
 ### cache
