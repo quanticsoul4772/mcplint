@@ -244,7 +244,8 @@ pub async fn run(config: ScanCommandConfig) -> Result<()> {
                     findings_count, r.duration_ms
                 ));
             } else {
-                spinner.finish_success(&format!("Scan complete: No findings ({}ms)", r.duration_ms));
+                spinner
+                    .finish_success(&format!("Scan complete: No findings ({}ms)", r.duration_ms));
             }
             r
         }

@@ -32,7 +32,12 @@ pub async fn run(extended: bool) -> Result<()> {
 
     // Check for MCP tools
     print_section_header(&printer, mode, "MCP Ecosystem");
-    check_npx_package(&printer, mode, "@modelcontextprotocol/inspector", "MCP Inspector");
+    check_npx_package(
+        &printer,
+        mode,
+        "@modelcontextprotocol/inspector",
+        "MCP Inspector",
+    );
     check_npx_package(&printer, mode, "@anthropic-ai/claude-code", "Claude Code");
     printer.newline();
 
@@ -88,12 +93,7 @@ fn check_runtime(printer: &Printer, mode: OutputMode, cmd: &str, arg: &str, name
         Ok(output) if output.status.success() => {
             let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if mode.colors_enabled() {
-                println!(
-                    "  {}: {} ({})",
-                    name,
-                    "✓ Found".green(),
-                    version.dimmed()
-                );
+                println!("  {}: {} ({})", name, "✓ Found".green(), version.dimmed());
             } else {
                 printer.println(&format!("  {}: [OK] Found ({})", name, version));
             }
