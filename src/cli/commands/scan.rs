@@ -15,6 +15,7 @@ use crate::cli::config::{AiExplainConfig, ScanCommandConfig};
 use crate::cli::server::resolve_server;
 use crate::reporter::{generate_gitlab, generate_junit};
 use crate::scanner::{ScanConfig, ScanProfile, Severity};
+use crate::ui::{ConnectionSpinner, OutputMode};
 use crate::OutputFormat;
 
 /// Run a security scan using resolved server specification
@@ -28,6 +29,7 @@ async fn run_resolved_scan(
     env: &HashMap<String, String>,
     scan_config: ScanConfig,
     timeout: u64,
+    spinner: &mut ConnectionSpinner,
 ) -> Result<crate::scanner::ScanResults> {
     use crate::client::McpClient;
     use crate::protocol::Implementation;
@@ -60,6 +62,9 @@ async fn run_resolved_scan(
         .await
         .context("Failed to connect to server")?;
 
+    // Update spinner: initializing
+    spinner.phase_initializing();
+
     // Create and initialize client
     let client_info = Implementation::new("mcplint-scanner", env!("CARGO_PKG_VERSION"));
     let mut client = McpClient::new(transport_box, client_info);
@@ -79,18 +84,21 @@ async fn run_resolved_scan(
 
     // Collect tools, resources, prompts
     if init_result.capabilities.has_tools() {
+        spinner.phase_listing("tools");
         if let Ok(tools) = client.list_tools().await {
             ctx = ctx.with_tools(tools);
         }
     }
 
     if init_result.capabilities.has_resources() {
+        spinner.phase_listing("resources");
         if let Ok(resources) = client.list_resources().await {
             ctx = ctx.with_resources(resources);
         }
     }
 
     if init_result.capabilities.has_prompts() {
+        spinner.phase_listing("prompts");
         if let Ok(prompts) = client.list_prompts().await {
             ctx = ctx.with_prompts(prompts);
         }
@@ -98,6 +106,7 @@ async fn run_resolved_scan(
 
     // Run M6 advanced security checks
     // MCP-SEC-040: Enhanced Tool Description Injection
+    spinner.phase_security_check("MCP-SEC-040");
     results.total_checks += 1;
     let detector = ToolInjectionDetector::new();
     let findings = detector.check_tools(&ctx.tools);
@@ -106,6 +115,7 @@ async fn run_resolved_scan(
     }
 
     // MCP-SEC-041: Cross-Server Tool Shadowing
+    spinner.phase_security_check("MCP-SEC-041");
     results.total_checks += 1;
     let detector = ToolShadowingDetector::new();
     let server_name = Some(ctx.server_name.as_str());
@@ -115,6 +125,7 @@ async fn run_resolved_scan(
     }
 
     // MCP-SEC-043: OAuth Scope Abuse
+    spinner.phase_security_check("MCP-SEC-043");
     results.total_checks += 1;
     let detector = OAuthAbuseDetector::new();
     let findings = detector.check_tools(&ctx.tools);
@@ -123,6 +134,7 @@ async fn run_resolved_scan(
     }
 
     // MCP-SEC-044: Unicode Hidden Instructions
+    spinner.phase_security_check("MCP-SEC-044");
     results.total_checks += 1;
     let detector = UnicodeHiddenDetector::new();
     let findings = detector.check_tools(&ctx.tools);
@@ -131,6 +143,7 @@ async fn run_resolved_scan(
     }
 
     // MCP-SEC-045: Schema Poisoning
+    spinner.phase_security_check("MCP-SEC-045");
     results.total_checks += 1;
     let detector = SchemaPoisoningDetector::new();
     let findings = detector.check_tools(&ctx.tools);
@@ -178,8 +191,15 @@ pub async fn run(config: ScanCommandConfig) -> Result<()> {
     let profile_name = run.profile.as_str();
     let scan_profile: ScanProfile = run.profile.into();
 
-    // Only show banner for text output
-    if matches!(output.format, OutputFormat::Text) {
+    // Determine output mode based on format
+    let output_mode = if matches!(output.format, OutputFormat::Text) {
+        OutputMode::detect()
+    } else {
+        OutputMode::Plain // Non-text formats should not show progress
+    };
+
+    // Only show banner for text output in non-CI mode
+    if matches!(output.format, OutputFormat::Text) && !output_mode.progress_enabled() {
         println!("{}", "Starting security scan...".cyan());
         println!("  Server: {}", name.yellow());
         println!("  Command: {} {}", command, full_args.join(" ").dimmed());
@@ -198,9 +218,41 @@ pub async fn run(config: ScanCommandConfig) -> Result<()> {
         .with_profile(scan_profile)
         .with_timeout(run.timeout);
 
+    // Create progress spinner for interactive mode
+    let mut spinner = ConnectionSpinner::new(output_mode);
+    spinner.start(&name);
+
     // Run scan using resolved server specification
-    let results =
-        run_resolved_scan(&name, &command, &full_args, &env, scan_config, run.timeout).await?;
+    let results = run_resolved_scan(
+        &name,
+        &command,
+        &full_args,
+        &env,
+        scan_config,
+        run.timeout,
+        &mut spinner,
+    )
+    .await;
+
+    // Handle result and update spinner
+    let results = match results {
+        Ok(r) => {
+            let findings_count = r.findings.len();
+            if findings_count > 0 {
+                spinner.finish_success(&format!(
+                    "Scan complete: {} findings in {}ms",
+                    findings_count, r.duration_ms
+                ));
+            } else {
+                spinner.finish_success(&format!("Scan complete: No findings ({}ms)", r.duration_ms));
+            }
+            r
+        }
+        Err(e) => {
+            spinner.finish_error(&format!("Scan failed: {}", e));
+            return Err(e);
+        }
+    };
 
     // Load baseline if provided
     let loaded_baseline = if let Some(ref path) = baseline.baseline_path {

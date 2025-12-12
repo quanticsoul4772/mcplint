@@ -8,6 +8,7 @@ use tracing::{debug, info};
 use crate::cli::server::resolve_server;
 use crate::fuzzer::limits::{format_bytes, format_duration, ResourceLimits};
 use crate::fuzzer::{FuzzConfig, FuzzEngine, FuzzProfile};
+use crate::ui::{OutputMode, Printer};
 use crate::OutputFormat;
 
 /// Arguments for the fuzz command
@@ -140,6 +141,15 @@ pub async fn run(args: FuzzArgs) -> Result<()> {
 
     info!("Fuzzing MCP server: {}", server);
 
+    // Determine output mode based on format
+    let output_mode = if matches!(format, OutputFormat::Text) {
+        OutputMode::detect()
+    } else {
+        OutputMode::Plain
+    };
+
+    let printer = Printer::with_mode(output_mode);
+
     // Resolve server from config if not a direct path/URL
     let spec = resolve_server(&server, None)?;
     let server_name = spec.name;
@@ -160,28 +170,31 @@ pub async fn run(args: FuzzArgs) -> Result<()> {
         options.profile
     );
 
-    println!("{}", "Starting fuzzing session...".cyan());
-    println!("  Server: {}", server_name.yellow());
-    println!(
-        "  Command: {} {}",
-        resolved_cmd.dimmed(),
-        resolved_args.join(" ").dimmed()
-    );
-    println!("  Profile: {}", format!("{:?}", options.profile).cyan());
-    println!(
-        "  Duration: {}s",
-        if options.duration == 0 {
-            "unlimited".to_string()
-        } else {
-            options.duration.to_string()
+    // Show banner for text output
+    if matches!(format, OutputFormat::Text) {
+        printer.header("Starting fuzzing session...");
+        println!("  Server: {}", server_name.yellow());
+        println!(
+            "  Command: {} {}",
+            resolved_cmd.dimmed(),
+            resolved_args.join(" ").dimmed()
+        );
+        println!("  Profile: {}", format!("{:?}", options.profile).cyan());
+        println!(
+            "  Duration: {}s",
+            if options.duration == 0 {
+                "unlimited".to_string()
+            } else {
+                options.duration.to_string()
+            }
+        );
+        println!("  Workers: {}", options.workers);
+        if let Some(ref c) = options.corpus {
+            println!("  Corpus: {}", c);
         }
-    );
-    println!("  Workers: {}", options.workers);
-    if let Some(ref c) = options.corpus {
-        println!("  Corpus: {}", c);
-    }
-    if let Some(s) = options.seed {
-        println!("  Seed: {}", s);
+        if let Some(s) = options.seed {
+            println!("  Seed: {}", s);
+        }
     }
 
     // Build config from profile and options

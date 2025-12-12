@@ -19,5 +19,5 @@ pub mod theme;
 
 // Re-exports for convenient access
 pub use output::{OutputMode, Printer};
-pub use progress::{ProgressStyle, ScanProgress};
+pub use progress::{ConnectionSpinner, MultiServerProgress, ProgressStyle, ScanProgress};
 pub use theme::{SecurityTheme, Severity, Theme};
