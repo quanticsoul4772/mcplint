@@ -442,11 +442,8 @@ impl HelpSystem {
         printer.newline();
 
         for (name, recipe) in self.list_recipes() {
-            if mode.unicode_enabled() {
-                printer.println(&format!("  {} - {}", name, recipe.description));
-            } else {
-                printer.println(&format!("  {} - {}", name, recipe.description));
-            }
+            let bullet = if mode.unicode_enabled() { "•" } else { "-" };
+            printer.println(&format!("  {} {} - {}", bullet, name, recipe.description));
         }
 
         printer.newline();
