@@ -6,6 +6,7 @@ pub mod explain;
 pub mod fingerprint;
 pub mod fuzz;
 pub mod init;
+pub mod multi_scan;
 pub mod rules;
 pub mod scan;
 pub mod servers;

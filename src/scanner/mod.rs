@@ -2,12 +2,18 @@
 //!
 //! This module implements the M2 milestone: Security Scanner
 //! It scans MCP servers for security vulnerabilities using pattern-based detection.
+//!
+//! # Multi-Server Scanning
+//!
+//! The `multi_server` submodule provides parallel scanning of multiple MCP servers
+//! with combined reporting and aggregated results. See [`MultiServerScanner`] for details.
 
 mod checks;
 pub mod context;
 mod engine;
 mod finding;
 mod helpers;
+pub mod multi_server;
 mod results;
 pub mod rules;
 

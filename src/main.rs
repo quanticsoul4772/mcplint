@@ -188,6 +188,38 @@ enum Commands {
         config: Option<PathBuf>,
     },
 
+    /// Scan multiple MCP servers in parallel
+    #[command(name = "multi-scan")]
+    MultiScan {
+        /// Server names from config (comma-separated or multiple flags)
+        #[arg(short, long, value_delimiter = ',')]
+        servers: Option<Vec<String>>,
+
+        /// Scan all configured servers
+        #[arg(long)]
+        all: bool,
+
+        /// Maximum concurrent scans
+        #[arg(short = 'j', long, default_value = "4")]
+        concurrency: usize,
+
+        /// Security scan profile for all servers
+        #[arg(short, long, default_value = "standard")]
+        profile: ScanProfile,
+
+        /// Timeout per server (seconds)
+        #[arg(short, long, default_value = "60")]
+        timeout: u64,
+
+        /// Path to MCP config file (defaults to Claude Desktop config)
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+
+        /// Fail only on specified severities (e.g., critical,high)
+        #[arg(long, value_delimiter = ',')]
+        fail_on: Option<Vec<Severity>>,
+    },
+
     /// Fuzz MCP server with generated inputs
     Fuzz {
         /// Path to MCP server executable or command
@@ -659,6 +691,27 @@ async fn main() -> Result<()> {
                 .with_output(output_config);
 
             commands::scan::run(scan_config).await?;
+        }
+        Commands::MultiScan {
+            servers,
+            all,
+            concurrency,
+            profile,
+            timeout,
+            config,
+            fail_on,
+        } => {
+            commands::multi_scan::run(
+                servers,
+                all,
+                concurrency,
+                profile.into(),
+                timeout,
+                config.as_deref(),
+                fail_on,
+                cli.format,
+            )
+            .await?;
         }
         Commands::Fuzz {
             server,
