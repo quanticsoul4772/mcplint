@@ -234,7 +234,7 @@ impl ScanConfig {
 }
 
 /// Scan profile determining which rules to run
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum ScanProfile {
     /// Quick scan with essential rules only (~5 rules)
     Quick,
