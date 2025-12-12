@@ -40,6 +40,7 @@ mcplint doctor                   # Environment check
 mcplint cache stats              # Cache statistics
 mcplint fingerprint generate <s> # Generate fingerprints
 mcplint watch <server>           # Watch mode
+mcplint multi-scan --all         # Multi-server scanning
 ```
 
 ## Architecture
@@ -62,6 +63,7 @@ src/
       rules.rs         # List rules
       doctor.rs        # Environment check
       servers.rs       # List servers
+      multi_scan.rs    # Multi-server scanning
   ai/                  # AI provider integration
     engine.rs          # ExplainEngine
     provider/          # Provider implementations
@@ -77,6 +79,7 @@ src/
   scanner/             # Security scanner
     engine.rs          # ScanEngine
     finding.rs         # Finding, Severity
+    multi_server.rs    # Multi-server parallel scanning
     rules/             # Detection rules
       tool_injection.rs
       tool_shadowing.rs
@@ -188,8 +191,7 @@ Key crates:
 ## Test Coverage
 
 Current statistics:
-- **3,540+ tests** across lib, bin, and integration test suites
-- **68.7% code coverage** (8,360/12,166 lines)
+- **4,500+ tests** across lib, bin, and integration test suites
 - Integration tests use live MCP servers (filesystem, memory)
 
 Key module coverage:
@@ -197,8 +199,30 @@ Key module coverage:
 - transport/stdio.rs: 93.5%
 - validator/rules.rs: 99.5%
 - validator/engine.rs: 69.4%
+- scanner/multi_server.rs: 100% (unit tests)
 
 Run coverage:
 ```bash
 cargo tarpaulin --lib --test server_integration --out Stdout
 ```
+
+## Multi-Server Scanning (M7 Phase 2)
+
+Scan multiple MCP servers in parallel:
+
+```bash
+# Scan specific servers
+mcplint multi-scan --servers server1,server2 --concurrency 4
+
+# Scan all configured servers
+mcplint multi-scan --all --profile standard
+
+# CI integration with fail conditions
+mcplint multi-scan --all --fail-on critical,high --format sarif
+```
+
+Features:
+- Parallel execution with configurable concurrency
+- Combined SARIF output for CI/CD
+- Aggregated statistics and severity counts
+- Per-server timeout configuration
