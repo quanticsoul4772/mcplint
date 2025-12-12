@@ -191,38 +191,60 @@ Key crates:
 ## Test Coverage
 
 Current statistics:
-- **4,500+ tests** across lib, bin, and integration test suites
+- **5,000+ tests** across lib (2,420), bin (2,563), and integration test suites
 - Integration tests use live MCP servers (filesystem, memory)
+- Run time: ~65 seconds for full suite
 
 Key module coverage:
 - scanner/engine.rs: 93.8%
 - transport/stdio.rs: 93.5%
 - validator/rules.rs: 99.5%
 - validator/engine.rs: 69.4%
-- scanner/multi_server.rs: 100% (unit tests)
+- scanner/multi_server.rs: 100%
+- fuzzer/session.rs: comprehensive unit tests
+- baseline/store.rs: comprehensive unit tests
 
 Run coverage:
 ```bash
 cargo tarpaulin --lib --test server_integration --out Stdout
 ```
 
-## Multi-Server Scanning (M7 Phase 2)
+## v0.2.0 CLI Features
+
+### Smart Context Detection
+- Auto-detects TTY, CI, and plain output modes
+- Respects NO_COLOR environment variable
+- Unicode/ASCII fallback based on terminal capabilities
+
+### Progress Indicators
+- Real-time progress bars for scan operations
+- Connection spinners with phase tracking
+
+### Enhanced Error Handling
+- Miette-based diagnostic errors with source context
+- "Did you mean?" suggestions using Jaro-Winkler similarity
+- Contextual help for common errors
+
+### Shell Completions
+- Dynamic completions for bash, zsh, fish, PowerShell, elvish
+- Server name completion from Claude Desktop config
+
+### Watch Mode
+- Differential display showing new/fixed issues
+- Debounced file watching
+
+## Multi-Server Scanning
 
 Scan multiple MCP servers in parallel:
 
 ```bash
-# Scan specific servers
-mcplint multi-scan --servers server1,server2 --concurrency 4
-
-# Scan all configured servers
 mcplint multi-scan --all --profile standard
-
-# CI integration with fail conditions
-mcplint multi-scan --all --fail-on critical,high --format sarif
+mcplint multi-scan -s server1,server2 --format sarif
+mcplint multi-scan --all --fail-on critical,high
 ```
 
 Features:
-- Parallel execution with configurable concurrency
+- Parallel execution with configurable concurrency (-j flag)
 - Combined SARIF output for CI/CD
 - Aggregated statistics and severity counts
 - Per-server timeout configuration
