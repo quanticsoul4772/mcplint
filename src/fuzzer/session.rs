@@ -1329,7 +1329,8 @@ mod tests {
         let results = session.generate_results().unwrap();
 
         assert_eq!(results.iterations, 150);
-        assert!(results.coverage.paths_explored >= 0);
+        // paths_explored is always valid (usize is non-negative)
+        let _ = results.coverage.paths_explored;
     }
 
     #[test]
@@ -1412,12 +1413,14 @@ mod tests {
 
     #[test]
     fn session_with_multiple_tools_in_config() {
-        let mut config = FuzzConfig::default();
-        config.target_tools = Some(vec![
-            "tool1".to_string(),
-            "tool2".to_string(),
-            "tool3".to_string(),
-        ]);
+        let config = FuzzConfig {
+            target_tools: Some(vec![
+                "tool1".to_string(),
+                "tool2".to_string(),
+                "tool3".to_string(),
+            ]),
+            ..Default::default()
+        };
 
         let session = FuzzSession::new("test", &[], config);
         assert_eq!(
@@ -1432,8 +1435,10 @@ mod tests {
 
     #[test]
     fn session_with_dictionary_path() {
-        let mut config = FuzzConfig::default();
-        config.dictionary_path = Some(std::path::PathBuf::from("/tmp/dict.txt"));
+        let config = FuzzConfig {
+            dictionary_path: Some(std::path::PathBuf::from("/tmp/dict.txt")),
+            ..Default::default()
+        };
 
         let session = FuzzSession::new("test", &[], config);
         assert_eq!(
@@ -1444,14 +1449,18 @@ mod tests {
 
     #[test]
     fn session_save_interesting_flag() {
-        let mut config = FuzzConfig::default();
-        config.save_interesting = false;
+        let config = FuzzConfig {
+            save_interesting: false,
+            ..Default::default()
+        };
 
         let session = FuzzSession::new("test", &[], config);
         assert!(!session.config.save_interesting);
 
-        let mut config2 = FuzzConfig::default();
-        config2.save_interesting = true;
+        let config2 = FuzzConfig {
+            save_interesting: true,
+            ..Default::default()
+        };
 
         let session2 = FuzzSession::new("test", &[], config2);
         assert!(session2.config.save_interesting);
@@ -1459,8 +1468,10 @@ mod tests {
 
     #[test]
     fn session_coverage_threshold() {
-        let mut config = FuzzConfig::default();
-        config.coverage_threshold = 0.05;
+        let config = FuzzConfig {
+            coverage_threshold: 0.05,
+            ..Default::default()
+        };
 
         let session = FuzzSession::new("test", &[], config);
         assert!((session.config.coverage_threshold - 0.05).abs() < f64::EPSILON);
@@ -1468,8 +1479,10 @@ mod tests {
 
     #[test]
     fn session_workers_configuration() {
-        let mut config = FuzzConfig::default();
-        config.workers = 4;
+        let config = FuzzConfig {
+            workers: 4,
+            ..Default::default()
+        };
 
         let session = FuzzSession::new("test", &[], config);
         assert_eq!(session.config.workers, 4);

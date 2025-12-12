@@ -5586,7 +5586,7 @@ mod tests {
             engine.run_schema_rules(&ctx, &mut results);
 
             // Should pass with empty list
-            assert!(results.results.len() > 0);
+            assert!(!results.results.is_empty());
             assert!(results
                 .results
                 .iter()

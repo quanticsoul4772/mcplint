@@ -567,7 +567,7 @@ mod tests {
     fn transport_type_copy_clone() {
         let t1 = TransportType::Stdio;
         let t2 = t1; // Copy
-        let t3 = t1.clone(); // Clone
+        let t3 = t1; // Copy again (type implements Copy)
         assert_eq!(t1, t2);
         assert_eq!(t1, t3);
     }

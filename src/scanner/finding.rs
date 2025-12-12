@@ -976,10 +976,11 @@ mod tests {
 
     #[test]
     fn finding_metadata_with_values() {
-        let mut metadata = FindingMetadata::default();
-        metadata.detected_at = Some("2025-12-12T00:00:00Z".to_string());
-        metadata.scanner_version = Some("1.0.0".to_string());
-        metadata.tags.push("test".to_string());
+        let metadata = FindingMetadata {
+            detected_at: Some("2025-12-12T00:00:00Z".to_string()),
+            scanner_version: Some("1.0.0".to_string()),
+            tags: vec!["test".to_string()],
+        };
 
         assert_eq!(
             metadata.detected_at,
@@ -1154,7 +1155,7 @@ mod tests {
     fn severity_copy_clone() {
         let s1 = Severity::High;
         let s2 = s1; // copy
-        let s3 = s1.clone(); // clone
+        let s3 = s1; // copy again (type implements Copy)
 
         assert_eq!(s1, s2);
         assert_eq!(s1, s3);
@@ -1205,8 +1206,8 @@ mod tests {
     // Severity deserialization tests
     #[test]
     fn severity_deserialization_all() {
-        let severities = vec!["info", "low", "medium", "high", "critical"];
-        let expected = vec![
+        let severities = ["info", "low", "medium", "high", "critical"];
+        let expected = [
             Severity::Info,
             Severity::Low,
             Severity::Medium,
@@ -1302,10 +1303,11 @@ mod tests {
     // Metadata serialization
     #[test]
     fn finding_metadata_serialization() {
-        let mut metadata = FindingMetadata::default();
-        metadata.detected_at = Some("2025-12-12T00:00:00Z".to_string());
-        metadata.scanner_version = Some("1.0.0".to_string());
-        metadata.tags = vec!["test".to_string(), "security".to_string()];
+        let metadata = FindingMetadata {
+            detected_at: Some("2025-12-12T00:00:00Z".to_string()),
+            scanner_version: Some("1.0.0".to_string()),
+            tags: vec!["test".to_string(), "security".to_string()],
+        };
 
         let json = serde_json::to_string(&metadata).unwrap();
         let deserialized: FindingMetadata = serde_json::from_str(&json).unwrap();

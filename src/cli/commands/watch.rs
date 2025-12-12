@@ -40,18 +40,12 @@ impl ResultsDiff {
     /// Compute the diff between previous and new scan results
     pub fn compute(previous: &ScanResults, current: &ScanResults) -> Self {
         // Build a set of fingerprints for previous findings
-        let previous_fingerprints: HashSet<String> = previous
-            .findings
-            .iter()
-            .map(Self::fingerprint)
-            .collect();
+        let previous_fingerprints: HashSet<String> =
+            previous.findings.iter().map(Self::fingerprint).collect();
 
         // Build a set of fingerprints for current findings
-        let current_fingerprints: HashSet<String> = current
-            .findings
-            .iter()
-            .map(Self::fingerprint)
-            .collect();
+        let current_fingerprints: HashSet<String> =
+            current.findings.iter().map(Self::fingerprint).collect();
 
         // New findings: in current but not in previous
         let new_findings: Vec<Finding> = current
