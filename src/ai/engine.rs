@@ -346,7 +346,9 @@ fn estimate_tokens(finding: &Finding) -> u32 {
 mod tests {
     use super::*;
     use crate::ai::config::AiProvider as AiProviderType;
+    use crate::ai::provider::MockProvider;
     use crate::scanner::Severity;
+    use std::sync::Arc;
 
     fn sample_finding() -> Finding {
         Finding::new(
@@ -355,6 +357,22 @@ mod tests {
             "Test Finding",
             "This is a test finding for unit tests",
         )
+    }
+
+    fn sample_finding_with_evidence() -> Finding {
+        use crate::scanner::{Evidence, EvidenceKind};
+
+        sample_finding()
+            .with_evidence(Evidence::new(
+                EvidenceKind::Observation,
+                "let x = user_input;",
+                "Vulnerable code pattern",
+            ))
+            .with_evidence(Evidence::new(
+                EvidenceKind::Observation,
+                "src/main.rs:42",
+                "Location of issue",
+            ))
     }
 
     #[test]
@@ -377,6 +395,27 @@ mod tests {
     }
 
     #[test]
+    fn engine_stats_edge_cases() {
+        let stats = EngineStats::default();
+
+        // Zero division safety
+        assert_eq!(stats.cache_hit_rate(), 0.0);
+        assert_eq!(stats.avg_response_time_ms(), 0);
+
+        // 100% cache hit rate
+        let mut stats = EngineStats::default();
+        stats.cache_hits = 10;
+        stats.cache_misses = 0;
+        assert_eq!(stats.cache_hit_rate(), 100.0);
+
+        // 0% cache hit rate
+        let mut stats = EngineStats::default();
+        stats.cache_hits = 0;
+        stats.cache_misses = 10;
+        assert_eq!(stats.cache_hit_rate(), 0.0);
+    }
+
+    #[test]
     fn token_estimation() {
         let finding = sample_finding();
         let tokens = estimate_tokens(&finding);
@@ -384,6 +423,34 @@ mod tests {
         // Should have base + content + response estimate
         assert!(tokens > 500);
         assert!(tokens < 10000);
+    }
+
+    #[test]
+    fn token_estimation_with_evidence() {
+        let finding = sample_finding_with_evidence();
+        let tokens = estimate_tokens(&finding);
+
+        // Should be more than base finding due to evidence
+        let base_tokens = estimate_tokens(&sample_finding());
+        assert!(tokens >= base_tokens);
+    }
+
+    #[test]
+    fn token_estimation_scales_with_content() {
+        let small_finding = Finding::new("ID1", Severity::Low, "Short", "Brief");
+        let large_finding = Finding::new(
+            "ID2",
+            Severity::High,
+            "Very Long Title That Contains Many Words And Details",
+            "This is a much longer description that contains significantly more text \
+            and detailed information about the vulnerability, including technical details, \
+            impact assessment, and comprehensive analysis of the security issue.",
+        );
+
+        let small_tokens = estimate_tokens(&small_finding);
+        let large_tokens = estimate_tokens(&large_finding);
+
+        assert!(large_tokens > small_tokens);
     }
 
     #[tokio::test]
@@ -400,5 +467,273 @@ mod tests {
         let engine = engine.unwrap();
         assert_eq!(engine.provider_name(), "Ollama");
         assert_eq!(engine.model_name(), "llama3.2");
+    }
+
+    #[tokio::test]
+    async fn engine_builder_pattern() {
+        use crate::cache::{CacheBackend, CacheConfig};
+
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("llama3.2")
+            .build();
+
+        let cache_config = CacheConfig {
+            backend: CacheBackend::Memory,
+            schema_ttl_secs: 3600,
+            result_ttl_secs: 86400,
+            validation_ttl_secs: 3600,
+            corpus_persist: false,
+            max_size_bytes: None,
+            enabled: true,
+        };
+        let cache_manager = Arc::new(CacheManager::new(cache_config).await.unwrap());
+        let custom_context = ExplanationContext::default();
+        let rate_limiter = Arc::new(RateLimiter::new(100, 10000));
+
+        let engine = ExplainEngine::new(config)
+            .unwrap()
+            .with_cache(cache_manager)
+            .with_default_context(custom_context)
+            .with_rate_limiter(rate_limiter);
+
+        assert_eq!(engine.provider_name(), "Ollama");
+    }
+
+    #[tokio::test]
+    async fn engine_stats_tracking() {
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("llama3.2")
+            .build();
+
+        let engine = ExplainEngine::new(config).unwrap();
+
+        let stats = engine.stats().await;
+        assert_eq!(stats.total_explanations, 0);
+        assert_eq!(stats.api_calls, 0);
+        assert_eq!(stats.tokens_used, 0);
+    }
+
+    #[test]
+    fn cache_key_generation() {
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("llama3.2")
+            .build();
+
+        let engine = ExplainEngine::new(config).unwrap();
+        let finding = sample_finding();
+        let context = ExplanationContext::default();
+
+        let key = engine.cache_key(&finding, &context);
+        assert!(key.to_string().contains("llama3.2"));
+        assert!(key.to_string().contains(&finding.id));
+    }
+
+    #[test]
+    fn cache_key_differs_for_different_findings() {
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("llama3.2")
+            .build();
+
+        let engine = ExplainEngine::new(config).unwrap();
+        let finding1 = sample_finding();
+        let finding2 = Finding::new(
+            "MCP-TEST-002",
+            Severity::Medium,
+            "Different Finding",
+            "Different description",
+        );
+        let context = ExplanationContext::default();
+
+        let key1 = engine.cache_key(&finding1, &context);
+        let key2 = engine.cache_key(&finding2, &context);
+
+        assert_ne!(key1, key2);
+    }
+
+    #[test]
+    fn cache_key_includes_prompt_version() {
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("llama3.2")
+            .build();
+
+        let engine = ExplainEngine::new(config).unwrap();
+        let finding = sample_finding();
+        let context = ExplanationContext::default();
+
+        let key = engine.cache_key(&finding, &context);
+        assert!(key.to_string().contains(PROMPT_VERSION));
+    }
+
+    #[tokio::test]
+    async fn rate_limit_stats() {
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("llama3.2")
+            .build();
+
+        let engine = ExplainEngine::new(config).unwrap();
+
+        let stats = engine.rate_limit_stats().await;
+        // Should have default limits from config
+        assert!(stats.requests_limit > 0);
+        assert_eq!(stats.requests_used, 0);
+    }
+
+    #[tokio::test]
+    async fn would_exceed_rate_limit() {
+        // Create an engine with low limits using a direct rate limiter
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("llama3.2")
+            .build();
+
+        let rate_limiter = Arc::new(RateLimiter::new(10, 1000));
+        let engine = ExplainEngine::new(config)
+            .unwrap()
+            .with_rate_limiter(rate_limiter);
+
+        // Should not exceed with small token count
+        let would_exceed = engine.would_exceed_rate_limit(100).await;
+        assert!(!would_exceed);
+
+        // Very large token count might exceed
+        let would_exceed = engine.would_exceed_rate_limit(1_000_000).await;
+        assert!(would_exceed);
+    }
+
+    #[tokio::test]
+    async fn engine_getters() {
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("test-model")
+            .build();
+
+        let engine = ExplainEngine::new(config).unwrap();
+
+        assert_eq!(engine.provider_name(), "Ollama");
+        assert_eq!(engine.model_name(), "test-model");
+    }
+
+    // Integration-style tests using MockProvider (no real API calls)
+    #[tokio::test]
+    async fn explain_with_mock_provider() {
+        // Create engine with mock provider directly
+        let provider = Arc::new(MockProvider::new()) as Arc<dyn AiProvider>;
+        let rate_limiter = Arc::new(RateLimiter::new(1000, 100000));
+
+        let engine = ExplainEngine {
+            provider,
+            cache: None,
+            rate_limiter,
+            default_context: ExplanationContext::default(),
+            stats: Arc::new(RwLock::new(EngineStats::default())),
+        };
+
+        let finding = sample_finding();
+        let result = engine.explain(&finding).await;
+
+        assert!(result.is_ok());
+        let explanation = result.unwrap();
+        assert_eq!(explanation.finding_id, finding.id);
+
+        // Check stats were updated
+        let stats = engine.stats().await;
+        assert_eq!(stats.total_explanations, 1);
+        assert_eq!(stats.api_calls, 1);
+    }
+
+    #[tokio::test]
+    async fn explain_batch_ordering() {
+        let provider = Arc::new(MockProvider::new()) as Arc<dyn AiProvider>;
+        let rate_limiter = Arc::new(RateLimiter::new(1000, 100000));
+
+        let engine = ExplainEngine {
+            provider,
+            cache: None,
+            rate_limiter,
+            default_context: ExplanationContext::default(),
+            stats: Arc::new(RwLock::new(EngineStats::default())),
+        };
+
+        let finding1 = Finding::new("RULE-1", Severity::High, "First", "First finding");
+        let finding2 = Finding::new("RULE-2", Severity::Medium, "Second", "Second finding");
+        let finding3 = Finding::new("RULE-3", Severity::Low, "Third", "Third finding");
+
+        let findings = vec![finding1.clone(), finding2.clone(), finding3.clone()];
+
+        let result = engine.explain_batch(&findings, None).await;
+        assert!(result.is_ok());
+
+        let responses = result.unwrap();
+        assert_eq!(responses.len(), 3);
+        // Verify ordering is preserved by checking finding IDs match in order
+        assert_eq!(responses[0].finding_id, finding1.id);
+        assert_eq!(responses[1].finding_id, finding2.id);
+        assert_eq!(responses[2].finding_id, finding3.id);
+    }
+
+    #[tokio::test]
+    async fn explain_with_custom_context() {
+        let provider = Arc::new(MockProvider::new()) as Arc<dyn AiProvider>;
+        let rate_limiter = Arc::new(RateLimiter::new(1000, 100000));
+
+        let engine = ExplainEngine {
+            provider,
+            cache: None,
+            rate_limiter,
+            default_context: ExplanationContext::default(),
+            stats: Arc::new(RwLock::new(EngineStats::default())),
+        };
+
+        let finding = sample_finding();
+        let custom_context = ExplanationContext::default();
+
+        let result = engine.explain_with_context(&finding, &custom_context).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn ask_followup_updates_stats() {
+        let provider = Arc::new(MockProvider::new()) as Arc<dyn AiProvider>;
+        let rate_limiter = Arc::new(RateLimiter::new(1000, 100000));
+
+        let engine = ExplainEngine {
+            provider,
+            cache: None,
+            rate_limiter,
+            default_context: ExplanationContext::default(),
+            stats: Arc::new(RwLock::new(EngineStats::default())),
+        };
+
+        let explanation = ExplanationResponse::new("test", "TEST-001");
+        let result = engine.ask_followup(&explanation, "How to fix?").await;
+
+        assert!(result.is_ok());
+
+        let stats = engine.stats().await;
+        assert_eq!(stats.api_calls, 1);
+    }
+
+    #[tokio::test]
+    async fn health_check() {
+        let provider = Arc::new(MockProvider::new()) as Arc<dyn AiProvider>;
+        let rate_limiter = Arc::new(RateLimiter::new(1000, 100000));
+
+        let engine = ExplainEngine {
+            provider,
+            cache: None,
+            rate_limiter,
+            default_context: ExplanationContext::default(),
+            stats: Arc::new(RwLock::new(EngineStats::default())),
+        };
+
+        let result = engine.health_check().await;
+        assert!(result.is_ok());
+        assert!(result.unwrap());
     }
 }

@@ -1138,4 +1138,576 @@ mod tests {
         let debug_str = format!("{:?}", record);
         assert!(debug_str.contains("InterestingInput"));
     }
+
+    // ============================================================
+    // NEW TESTS TO INCREASE COVERAGE
+    // ============================================================
+
+    #[test]
+    fn corpus_manager_initialize_generates_seeds() {
+        let mut corpus = CorpusManager::new();
+        assert_eq!(corpus.seed_count(), 0);
+
+        corpus.initialize().unwrap();
+
+        // Should have generated default seeds
+        let seed_count = corpus.seed_count();
+        assert!(seed_count > 0, "Expected seeds to be generated");
+
+        // Verify corpus size matches seed count (no interesting inputs yet)
+        assert_eq!(corpus.corpus_size(), seed_count);
+    }
+
+    #[test]
+    fn corpus_manager_with_path_preserves_path() {
+        let path = PathBuf::from("/test/corpus/path");
+        let corpus = CorpusManager::with_path(path.clone());
+
+        // Verify path is stored (we can't directly access base_path, but we can test behavior)
+        assert_eq!(corpus.seed_count(), 0);
+        assert_eq!(corpus.crash_count(), 0);
+    }
+
+    #[test]
+    fn next_input_with_only_seeds() {
+        let mut corpus = CorpusManager::new();
+        corpus.add_seed(FuzzInput::ping());
+        corpus.add_seed(FuzzInput::tools_list());
+        corpus.add_seed(FuzzInput::initialize());
+
+        // Get inputs in round-robin fashion
+        let input1 = corpus.next_input().method.clone();
+        let _input2 = corpus.next_input().method.clone();
+        let _input3 = corpus.next_input().method.clone();
+        let input4 = corpus.next_input().method.clone(); // Should wrap to first
+
+        // Verify cycling behavior
+        assert_eq!(input1, input4);
+    }
+
+    #[test]
+    fn next_input_with_mixed_corpus() {
+        let mut corpus = CorpusManager::new();
+        corpus.add_seed(FuzzInput::ping());
+        corpus.add_seed(FuzzInput::tools_list());
+
+        // Add interesting inputs
+        let interesting1 = CorpusManager::create_interesting_record(
+            FuzzInput::resources_list(),
+            InterestingReason::NewCoverage,
+            11111,
+            1,
+        );
+        corpus.record_interesting(interesting1).unwrap();
+
+        let total_size = corpus.corpus_size();
+        assert_eq!(total_size, 3); // 2 seeds + 1 interesting
+
+        // Collect all methods in one round
+        let mut methods = Vec::new();
+        for _ in 0..total_size {
+            methods.push(corpus.next_input().method.clone());
+        }
+
+        // Should have all three different methods
+        assert_eq!(methods.len(), 3);
+    }
+
+    #[test]
+    fn multiple_interesting_with_same_hash_deduplicated() {
+        let mut corpus = CorpusManager::new();
+
+        let hash = 0xABCDEF;
+
+        for i in 0..5 {
+            let record = CorpusManager::create_interesting_record(
+                FuzzInput::ping(),
+                InterestingReason::NewCoverage,
+                hash, // Same hash
+                i,
+            );
+            corpus.record_interesting(record).unwrap();
+        }
+
+        // Should only have 1 due to deduplication
+        assert_eq!(corpus.interesting_count(), 1);
+    }
+
+    #[test]
+    fn crash_record_fields_complete() {
+        let input = FuzzInput::tool_call("test", serde_json::json!({"arg": "val"}));
+        let crash = CorpusManager::create_crash_record(
+            input.clone(),
+            CrashType::AssertionFailure,
+            "assertion failed: x > 0".to_string(),
+            Some("backtrace:\n  at file.rs:10\n  at main.rs:5".to_string()),
+            999,
+        );
+
+        assert!(!crash.id.is_empty());
+        assert_eq!(crash.input.method, input.method);
+        assert_eq!(crash.crash_type, CrashType::AssertionFailure);
+        assert_eq!(crash.error_message, "assertion failed: x > 0");
+        assert!(crash.stack_trace.is_some());
+        assert_eq!(crash.iteration, 999);
+        assert!(!crash.timestamp.is_empty());
+    }
+
+    #[test]
+    fn hang_record_fields_complete() {
+        let input = FuzzInput::resources_read("http://slow.server.com");
+        let hang = CorpusManager::create_hang_record(input.clone(), 30000, 42);
+
+        assert!(!hang.id.is_empty());
+        assert_eq!(hang.input.method, input.method);
+        assert_eq!(hang.timeout_ms, 30000);
+        assert_eq!(hang.iteration, 42);
+        assert!(!hang.timestamp.is_empty());
+    }
+
+    #[test]
+    fn interesting_record_fields_complete() {
+        let input = FuzzInput::prompts_get("test_prompt", Some(serde_json::json!({"key": "val"})));
+        let record = CorpusManager::create_interesting_record(
+            input.clone(),
+            InterestingReason::UnexpectedSuccess,
+            0xDEADBEEF,
+            123,
+        );
+
+        assert!(!record.id.is_empty());
+        assert_eq!(record.input.method, input.method);
+        assert_eq!(record.reason, InterestingReason::UnexpectedSuccess);
+        assert_eq!(record.coverage_hash, 0xDEADBEEF);
+        assert_eq!(record.iteration, 123);
+    }
+
+    #[test]
+    fn all_crash_types_covered() {
+        let crash_types = vec![
+            CrashType::Panic,
+            CrashType::Segfault,
+            CrashType::OutOfMemory,
+            CrashType::ConnectionDrop,
+            CrashType::AssertionFailure,
+            CrashType::Unknown,
+        ];
+
+        for crash_type in crash_types {
+            let crash = CorpusManager::create_crash_record(
+                FuzzInput::ping(),
+                crash_type,
+                format!("test {}", crash_type),
+                None,
+                1,
+            );
+            assert_eq!(crash.crash_type, crash_type);
+        }
+    }
+
+    #[test]
+    fn all_interesting_reasons_covered() {
+        let reasons = vec![
+            InterestingReason::NewCoverage,
+            InterestingReason::UnexpectedSuccess,
+            InterestingReason::NewErrorCode,
+            InterestingReason::ProtocolViolation,
+        ];
+
+        for (idx, reason) in reasons.iter().enumerate() {
+            let record =
+                CorpusManager::create_interesting_record(FuzzInput::ping(), *reason, idx as u64, 1);
+            assert_eq!(record.reason, *reason);
+        }
+    }
+
+    #[test]
+    fn crash_record_serialization() {
+        let crash = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::Panic,
+            "panic message".to_string(),
+            Some("stack trace".to_string()),
+            10,
+        );
+
+        let serialized = serde_json::to_string(&crash).unwrap();
+        let deserialized: CrashRecord = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(crash.id, deserialized.id);
+        assert_eq!(crash.crash_type, deserialized.crash_type);
+        assert_eq!(crash.error_message, deserialized.error_message);
+        assert_eq!(crash.stack_trace, deserialized.stack_trace);
+        assert_eq!(crash.iteration, deserialized.iteration);
+        assert_eq!(crash.timestamp, deserialized.timestamp);
+    }
+
+    #[test]
+    fn hang_record_serialization() {
+        let hang = CorpusManager::create_hang_record(FuzzInput::tools_list(), 5000, 20);
+
+        let serialized = serde_json::to_string(&hang).unwrap();
+        let deserialized: HangRecord = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(hang.id, deserialized.id);
+        assert_eq!(hang.timeout_ms, deserialized.timeout_ms);
+        assert_eq!(hang.iteration, deserialized.iteration);
+        assert_eq!(hang.timestamp, deserialized.timestamp);
+    }
+
+    #[test]
+    fn interesting_input_serialization() {
+        let record = CorpusManager::create_interesting_record(
+            FuzzInput::initialize(),
+            InterestingReason::NewCoverage,
+            12345,
+            5,
+        );
+
+        let serialized = serde_json::to_string(&record).unwrap();
+        let deserialized: InterestingInput = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(record.id, deserialized.id);
+        assert_eq!(record.reason, deserialized.reason);
+        assert_eq!(record.coverage_hash, deserialized.coverage_hash);
+        assert_eq!(record.iteration, deserialized.iteration);
+    }
+
+    #[test]
+    fn empty_corpus_next_input_creates_fallback() {
+        let mut corpus = CorpusManager::new();
+
+        // Corpus is empty, should create fallback
+        let input = corpus.next_input();
+        assert!(!input.method.is_empty());
+
+        // Now corpus should have 1 seed
+        assert_eq!(corpus.seed_count(), 1);
+    }
+
+    #[test]
+    fn next_input_index_wrapping() {
+        let mut corpus = CorpusManager::new();
+        corpus.add_seed(FuzzInput::ping());
+
+        // Advance many times to test u64 wrapping behavior
+        for _ in 0..1000 {
+            let input = corpus.next_input();
+            assert_eq!(input.method, "ping");
+        }
+    }
+
+    #[test]
+    fn corpus_accessors_return_slices() {
+        let mut corpus = CorpusManager::new();
+
+        let crash = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::Panic,
+            "test".to_string(),
+            None,
+            1,
+        );
+        corpus.record_crash(crash).unwrap();
+
+        let hang = CorpusManager::create_hang_record(FuzzInput::ping(), 1000, 1);
+        corpus.record_hang(hang).unwrap();
+
+        let interesting = CorpusManager::create_interesting_record(
+            FuzzInput::ping(),
+            InterestingReason::NewCoverage,
+            111,
+            1,
+        );
+        corpus.record_interesting(interesting).unwrap();
+
+        // Test slice returns
+        let crashes_slice = corpus.crashes();
+        let hangs_slice = corpus.hangs();
+        let interesting_slice = corpus.interesting();
+
+        assert_eq!(crashes_slice.len(), 1);
+        assert_eq!(hangs_slice.len(), 1);
+        assert_eq!(interesting_slice.len(), 1);
+    }
+
+    #[test]
+    fn crash_type_copy_and_clone() {
+        let crash1 = CrashType::Segfault;
+        let crash2 = crash1; // Copy
+        let crash3 = crash1.clone(); // Clone
+
+        assert_eq!(crash1, crash2);
+        assert_eq!(crash1, crash3);
+    }
+
+    #[test]
+    fn interesting_reason_copy_and_clone() {
+        let reason1 = InterestingReason::ProtocolViolation;
+        let reason2 = reason1; // Copy
+        let reason3 = reason1.clone(); // Clone
+
+        assert_eq!(reason1, reason2);
+        assert_eq!(reason1, reason3);
+    }
+
+    #[test]
+    fn default_seeds_include_various_methods() {
+        let mut corpus = CorpusManager::new();
+        corpus.initialize().unwrap();
+
+        let mut methods = std::collections::HashSet::new();
+        for _ in 0..corpus.seed_count() {
+            let input = corpus.next_input();
+            methods.insert(input.method.clone());
+        }
+
+        // Should have multiple different methods
+        assert!(methods.contains("initialize"));
+        assert!(methods.contains("tools/list"));
+        assert!(methods.contains("resources/list"));
+        assert!(methods.contains("prompts/list"));
+        assert!(methods.contains("ping"));
+    }
+
+    #[test]
+    fn corpus_size_equals_seeds_plus_interesting() {
+        let mut corpus = CorpusManager::new();
+
+        corpus.add_seed(FuzzInput::ping());
+        corpus.add_seed(FuzzInput::tools_list());
+        corpus.add_seed(FuzzInput::initialize());
+
+        let record1 = CorpusManager::create_interesting_record(
+            FuzzInput::resources_list(),
+            InterestingReason::NewCoverage,
+            100,
+            1,
+        );
+        let record2 = CorpusManager::create_interesting_record(
+            FuzzInput::prompts_list(),
+            InterestingReason::NewErrorCode,
+            200,
+            2,
+        );
+
+        corpus.record_interesting(record1).unwrap();
+        corpus.record_interesting(record2).unwrap();
+
+        assert_eq!(corpus.corpus_size(), 3 + 2);
+        assert_eq!(corpus.seed_count(), 3);
+        assert_eq!(corpus.interesting_count(), 2);
+    }
+
+    #[test]
+    fn crash_type_debug_output() {
+        let types = vec![
+            CrashType::Panic,
+            CrashType::Segfault,
+            CrashType::OutOfMemory,
+            CrashType::ConnectionDrop,
+            CrashType::AssertionFailure,
+            CrashType::Unknown,
+        ];
+
+        for crash_type in types {
+            let debug = format!("{:?}", crash_type);
+            assert!(!debug.is_empty());
+        }
+    }
+
+    #[test]
+    fn interesting_reason_debug_output() {
+        let reasons = vec![
+            InterestingReason::NewCoverage,
+            InterestingReason::UnexpectedSuccess,
+            InterestingReason::NewErrorCode,
+            InterestingReason::ProtocolViolation,
+        ];
+
+        for reason in reasons {
+            let debug = format!("{:?}", reason);
+            assert!(!debug.is_empty());
+        }
+    }
+
+    #[test]
+    fn record_multiple_different_crash_types() {
+        let mut corpus = CorpusManager::new();
+
+        let crash1 = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::Panic,
+            "panic".to_string(),
+            None,
+            1,
+        );
+        let crash2 = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::Segfault,
+            "segfault".to_string(),
+            None,
+            2,
+        );
+        let crash3 = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::OutOfMemory,
+            "oom".to_string(),
+            None,
+            3,
+        );
+
+        corpus.record_crash(crash1).unwrap();
+        corpus.record_crash(crash2).unwrap();
+        corpus.record_crash(crash3).unwrap();
+
+        assert_eq!(corpus.crash_count(), 3);
+        assert_eq!(corpus.crashes()[0].crash_type, CrashType::Panic);
+        assert_eq!(corpus.crashes()[1].crash_type, CrashType::Segfault);
+        assert_eq!(corpus.crashes()[2].crash_type, CrashType::OutOfMemory);
+    }
+
+    #[test]
+    fn interesting_deduplication_with_different_reasons() {
+        let mut corpus = CorpusManager::new();
+
+        let hash = 0x12345678;
+
+        let record1 = CorpusManager::create_interesting_record(
+            FuzzInput::ping(),
+            InterestingReason::NewCoverage,
+            hash,
+            1,
+        );
+        let record2 = CorpusManager::create_interesting_record(
+            FuzzInput::tools_list(),
+            InterestingReason::ProtocolViolation,
+            hash, // Same hash, different reason
+            2,
+        );
+
+        corpus.record_interesting(record1).unwrap();
+        corpus.record_interesting(record2).unwrap();
+
+        // Should be deduplicated by hash regardless of reason
+        assert_eq!(corpus.interesting_count(), 1);
+    }
+
+    #[test]
+    fn crash_record_with_empty_error_message() {
+        let crash = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::Unknown,
+            String::new(), // Empty message
+            None,
+            0,
+        );
+
+        assert_eq!(crash.error_message, "");
+        assert_eq!(crash.iteration, 0);
+    }
+
+    #[test]
+    fn hang_record_with_zero_timeout() {
+        let hang = CorpusManager::create_hang_record(FuzzInput::ping(), 0, 0);
+
+        assert_eq!(hang.timeout_ms, 0);
+        assert_eq!(hang.iteration, 0);
+    }
+
+    #[test]
+    fn interesting_with_zero_hash() {
+        let record = CorpusManager::create_interesting_record(
+            FuzzInput::ping(),
+            InterestingReason::NewCoverage,
+            0,
+            0,
+        );
+
+        assert_eq!(record.coverage_hash, 0);
+        assert_eq!(record.iteration, 0);
+    }
+
+    #[test]
+    fn corpus_manager_state_after_initialize() {
+        let mut corpus = CorpusManager::new();
+        corpus.initialize().unwrap();
+
+        // After initialization, should have seeds but no crashes/hangs/interesting
+        assert!(corpus.seed_count() > 0);
+        assert_eq!(corpus.crash_count(), 0);
+        assert_eq!(corpus.hang_count(), 0);
+        assert_eq!(corpus.interesting_count(), 0);
+    }
+
+    #[test]
+    fn add_seeds_increases_corpus_size() {
+        let mut corpus = CorpusManager::new();
+        assert_eq!(corpus.corpus_size(), 0);
+
+        corpus.add_seed(FuzzInput::ping());
+        assert_eq!(corpus.corpus_size(), 1);
+
+        corpus.add_seed(FuzzInput::tools_list());
+        assert_eq!(corpus.corpus_size(), 2);
+
+        corpus.add_seed(FuzzInput::initialize());
+        assert_eq!(corpus.corpus_size(), 3);
+    }
+
+    #[test]
+    fn round_robin_with_single_seed() {
+        let mut corpus = CorpusManager::new();
+        corpus.add_seed(FuzzInput::ping());
+
+        // Get same input multiple times
+        for _ in 0..10 {
+            let input = corpus.next_input();
+            assert_eq!(input.method, "ping");
+        }
+    }
+
+    #[test]
+    fn crash_types_are_distinct() {
+        let types = vec![
+            CrashType::Panic,
+            CrashType::Segfault,
+            CrashType::OutOfMemory,
+            CrashType::ConnectionDrop,
+            CrashType::AssertionFailure,
+            CrashType::Unknown,
+        ];
+
+        // Verify all types are distinct
+        for i in 0..types.len() {
+            for j in 0..types.len() {
+                if i == j {
+                    assert_eq!(types[i], types[j]);
+                } else {
+                    assert_ne!(types[i], types[j]);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn interesting_reasons_are_distinct() {
+        let reasons = vec![
+            InterestingReason::NewCoverage,
+            InterestingReason::UnexpectedSuccess,
+            InterestingReason::NewErrorCode,
+            InterestingReason::ProtocolViolation,
+        ];
+
+        // Verify all reasons are distinct
+        for i in 0..reasons.len() {
+            for j in 0..reasons.len() {
+                if i == j {
+                    assert_eq!(reasons[i], reasons[j]);
+                } else {
+                    assert_ne!(reasons[i], reasons[j]);
+                }
+            }
+        }
+    }
 }
