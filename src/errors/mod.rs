@@ -3,6 +3,9 @@
 //! Provides rich, user-friendly error messages with source code context,
 //! helpful suggestions, and documentation links.
 
+// This module provides public API types for library consumers
+#![allow(dead_code)]
+
 pub mod suggestions;
 
 use miette::{Diagnostic, NamedSource, SourceSpan};

@@ -3,6 +3,9 @@
 //! Provides intelligent suggestions for typos and near-matches using
 //! the Jaro-Winkler string similarity algorithm.
 
+// These functions are public APIs for error suggestion generation
+#![allow(dead_code)]
+
 use strsim::jaro_winkler;
 
 /// Default similarity threshold for suggestions (0.0 to 1.0)
