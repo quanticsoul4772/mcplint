@@ -303,4 +303,406 @@ mod tests {
         assert_eq!(counts.high, 1);
         assert_eq!(counts.medium, 0);
     }
+
+    #[test]
+    fn test_empty_baseline() {
+        let results = ScanResults {
+            server: "empty-server".to_string(),
+            profile: "standard".to_string(),
+            total_checks: 0,
+            findings: Vec::new(),
+            summary: ScanSummary::default(),
+            duration_ms: 100,
+        };
+
+        let baseline = Baseline::from_results(&results);
+        assert_eq!(baseline.findings.len(), 0);
+        assert_eq!(baseline.server_id, "empty-server");
+        assert_eq!(baseline.version, Baseline::VERSION);
+    }
+
+    #[test]
+    fn test_severity_counts_all_types() {
+        let mut results = ScanResults {
+            server: "test-server".to_string(),
+            profile: "standard".to_string(),
+            total_checks: 10,
+            findings: Vec::new(),
+            summary: ScanSummary::default(),
+            duration_ms: 1000,
+        };
+
+        // Add one of each severity
+        results.add_finding(
+            Finding::new("CRIT-1", Severity::Critical, "Critical", "Desc")
+                .with_location(FindingLocation::tool("t1")),
+        );
+        results.add_finding(
+            Finding::new("HIGH-1", Severity::High, "High", "Desc")
+                .with_location(FindingLocation::tool("t2")),
+        );
+        results.add_finding(
+            Finding::new("MED-1", Severity::Medium, "Medium", "Desc")
+                .with_location(FindingLocation::tool("t3")),
+        );
+        results.add_finding(
+            Finding::new("LOW-1", Severity::Low, "Low", "Desc")
+                .with_location(FindingLocation::tool("t4")),
+        );
+        results.add_finding(
+            Finding::new("INFO-1", Severity::Info, "Info", "Desc")
+                .with_location(FindingLocation::tool("t5")),
+        );
+
+        let baseline = Baseline::from_results(&results);
+        let counts = baseline.severity_counts();
+
+        assert_eq!(counts.critical, 1);
+        assert_eq!(counts.high, 1);
+        assert_eq!(counts.medium, 1);
+        assert_eq!(counts.low, 1);
+        assert_eq!(counts.info, 1);
+    }
+
+    #[test]
+    fn test_baseline_with_fingerprints() {
+        use crate::fingerprinting::ToolFingerprint;
+
+        let results = create_test_results();
+        let fp1 = ToolFingerprint::new("tool1", "semantic_hash1", "full_hash1");
+        let fp2 = ToolFingerprint::new("tool2", "semantic_hash2", "full_hash2");
+
+        let baseline = Baseline::from_results_with_fingerprints(&results, vec![fp1, fp2]);
+
+        assert!(baseline.has_fingerprints());
+        assert_eq!(baseline.fingerprint_count(), 2);
+        assert!(baseline.get_fingerprint("tool1").is_some());
+        assert!(baseline.get_fingerprint("tool2").is_some());
+        assert!(baseline.get_fingerprint("tool3").is_none());
+    }
+
+    #[test]
+    fn test_baseline_set_fingerprints() {
+        use crate::fingerprinting::ToolFingerprint;
+
+        let results = create_test_results();
+        let mut baseline = Baseline::from_results(&results);
+
+        assert!(!baseline.has_fingerprints());
+        assert_eq!(baseline.fingerprint_count(), 0);
+
+        let fp = ToolFingerprint::new("tool1", "hash1", "hash2");
+        baseline.set_fingerprints(vec![fp]);
+
+        assert!(baseline.has_fingerprints());
+        assert_eq!(baseline.fingerprint_count(), 1);
+    }
+
+    #[test]
+    fn test_baseline_with_fingerprints_builder() {
+        use crate::fingerprinting::ToolFingerprint;
+
+        let results = create_test_results();
+        let fp = ToolFingerprint::new("tool1", "hash1", "hash2");
+
+        let baseline = Baseline::from_results(&results).with_fingerprints(vec![fp]);
+
+        assert!(baseline.has_fingerprints());
+        assert_eq!(baseline.fingerprint_count(), 1);
+    }
+
+    #[test]
+    fn test_baseline_empty_fingerprints() {
+        let results = create_test_results();
+        let baseline = Baseline::from_results(&results).with_fingerprints(vec![]);
+
+        assert!(!baseline.has_fingerprints());
+        assert_eq!(baseline.fingerprint_count(), 0);
+    }
+
+    #[test]
+    fn test_baseline_get_specific_fingerprint() {
+        use crate::fingerprinting::ToolFingerprint;
+
+        let results = create_test_results();
+        let fp1 = ToolFingerprint::new("alpha", "hash_a", "hash_full_a");
+        let fp2 = ToolFingerprint::new("beta", "hash_b", "hash_full_b");
+
+        let baseline = Baseline::from_results(&results).with_fingerprints(vec![fp1, fp2]);
+
+        let alpha_fp = baseline.get_fingerprint("alpha");
+        assert!(alpha_fp.is_some());
+        assert_eq!(alpha_fp.unwrap().tool_name, "alpha");
+
+        let beta_fp = baseline.get_fingerprint("beta");
+        assert!(beta_fp.is_some());
+        assert_eq!(beta_fp.unwrap().tool_name, "beta");
+
+        let missing_fp = baseline.get_fingerprint("gamma");
+        assert!(missing_fp.is_none());
+    }
+
+    #[test]
+    fn test_baseline_serialization_roundtrip() {
+        let results = create_test_results();
+        let baseline = Baseline::from_results(&results);
+
+        let json = serde_json::to_string(&baseline).unwrap();
+        let deserialized: Baseline = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(baseline.version, deserialized.version);
+        assert_eq!(baseline.server_id, deserialized.server_id);
+        assert_eq!(baseline.findings.len(), deserialized.findings.len());
+        assert_eq!(
+            baseline.config.profile.as_ref().unwrap(),
+            deserialized.config.profile.as_ref().unwrap()
+        );
+    }
+
+    #[test]
+    fn test_baseline_serialization_with_fingerprints() {
+        use crate::fingerprinting::ToolFingerprint;
+
+        let results = create_test_results();
+        let fp = ToolFingerprint::new("tool1", "semantic", "full");
+        let baseline = Baseline::from_results(&results).with_fingerprints(vec![fp]);
+
+        let json = serde_json::to_string(&baseline).unwrap();
+        let deserialized: Baseline = serde_json::from_str(&json).unwrap();
+
+        assert!(deserialized.has_fingerprints());
+        assert_eq!(deserialized.fingerprint_count(), 1);
+    }
+
+    #[test]
+    fn test_baseline_version_check() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("baseline.json");
+
+        // Create a baseline with an incompatible version
+        let content = r#"{
+            "version": "2.0",
+            "created_at": "2025-01-01T00:00:00Z",
+            "server_id": "test",
+            "findings": [],
+            "config": {
+                "profile": "standard",
+                "include_categories": [],
+                "exclude_categories": []
+            }
+        }"#;
+        fs::write(&path, content).unwrap();
+
+        let result = Baseline::load(&path);
+        assert!(result.is_err());
+        match result {
+            Err(BaselineError::VersionMismatch { expected, found }) => {
+                assert_eq!(expected, Baseline::VERSION);
+                assert_eq!(found, "2.0");
+            }
+            _ => panic!("Expected VersionMismatch error"),
+        }
+    }
+
+    #[test]
+    fn test_baseline_load_invalid_json() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("invalid.json");
+        fs::write(&path, "{ invalid json }").unwrap();
+
+        let result = Baseline::load(&path);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(BaselineError::ParseError { .. })));
+    }
+
+    #[test]
+    fn test_baseline_load_nonexistent_file() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("nonexistent.json");
+
+        let result = Baseline::load(&path);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(BaselineError::IoError { .. })));
+    }
+
+    #[test]
+    fn test_baseline_finding_equality() {
+        let finding1 = BaselineFinding {
+            rule_id: "MCP-INJ-001".to_string(),
+            location_fingerprint: "tool:test_tool".to_string(),
+            evidence_hash: "hash123".to_string(),
+            severity: Severity::Critical,
+        };
+
+        let finding2 = BaselineFinding {
+            rule_id: "MCP-INJ-001".to_string(),
+            location_fingerprint: "tool:test_tool".to_string(),
+            evidence_hash: "hash123".to_string(),
+            severity: Severity::Critical,
+        };
+
+        let finding3 = BaselineFinding {
+            rule_id: "MCP-INJ-002".to_string(),
+            location_fingerprint: "tool:test_tool".to_string(),
+            evidence_hash: "hash123".to_string(),
+            severity: Severity::Critical,
+        };
+
+        assert_eq!(finding1, finding2);
+        assert_ne!(finding1, finding3);
+    }
+
+    #[test]
+    fn test_baseline_config_default() {
+        let config = BaselineConfig::default();
+        assert!(config.profile.is_none());
+        assert!(config.include_categories.is_empty());
+        assert!(config.exclude_categories.is_empty());
+    }
+
+    #[test]
+    fn test_baseline_location_fingerprint_format() {
+        let results = create_test_results();
+        let baseline = Baseline::from_results(&results);
+
+        // Check that location fingerprints have the correct format
+        for finding in &baseline.findings {
+            assert!(finding.location_fingerprint.contains(':'));
+            let parts: Vec<&str> = finding.location_fingerprint.split(':').collect();
+            assert_eq!(parts.len(), 2);
+        }
+    }
+
+    #[test]
+    fn test_severity_counts_empty() {
+        let results = ScanResults {
+            server: "test-server".to_string(),
+            profile: "standard".to_string(),
+            total_checks: 0,
+            findings: Vec::new(),
+            summary: ScanSummary::default(),
+            duration_ms: 100,
+        };
+
+        let baseline = Baseline::from_results(&results);
+        let counts = baseline.severity_counts();
+
+        assert_eq!(counts.critical, 0);
+        assert_eq!(counts.high, 0);
+        assert_eq!(counts.medium, 0);
+        assert_eq!(counts.low, 0);
+        assert_eq!(counts.info, 0);
+    }
+
+    #[test]
+    fn test_baseline_preserves_profile() {
+        let results = ScanResults {
+            server: "test-server".to_string(),
+            profile: "custom-profile".to_string(),
+            total_checks: 0,
+            findings: Vec::new(),
+            summary: ScanSummary::default(),
+            duration_ms: 100,
+        };
+
+        let baseline = Baseline::from_results(&results);
+        assert_eq!(baseline.config.profile, Some("custom-profile".to_string()));
+    }
+
+    #[test]
+    fn test_baseline_finding_serialization() {
+        let finding = BaselineFinding {
+            rule_id: "MCP-INJ-001".to_string(),
+            location_fingerprint: "tool:test_tool".to_string(),
+            evidence_hash: "hash123".to_string(),
+            severity: Severity::High,
+        };
+
+        let json = serde_json::to_string(&finding).unwrap();
+        let deserialized: BaselineFinding = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(finding, deserialized);
+    }
+
+    #[test]
+    fn test_baseline_config_serialization() {
+        let config = BaselineConfig {
+            profile: Some("standard".to_string()),
+            include_categories: vec!["security".to_string()],
+            exclude_categories: vec!["performance".to_string()],
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let deserialized: BaselineConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(config.profile, deserialized.profile);
+        assert_eq!(config.include_categories, deserialized.include_categories);
+        assert_eq!(config.exclude_categories, deserialized.exclude_categories);
+    }
+
+    #[test]
+    fn test_baseline_multiple_findings_same_severity() {
+        let mut results = ScanResults {
+            server: "test-server".to_string(),
+            profile: "standard".to_string(),
+            total_checks: 10,
+            findings: Vec::new(),
+            summary: ScanSummary::default(),
+            duration_ms: 1000,
+        };
+
+        // Add multiple critical findings
+        for i in 0..3 {
+            results.add_finding(
+                Finding::new(
+                    &format!("CRIT-{}", i),
+                    Severity::Critical,
+                    "Critical Finding",
+                    "Description",
+                )
+                .with_location(FindingLocation::tool(&format!("tool{}", i))),
+            );
+        }
+
+        let baseline = Baseline::from_results(&results);
+        let counts = baseline.severity_counts();
+
+        assert_eq!(counts.critical, 3);
+        assert_eq!(counts.high, 0);
+    }
+
+    #[test]
+    fn test_baseline_version_compatibility_1_1() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("baseline.json");
+
+        // Create a baseline with version 1.1 (should be compatible)
+        let content = r#"{
+            "version": "1.1",
+            "created_at": "2025-01-01T00:00:00Z",
+            "server_id": "test",
+            "findings": [],
+            "config": {
+                "profile": "standard",
+                "include_categories": [],
+                "exclude_categories": []
+            }
+        }"#;
+        fs::write(&path, content).unwrap();
+
+        let result = Baseline::load(&path);
+        assert!(result.is_ok());
+        let baseline = result.unwrap();
+        assert_eq!(baseline.version, "1.1");
+    }
+
+    #[test]
+    fn test_baseline_fingerprints_optional_serialization() {
+        let results = create_test_results();
+        let baseline = Baseline::from_results(&results);
+
+        let json = serde_json::to_string(&baseline).unwrap();
+        // Verify that tool_fingerprints is not included when None
+        assert!(!json.contains("tool_fingerprints"));
+    }
 }

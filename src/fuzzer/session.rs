@@ -1799,4 +1799,123 @@ mod tests {
 
         assert!(session.should_stop());
     }
+
+    #[test]
+    fn stop_reason_tracked() {
+        use crate::fuzzer::limits::ResourceLimits;
+
+        let limits = ResourceLimits::default().with_max_executions(50);
+        let config = FuzzConfig::default().with_resource_limits(limits);
+        let mut session = FuzzSession::new("test", &[], config);
+        session.start_time = Some(Instant::now());
+        session.iterations = 50;
+        assert!(session.should_stop());
+        assert!(session.stop_reason.is_some());
+    }
+
+    #[test]
+    fn connection_failures_tracking() {
+        let config = FuzzConfig::default();
+        let mut session = FuzzSession::new("test", &[], config);
+        session.connection_failures = 3;
+        assert_eq!(session.connection_failures, 3);
+    }
+
+    #[test]
+    fn iterations_counter() {
+        let config = FuzzConfig::default();
+        let mut session = FuzzSession::new("test", &[], config);
+        for i in 1..=50 {
+            session.iterations += 1;
+            assert_eq!(session.iterations, i);
+        }
+    }
+
+    #[test]
+    fn progress_bar_unlimited() {
+        let config = FuzzConfig {
+            max_iterations: 0,
+            duration_secs: 0,
+            ..FuzzConfig::default()
+        };
+        let session = FuzzSession::new("test", &[], config);
+        let pb = session.create_progress_bar();
+        assert_eq!(pb.length(), Some(u64::MAX));
+    }
+
+    #[test]
+    fn all_profiles_tested() {
+        for profile in [
+            FuzzProfile::Quick,
+            FuzzProfile::Standard,
+            FuzzProfile::Intensive,
+            FuzzProfile::CI,
+        ] {
+            let config = FuzzConfig::with_profile(profile);
+            let session = FuzzSession::new("test", &[], config);
+            assert_eq!(session.config.profile, profile);
+        }
+    }
+
+    #[test]
+    fn timeout_edge_cases() {
+        for timeout in [0u64, 1000, u64::MAX] {
+            let config = FuzzConfig {
+                request_timeout_ms: timeout,
+                ..FuzzConfig::default()
+            };
+            let session = FuzzSession::new("test", &[], config);
+            assert_eq!(session.config.request_timeout_ms, timeout);
+        }
+    }
+
+    #[test]
+    fn coverage_thresholds() {
+        for threshold in [0.0, 0.01, 0.1, 1.0] {
+            let config = FuzzConfig {
+                coverage_threshold: threshold,
+                ..FuzzConfig::default()
+            };
+            let session = FuzzSession::new("test", &[], config);
+            assert!((session.config.coverage_threshold - threshold).abs() < f64::EPSILON);
+        }
+    }
+
+    #[test]
+    fn comprehensive_session_state() {
+        use crate::fuzzer::limits::ResourceLimits;
+        use std::path::PathBuf;
+
+        let limits = ResourceLimits::default()
+            .with_max_time(Duration::from_secs(600))
+            .with_max_executions(10000);
+        let config = FuzzConfig {
+            duration_secs: 300,
+            max_iterations: 5000,
+            request_timeout_ms: 8000,
+            workers: 4,
+            corpus_path: Some(PathBuf::from("/corpus")),
+            dictionary_path: Some(PathBuf::from("/dict")),
+            target_tools: Some(vec!["tool1".to_string()]),
+            profile: FuzzProfile::Standard,
+            save_interesting: true,
+            coverage_threshold: 0.02,
+            seed: Some(12345),
+            resource_limits: limits,
+        };
+        let args = vec!["--arg".to_string()];
+        let session = FuzzSession::new("server", &args, config);
+
+        assert_eq!(session.server, "server");
+        assert_eq!(session.args.len(), 1);
+        assert_eq!(session.config.duration_secs, 300);
+        assert_eq!(session.config.max_iterations, 5000);
+        assert_eq!(session.config.workers, 4);
+        assert_eq!(session.iterations, 0);
+        assert_eq!(session.connection_failures, 0);
+        assert_eq!(session.restarts, 0);
+        assert!(session.stop_reason.is_none());
+        assert!(session.client.is_none());
+        assert!(session.start_time.is_none());
+    }
 }
