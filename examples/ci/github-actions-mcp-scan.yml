@@ -1,0 +1,200 @@
+# MCPLint Security Scanning - GitHub Actions Example
+#
+# This workflow demonstrates how to integrate MCPLint security scanning
+# into your CI/CD pipeline for MCP servers.
+#
+# Usage:
+#   1. Copy this file to your MCP server project's .github/workflows/ directory
+#   2. Customize the 'mcp_servers' list in the matrix to include your servers
+#   3. Adjust paths and profiles as needed
+#
+# Features:
+#   - SARIF output for GitHub Code Scanning integration
+#   - Multiple MCP server scanning in parallel
+#   - Configurable security profiles
+#   - Baseline comparison to detect regressions
+
+name: MCP Security Scan
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    # Run security scans daily at midnight UTC
+    - cron: '0 0 * * *'
+
+permissions:
+  # Required for SARIF upload
+  security-events: write
+  contents: read
+
+env:
+  MCPLINT_VERSION: "0.1.0"
+  # Set to 'true' to fail the build on any security findings
+  FAIL_ON_FINDINGS: "false"
+
+jobs:
+  scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Configure your MCP servers here
+        # Each entry should have:
+        #   - name: Display name for the server
+        #   - command: Command to start the server (or path to executable)
+        #   - profile: Scan profile (quick, standard, comprehensive)
+        mcp_servers:
+          - name: "filesystem-server"
+            command: "npx @modelcontextprotocol/server-filesystem"
+            args: "/tmp"
+            profile: "standard"
+          # Add more servers as needed:
+          # - name: "custom-server"
+          #   command: "./my-server"
+          #   args: ""
+          #   profile: "comprehensive"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache MCPLint binary
+        id: cache-mcplint
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/mcplint
+          key: mcplint-${{ env.MCPLINT_VERSION }}-${{ runner.os }}
+
+      - name: Install MCPLint
+        if: steps.cache-mcplint.outputs.cache-hit != 'true'
+        run: |
+          cargo install mcplint --version ${{ env.MCPLINT_VERSION }}
+
+      - name: Setup Node.js (for npm-based MCP servers)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run MCPLint Doctor
+        run: mcplint doctor
+        continue-on-error: true
+
+      - name: Security Scan - ${{ matrix.mcp_servers.name }}
+        id: scan
+        run: |
+          echo "Scanning MCP server: ${{ matrix.mcp_servers.name }}"
+          echo "Profile: ${{ matrix.mcp_servers.profile }}"
+
+          # Run the scan and capture exit code
+          mcplint scan "${{ matrix.mcp_servers.command }}" \
+            ${{ matrix.mcp_servers.args }} \
+            --profile ${{ matrix.mcp_servers.profile }} \
+            --output sarif \
+            > results.sarif 2>&1 || SCAN_EXIT=$?
+
+          echo "scan_exit_code=${SCAN_EXIT:-0}" >> $GITHUB_OUTPUT
+
+          # Display human-readable results
+          mcplint scan "${{ matrix.mcp_servers.command }}" \
+            ${{ matrix.mcp_servers.args }} \
+            --profile ${{ matrix.mcp_servers.profile }} || true
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: results.sarif
+          category: "mcplint-${{ matrix.mcp_servers.name }}"
+
+      - name: Archive scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mcplint-results-${{ matrix.mcp_servers.name }}
+          path: results.sarif
+          retention-days: 30
+
+      - name: Check for security findings
+        if: env.FAIL_ON_FINDINGS == 'true' && steps.scan.outputs.scan_exit_code == '1'
+        run: |
+          echo "::error::Security findings detected in ${{ matrix.mcp_servers.name }}"
+          exit 1
+
+  # Optional: Baseline comparison job
+  baseline-check:
+    name: Baseline Comparison
+    runs-on: ubuntu-latest
+    needs: scan
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download PR scan results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mcplint-results-*
+          path: pr-results
+
+      - name: Compare with baseline
+        run: |
+          echo "Comparing PR scan results with baseline..."
+          # This is a placeholder for baseline comparison logic
+          # In a real setup, you would:
+          # 1. Download baseline results from a known-good commit
+          # 2. Compare with PR results
+          # 3. Flag any new findings
+
+          # Count findings in PR results
+          NEW_FINDINGS=$(cat pr-results/*/results.sarif | grep -c '"ruleId"' || echo 0)
+          echo "Total findings in PR: $NEW_FINDINGS"
+
+          if [ "$NEW_FINDINGS" -gt 0 ]; then
+            echo "::warning::$NEW_FINDINGS security finding(s) detected"
+          fi
+
+  # Optional: Generate security report
+  report:
+    name: Security Report
+    runs-on: ubuntu-latest
+    needs: scan
+    if: always()
+
+    steps:
+      - name: Download all scan results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mcplint-results-*
+          path: all-results
+
+      - name: Generate summary report
+        run: |
+          echo "# MCPLint Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Server | Findings | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|----------|--------|" >> $GITHUB_STEP_SUMMARY
+
+          for result in all-results/*/results.sarif; do
+            SERVER=$(basename $(dirname $result) | sed 's/mcplint-results-//')
+            FINDINGS=$(cat $result | grep -c '"ruleId"' || echo 0)
+
+            if [ "$FINDINGS" -eq 0 ]; then
+              STATUS=":white_check_mark: Clean"
+            else
+              STATUS=":warning: $FINDINGS issue(s)"
+            fi
+
+            echo "| $SERVER | $FINDINGS | $STATUS |" >> $GITHUB_STEP_SUMMARY
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "_Scan completed at $(date -u)_" >> $GITHUB_STEP_SUMMARY

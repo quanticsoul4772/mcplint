@@ -93,6 +93,84 @@ impl SarifReport {
         }
     }
 
+    /// Create a SARIF report from security scan results
+    pub fn from_scan_results(results: &crate::scanner::ScanResults) -> Self {
+        // Collect unique rules from findings
+        let mut rules: Vec<SarifRule> = Vec::new();
+        let mut seen_rules: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        for finding in &results.findings {
+            if !seen_rules.contains(&finding.rule_id) {
+                seen_rules.insert(finding.rule_id.clone());
+                rules.push(SarifRule {
+                    id: finding.rule_id.clone(),
+                    name: finding.title.clone(),
+                    short_description: SarifMessage {
+                        text: finding.title.clone(),
+                    },
+                    full_description: SarifMessage {
+                        text: finding.description.clone(),
+                    },
+                    default_configuration: SarifConfiguration {
+                        level: finding.severity.sarif_level().to_string(),
+                    },
+                });
+            }
+        }
+
+        // Convert findings to SARIF results
+        let sarif_results: Vec<SarifResult> = results
+            .findings
+            .iter()
+            .map(|f| {
+                // Build location URI from finding location
+                let uri = if f.location.identifier.is_empty() {
+                    format!("{}/{}", f.location.component, results.server)
+                } else {
+                    format!("{}/{}", f.location.component, f.location.identifier)
+                };
+
+                SarifResult {
+                    rule_id: f.rule_id.clone(),
+                    level: f.severity.sarif_level().to_string(),
+                    message: SarifMessage {
+                        text: format!(
+                            "{}: {}{}",
+                            f.title,
+                            f.description,
+                            if f.remediation.is_empty() {
+                                String::new()
+                            } else {
+                                format!(" Remediation: {}", f.remediation)
+                            }
+                        ),
+                    },
+                    locations: vec![SarifLocation {
+                        physical_location: SarifPhysicalLocation {
+                            artifact_location: SarifArtifactLocation { uri },
+                        },
+                    }],
+                }
+            })
+            .collect();
+
+        Self {
+            schema: "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json".to_string(),
+            version: "2.1.0".to_string(),
+            runs: vec![SarifRun {
+                tool: SarifTool {
+                    driver: SarifDriver {
+                        name: "mcplint".to_string(),
+                        version: env!("CARGO_PKG_VERSION").to_string(),
+                        information_uri: "https://github.com/quanticsoul4772/mcplint".to_string(),
+                        rules,
+                    },
+                },
+                results: sarif_results,
+            }],
+        }
+    }
+
     /// Create a SARIF report from validation results
     pub fn from_validation_results(results: &crate::validator::ValidationResults) -> Self {
         use crate::validator::ValidationSeverity;
@@ -184,6 +262,7 @@ impl Default for SarifReport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scanner::{Finding, FindingLocation, ScanProfile, ScanResults, Severity};
     use crate::validator::{ValidationResult, ValidationResults, ValidationSeverity};
 
     #[test]
@@ -380,5 +459,243 @@ mod tests {
         let sarif = SarifReport::from_validation_results(&results);
         assert_eq!(sarif.runs[0].tool.driver.name, "mcplint");
         assert!(sarif.runs[0].tool.driver.information_uri.contains("github"));
+    }
+
+    // =========================================================================
+    // Tests for from_scan_results()
+    // =========================================================================
+
+    fn make_scan_finding(
+        rule_id: &str,
+        severity: Severity,
+        title: &str,
+        description: &str,
+        component: &str,
+        identifier: &str,
+    ) -> Finding {
+        Finding::new(rule_id, severity, title, description).with_location(FindingLocation {
+            component: component.to_string(),
+            identifier: identifier.to_string(),
+            context: None,
+        })
+    }
+
+    fn make_empty_scan_results() -> ScanResults {
+        ScanResults::new("test-server", ScanProfile::Standard)
+    }
+
+    #[test]
+    fn sarif_from_scan_results_empty() {
+        let results = make_empty_scan_results();
+        let sarif = SarifReport::from_scan_results(&results);
+
+        assert_eq!(sarif.version, "2.1.0");
+        assert_eq!(sarif.runs.len(), 1);
+        assert!(sarif.runs[0].results.is_empty());
+        assert!(sarif.runs[0].tool.driver.rules.is_empty());
+    }
+
+    #[test]
+    fn sarif_from_scan_results_with_findings() {
+        let mut results = make_empty_scan_results();
+        results.add_finding(make_scan_finding(
+            "MCP-INJ-001",
+            Severity::Critical,
+            "Command Injection",
+            "Detected command injection vulnerability",
+            "tool",
+            "shell_exec",
+        ));
+
+        let sarif = SarifReport::from_scan_results(&results);
+
+        assert_eq!(sarif.runs.len(), 1);
+        assert_eq!(sarif.runs[0].results.len(), 1);
+        assert_eq!(sarif.runs[0].tool.driver.rules.len(), 1);
+
+        // Check the result
+        let result = &sarif.runs[0].results[0];
+        assert_eq!(result.rule_id, "MCP-INJ-001");
+        assert_eq!(result.level, "error"); // Critical maps to error
+        assert!(result.message.text.contains("Command Injection"));
+
+        // Check the rule
+        let rule = &sarif.runs[0].tool.driver.rules[0];
+        assert_eq!(rule.id, "MCP-INJ-001");
+        assert_eq!(rule.name, "Command Injection");
+    }
+
+    #[test]
+    fn sarif_from_scan_results_severity_mapping() {
+        let mut results = make_empty_scan_results();
+
+        // Add findings with different severities
+        results.add_finding(make_scan_finding(
+            "TEST-001",
+            Severity::Critical,
+            "Critical Issue",
+            "Desc",
+            "tool",
+            "t1",
+        ));
+        results.add_finding(make_scan_finding(
+            "TEST-002",
+            Severity::High,
+            "High Issue",
+            "Desc",
+            "tool",
+            "t2",
+        ));
+        results.add_finding(make_scan_finding(
+            "TEST-003",
+            Severity::Medium,
+            "Medium Issue",
+            "Desc",
+            "tool",
+            "t3",
+        ));
+        results.add_finding(make_scan_finding(
+            "TEST-004",
+            Severity::Low,
+            "Low Issue",
+            "Desc",
+            "tool",
+            "t4",
+        ));
+        results.add_finding(make_scan_finding(
+            "TEST-005",
+            Severity::Info,
+            "Info Issue",
+            "Desc",
+            "tool",
+            "t5",
+        ));
+
+        let sarif = SarifReport::from_scan_results(&results);
+
+        // Verify SARIF levels
+        assert_eq!(sarif.runs[0].results[0].level, "error"); // Critical
+        assert_eq!(sarif.runs[0].results[1].level, "error"); // High
+        assert_eq!(sarif.runs[0].results[2].level, "warning"); // Medium
+        assert_eq!(sarif.runs[0].results[3].level, "note"); // Low
+        assert_eq!(sarif.runs[0].results[4].level, "note"); // Info
+    }
+
+    #[test]
+    fn sarif_from_scan_results_deduplicates_rules() {
+        let mut results = make_empty_scan_results();
+
+        // Add multiple findings with the same rule_id
+        results.add_finding(make_scan_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Injection",
+            "Desc",
+            "tool",
+            "tool_a",
+        ));
+        results.add_finding(make_scan_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Injection",
+            "Desc",
+            "tool",
+            "tool_b",
+        ));
+        results.add_finding(make_scan_finding(
+            "MCP-INJ-001",
+            Severity::High,
+            "Injection",
+            "Desc",
+            "tool",
+            "tool_c",
+        ));
+
+        let sarif = SarifReport::from_scan_results(&results);
+
+        // Should have 3 results but only 1 rule
+        assert_eq!(sarif.runs[0].results.len(), 3);
+        assert_eq!(sarif.runs[0].tool.driver.rules.len(), 1);
+    }
+
+    #[test]
+    fn sarif_from_scan_results_location_uri() {
+        let mut results = make_empty_scan_results();
+        results.add_finding(make_scan_finding(
+            "TEST-001",
+            Severity::High,
+            "Issue",
+            "Desc",
+            "tool",
+            "dangerous_tool",
+        ));
+
+        let sarif = SarifReport::from_scan_results(&results);
+
+        let location = &sarif.runs[0].results[0].locations[0];
+        assert_eq!(
+            location.physical_location.artifact_location.uri,
+            "tool/dangerous_tool"
+        );
+    }
+
+    #[test]
+    fn sarif_from_scan_results_includes_remediation() {
+        let mut results = make_empty_scan_results();
+        let finding = Finding::new("TEST-001", Severity::High, "Issue", "Description of issue")
+            .with_location(FindingLocation::tool("test_tool"))
+            .with_remediation("Sanitize all user inputs");
+        results.add_finding(finding);
+
+        let sarif = SarifReport::from_scan_results(&results);
+
+        let message = &sarif.runs[0].results[0].message.text;
+        assert!(message.contains("Remediation: Sanitize all user inputs"));
+    }
+
+    #[test]
+    fn sarif_from_scan_results_serializes_correctly() {
+        let mut results = make_empty_scan_results();
+        results.add_finding(make_scan_finding(
+            "MCP-INJ-001",
+            Severity::Critical,
+            "Test Issue",
+            "Test Description",
+            "tool",
+            "test_tool",
+        ));
+
+        let sarif = SarifReport::from_scan_results(&results);
+        let json = serde_json::to_string_pretty(&sarif).unwrap();
+
+        // Verify the JSON contains expected fields
+        assert!(json.contains("\"$schema\""));
+        assert!(json.contains("\"version\": \"2.1.0\""));
+        assert!(json.contains("\"ruleId\": \"MCP-INJ-001\""));
+        assert!(json.contains("\"level\": \"error\""));
+        assert!(json.contains("\"mcplint\""));
+    }
+
+    #[test]
+    fn sarif_from_scan_results_empty_identifier() {
+        let mut results = make_empty_scan_results();
+        results.add_finding(
+            Finding::new("TEST-001", Severity::Medium, "Issue", "Desc").with_location(
+                FindingLocation {
+                    component: "server".to_string(),
+                    identifier: String::new(),
+                    context: None,
+                },
+            ),
+        );
+
+        let sarif = SarifReport::from_scan_results(&results);
+
+        // Should fall back to server name in URI
+        let location = &sarif.runs[0].results[0].locations[0];
+        assert_eq!(
+            location.physical_location.artifact_location.uri,
+            "server/test-server"
+        );
     }
 }
