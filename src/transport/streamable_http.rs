@@ -21,8 +21,10 @@ use super::{Transport, TransportConfig};
 const MCP_SESSION_ID_HEADER: &str = "Mcp-Session-Id";
 
 /// Streamable HTTP transport for remote MCP servers
+#[derive(Debug)]
 pub struct StreamableHttpTransport {
     endpoint: Url,
+    #[allow(dead_code)]
     client: reqwest::Client,
     session_id: Option<String>,
     config: TransportConfig,
@@ -331,5 +333,391 @@ data: {"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}
         let response = transport.parse_sse_response(sse_text).await.unwrap();
         assert_eq!(response.id, RequestId::Number(1));
         assert!(response.is_success());
+    }
+
+    // ==========================================================================
+    // Additional Tests for Coverage
+    // ==========================================================================
+
+    #[test]
+    fn parse_endpoint_with_port() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com:8080/mcp", config);
+        assert!(transport.is_ok());
+        let transport = transport.unwrap();
+        assert_eq!(transport.endpoint.as_str(), "https://example.com:8080/mcp");
+    }
+
+    #[test]
+    fn parse_endpoint_with_query() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp?key=value", config);
+        assert!(transport.is_ok());
+        let transport = transport.unwrap();
+        assert_eq!(
+            transport.endpoint.as_str(),
+            "https://example.com/mcp?key=value"
+        );
+    }
+
+    #[test]
+    fn parse_endpoint_complex_path() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://api.example.com/v1/mcp", config);
+        assert!(transport.is_ok());
+        let transport = transport.unwrap();
+        assert_eq!(
+            transport.endpoint.as_str(),
+            "https://api.example.com/v1/mcp"
+        );
+    }
+
+    #[test]
+    fn invalid_url_empty() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("", config);
+        assert!(transport.is_err());
+    }
+
+    #[test]
+    fn invalid_url_no_scheme() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("example.com/mcp", config);
+        assert!(transport.is_err());
+    }
+
+    #[test]
+    fn invalid_url_malformed() {
+        let config = TransportConfig::default();
+        // URLs without proper scheme are invalid
+        let transport = StreamableHttpTransport::new("not-a-valid-url", config);
+        assert!(transport.is_err());
+    }
+
+    #[test]
+    fn invalid_url_contains_context() {
+        let config = TransportConfig::default();
+        let result = StreamableHttpTransport::new("not a url", config);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        let err_msg = format!("{:#}", err);
+        assert!(err_msg.contains("Invalid endpoint URL"));
+    }
+
+    #[test]
+    fn request_id_sequential() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let id1 = transport.next_id();
+        let id2 = transport.next_id();
+        let id3 = transport.next_id();
+
+        assert_eq!(id1, RequestId::Number(1));
+        assert_eq!(id2, RequestId::Number(2));
+        assert_eq!(id3, RequestId::Number(3));
+    }
+
+    #[test]
+    fn request_id_starts_at_one() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+        let id = transport.next_id();
+        assert_eq!(id, RequestId::Number(1));
+    }
+
+    #[test]
+    fn request_id_many_increments() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        for i in 1..=20 {
+            let id = transport.next_id();
+            assert_eq!(id, RequestId::Number(i));
+        }
+    }
+
+    #[test]
+    fn session_id_none_initially() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+        assert!(transport.session_id().is_none());
+    }
+
+    #[test]
+    fn transport_type_name() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+        assert_eq!(transport.transport_type(), "streamable_http");
+    }
+
+    #[test]
+    fn custom_config() {
+        let config = TransportConfig {
+            timeout_secs: 120,
+            max_message_size: 20 * 1024 * 1024,
+        };
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config);
+        assert!(transport.is_ok());
+        let transport = transport.unwrap();
+        assert_eq!(transport.config.timeout_secs, 120);
+        assert_eq!(transport.config.max_message_size, 20 * 1024 * 1024);
+    }
+
+    #[test]
+    fn with_client_custom() {
+        let config = TransportConfig::default();
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(config.timeout_secs))
+            .build()
+            .unwrap();
+
+        let transport =
+            StreamableHttpTransport::with_client("https://example.com/mcp", client, config);
+        assert!(transport.is_ok());
+    }
+
+    #[test]
+    fn with_client_invalid_url() {
+        let config = TransportConfig::default();
+        let client = reqwest::Client::new();
+        let transport = StreamableHttpTransport::with_client("not a url", client, config);
+        assert!(transport.is_err());
+    }
+
+    #[test]
+    fn parse_localhost_endpoint() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("http://localhost:8080/mcp", config);
+        assert!(transport.is_ok());
+    }
+
+    #[test]
+    fn parse_ipv4_endpoint() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("http://127.0.0.1:8080/mcp", config);
+        assert!(transport.is_ok());
+    }
+
+    #[test]
+    fn parse_ipv6_endpoint() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("http://[::1]:8080/mcp", config);
+        assert!(transport.is_ok());
+    }
+
+    #[tokio::test]
+    async fn parse_sse_response_empty_data() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let sse_text = r#"event: message
+data:
+
+"#;
+
+        let result = transport.parse_sse_response(sse_text).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn parse_sse_response_done_marker() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let sse_text = r#"event: message
+data: [DONE]
+
+"#;
+
+        let result = transport.parse_sse_response(sse_text).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn parse_sse_response_with_notification() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let sse_text = r#"event: message
+data: {"jsonrpc":"2.0","method":"notification"}
+
+data: {"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}
+
+"#;
+
+        let response = transport.parse_sse_response(sse_text).await.unwrap();
+        assert_eq!(response.id, RequestId::Number(1));
+        assert!(response.is_success());
+    }
+
+    #[tokio::test]
+    async fn parse_sse_response_multiple_lines() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let sse_text = r#"event: start
+
+event: message
+data: {"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}
+
+event: end
+
+"#;
+
+        let response = transport.parse_sse_response(sse_text).await.unwrap();
+        assert_eq!(response.id, RequestId::Number(1));
+    }
+
+    #[tokio::test]
+    async fn parse_sse_response_with_error() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let sse_text = r#"data: {"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Invalid Request"}}
+
+"#;
+
+        let response = transport.parse_sse_response(sse_text).await.unwrap();
+        assert_eq!(response.id, RequestId::Number(1));
+        assert!(response.is_error());
+    }
+
+    #[tokio::test]
+    async fn parse_sse_response_no_valid_response() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let sse_text = r#"event: message
+data: {"invalid": "json"}
+
+"#;
+
+        let result = transport.parse_sse_response(sse_text).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn parse_sse_response_empty() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let result = transport.parse_sse_response("").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn parse_sse_response_no_data_prefix() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let sse_text = r#"{"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}"#;
+
+        let result = transport.parse_sse_response(sse_text).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn parse_sse_response_whitespace_handling() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let sse_text = r#"
+
+data: {"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}
+
+"#;
+
+        let response = transport.parse_sse_response(sse_text).await.unwrap();
+        assert_eq!(response.id, RequestId::Number(1));
+    }
+
+    #[tokio::test]
+    async fn parse_sse_response_string_id() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let sse_text = r#"data: {"jsonrpc":"2.0","id":"abc-123","result":{"status":"ok"}}"#;
+
+        let response = transport.parse_sse_response(sse_text).await.unwrap();
+        assert_eq!(response.id, RequestId::String("abc-123".to_string()));
+    }
+
+    #[test]
+    fn extract_session_id_from_headers() {
+        let config = TransportConfig::default();
+        let mut transport =
+            StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let mut headers = HeaderMap::new();
+        headers.insert("Mcp-Session-Id", "session-123".parse().unwrap());
+
+        transport.extract_session_id(&headers);
+        assert_eq!(transport.session_id(), Some("session-123"));
+    }
+
+    #[test]
+    fn extract_session_id_no_header() {
+        let config = TransportConfig::default();
+        let mut transport =
+            StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let headers = HeaderMap::new();
+        transport.extract_session_id(&headers);
+        assert!(transport.session_id().is_none());
+    }
+
+    #[test]
+    fn extract_session_id_invalid_utf8() {
+        let config = TransportConfig::default();
+        let mut transport =
+            StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let mut headers = HeaderMap::new();
+        // Create invalid UTF-8 header value
+        headers.insert(
+            "Mcp-Session-Id",
+            reqwest::header::HeaderValue::from_bytes(&[0xFF, 0xFF]).unwrap(),
+        );
+
+        transport.extract_session_id(&headers);
+        // Should remain None when UTF-8 parsing fails
+        assert!(transport.session_id().is_none());
+    }
+
+    #[test]
+    fn build_request_no_session() {
+        let config = TransportConfig::default();
+        let transport = StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let builder = transport.build_request();
+        // Can't easily inspect the builder, but we can verify it doesn't panic
+        drop(builder);
+    }
+
+    #[test]
+    fn build_request_with_session() {
+        let config = TransportConfig::default();
+        let mut transport =
+            StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        // Manually set session ID
+        let mut headers = HeaderMap::new();
+        headers.insert("Mcp-Session-Id", "test-session".parse().unwrap());
+        transport.extract_session_id(&headers);
+
+        let builder = transport.build_request();
+        drop(builder);
+    }
+
+    #[tokio::test]
+    async fn recv_returns_none() {
+        let config = TransportConfig::default();
+        let mut transport =
+            StreamableHttpTransport::new("https://example.com/mcp", config).unwrap();
+
+        let result = transport.recv().await;
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_none());
     }
 }

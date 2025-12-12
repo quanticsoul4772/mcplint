@@ -548,4 +548,380 @@ mod tests {
             TransportType::Stdio
         );
     }
+
+    // ==========================================================================
+    // Additional TransportType Tests
+    // ==========================================================================
+
+    #[test]
+    fn transport_type_equality() {
+        assert_eq!(TransportType::Stdio, TransportType::Stdio);
+        assert_eq!(TransportType::StreamableHttp, TransportType::StreamableHttp);
+        assert_eq!(TransportType::SseLegacy, TransportType::SseLegacy);
+        assert_ne!(TransportType::Stdio, TransportType::StreamableHttp);
+        assert_ne!(TransportType::Stdio, TransportType::SseLegacy);
+        assert_ne!(TransportType::StreamableHttp, TransportType::SseLegacy);
+    }
+
+    #[test]
+    fn transport_type_copy_clone() {
+        let t1 = TransportType::Stdio;
+        let t2 = t1; // Copy
+        let t3 = t1.clone(); // Clone
+        assert_eq!(t1, t2);
+        assert_eq!(t1, t3);
+    }
+
+    #[test]
+    fn transport_type_debug() {
+        let debug_str = format!("{:?}", TransportType::Stdio);
+        assert!(debug_str.contains("Stdio"));
+    }
+
+    #[test]
+    fn transport_type_from_str_variants() {
+        // Test all accepted variants
+        assert_eq!(
+            "streamablehttp".parse::<TransportType>().unwrap(),
+            TransportType::StreamableHttp
+        );
+        assert_eq!(
+            "sselegacy".parse::<TransportType>().unwrap(),
+            TransportType::SseLegacy
+        );
+    }
+
+    #[test]
+    fn transport_type_from_str_error_message() {
+        let err = "invalid_transport".parse::<TransportType>().unwrap_err();
+        let msg = format!("{}", err);
+        assert!(msg.contains("Unknown transport type"));
+        assert!(msg.contains("invalid_transport"));
+        assert!(msg.contains("stdio"));
+        assert!(msg.contains("http"));
+        assert!(msg.contains("sse"));
+    }
+
+    // ==========================================================================
+    // TransportConfig Tests
+    // ==========================================================================
+
+    #[test]
+    fn transport_config_custom() {
+        let config = TransportConfig {
+            timeout_secs: 60,
+            max_message_size: 5 * 1024 * 1024,
+        };
+        assert_eq!(config.timeout_secs, 60);
+        assert_eq!(config.max_message_size, 5 * 1024 * 1024);
+    }
+
+    #[test]
+    fn transport_config_clone() {
+        let config1 = TransportConfig::default();
+        let config2 = config1.clone();
+        assert_eq!(config1.timeout_secs, config2.timeout_secs);
+        assert_eq!(config1.max_message_size, config2.max_message_size);
+    }
+
+    #[test]
+    fn transport_config_debug() {
+        let config = TransportConfig::default();
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("timeout_secs"));
+        assert!(debug_str.contains("max_message_size"));
+    }
+
+    // ==========================================================================
+    // ServerTransportConfig Tests
+    // ==========================================================================
+
+    #[test]
+    fn server_transport_config_with_transport() {
+        let config = ServerTransportConfig {
+            transport: Some("http".to_string()),
+            command: None,
+        };
+        assert_eq!(config.transport.as_deref(), Some("http"));
+        assert!(config.command.is_none());
+    }
+
+    #[test]
+    fn server_transport_config_with_command() {
+        let config = ServerTransportConfig {
+            transport: None,
+            command: Some("python server.py".to_string()),
+        };
+        assert!(config.transport.is_none());
+        assert_eq!(config.command.as_deref(), Some("python server.py"));
+    }
+
+    #[test]
+    fn server_transport_config_clone() {
+        let config1 = ServerTransportConfig {
+            transport: Some("sse".to_string()),
+            command: Some("node server.js".to_string()),
+        };
+        let config2 = config1.clone();
+        assert_eq!(config1.transport, config2.transport);
+        assert_eq!(config1.command, config2.command);
+    }
+
+    #[test]
+    fn server_transport_config_debug() {
+        let config = ServerTransportConfig {
+            transport: Some("stdio".to_string()),
+            command: Some("test".to_string()),
+        };
+        let debug_str = format!("{:?}", config);
+        assert!(debug_str.contains("transport"));
+        assert!(debug_str.contains("command"));
+    }
+
+    // ==========================================================================
+    // Advanced Detection Tests
+    // ==========================================================================
+
+    #[test]
+    fn detect_full_invalid_config_transport() {
+        let config = ServerTransportConfig {
+            transport: Some("invalid_type".to_string()),
+            command: Some("node".to_string()),
+        };
+        // Should fall through to default when transport parse fails
+        assert_eq!(
+            detect_transport_type_full("my-server", Some(&config), None),
+            TransportType::Stdio
+        );
+    }
+
+    #[test]
+    fn detect_full_config_command_sse_url() {
+        let config = ServerTransportConfig {
+            transport: None,
+            command: Some("https://api.example.com/mcp/sse".to_string()),
+        };
+        assert_eq!(
+            detect_transport_type_full("remote-server", Some(&config), None),
+            TransportType::SseLegacy
+        );
+    }
+
+    #[test]
+    fn detect_full_explicit_overrides_everything() {
+        let config = ServerTransportConfig {
+            transport: Some("http".to_string()),
+            command: Some("https://example.com/sse".to_string()),
+        };
+        // Explicit should override both config and URL detection
+        assert_eq!(
+            detect_transport_type_full(
+                "https://other.com/sse",
+                Some(&config),
+                Some(TransportType::Stdio)
+            ),
+            TransportType::Stdio
+        );
+    }
+
+    #[test]
+    fn detect_full_empty_config() {
+        let config = ServerTransportConfig {
+            transport: None,
+            command: None,
+        };
+        assert_eq!(
+            detect_transport_type_full("server.js", Some(&config), None),
+            TransportType::Stdio
+        );
+    }
+
+    // ==========================================================================
+    // HTTP Transport Detection Edge Cases
+    // ==========================================================================
+
+    #[test]
+    fn detect_http_sse_in_path_multiple_times() {
+        assert_eq!(
+            detect_transport_type("http://localhost/sse/v1/sse"),
+            TransportType::SseLegacy
+        );
+    }
+
+    #[test]
+    fn detect_http_case_variations() {
+        assert_eq!(
+            detect_transport_type("HtTp://localhost/mcp"),
+            TransportType::StreamableHttp
+        );
+        assert_eq!(
+            detect_transport_type("HtTpS://localhost/SSE"),
+            TransportType::SseLegacy
+        );
+    }
+
+    #[test]
+    fn detect_http_query_multiple_params() {
+        assert_eq!(
+            detect_transport_type("http://localhost/mcp?foo=bar&sse=true&baz=qux"),
+            TransportType::SseLegacy
+        );
+        assert_eq!(
+            detect_transport_type("http://localhost/mcp?foo=bar&baz=qux"),
+            TransportType::StreamableHttp
+        );
+    }
+
+    #[test]
+    fn detect_http_query_sse_in_value() {
+        assert_eq!(
+            detect_transport_type("http://localhost/mcp?mode=sse"),
+            TransportType::SseLegacy
+        );
+    }
+
+    #[test]
+    fn detect_http_complex_urls() {
+        // Port numbers
+        assert_eq!(
+            detect_transport_type("http://localhost:8080/mcp"),
+            TransportType::StreamableHttp
+        );
+        assert_eq!(
+            detect_transport_type("https://api.example.com:443/sse"),
+            TransportType::SseLegacy
+        );
+
+        // Subdomains
+        assert_eq!(
+            detect_transport_type("https://api.subdomain.example.com/mcp"),
+            TransportType::StreamableHttp
+        );
+
+        // Fragment identifiers
+        assert_eq!(
+            detect_transport_type("http://localhost/mcp#section"),
+            TransportType::StreamableHttp
+        );
+        assert_eq!(
+            detect_transport_type("http://localhost/sse#section"),
+            TransportType::SseLegacy
+        );
+    }
+
+    // ==========================================================================
+    // Non-URL Path Detection
+    // ==========================================================================
+
+    #[test]
+    fn detect_absolute_unix_paths() {
+        assert_eq!(
+            detect_transport_type("/usr/local/bin/mcp-server"),
+            TransportType::Stdio
+        );
+        assert_eq!(
+            detect_transport_type("/home/user/.local/bin/server"),
+            TransportType::Stdio
+        );
+    }
+
+    #[test]
+    fn detect_windows_paths() {
+        assert_eq!(
+            detect_transport_type("C:\\Program Files\\Server\\server.exe"),
+            TransportType::Stdio
+        );
+        assert_eq!(
+            detect_transport_type("D:\\servers\\mcp.exe"),
+            TransportType::Stdio
+        );
+    }
+
+    #[test]
+    fn detect_relative_paths() {
+        assert_eq!(detect_transport_type("./server"), TransportType::Stdio);
+        assert_eq!(detect_transport_type("../server"), TransportType::Stdio);
+        assert_eq!(
+            detect_transport_type("../../bin/server"),
+            TransportType::Stdio
+        );
+    }
+
+    #[test]
+    fn detect_bare_commands() {
+        assert_eq!(detect_transport_type("node"), TransportType::Stdio);
+        assert_eq!(detect_transport_type("python"), TransportType::Stdio);
+        assert_eq!(detect_transport_type("npx"), TransportType::Stdio);
+        assert_eq!(detect_transport_type("uvx"), TransportType::Stdio);
+    }
+
+    #[test]
+    fn detect_scoped_npm_packages() {
+        assert_eq!(
+            detect_transport_type("@modelcontextprotocol/server-everything"),
+            TransportType::Stdio
+        );
+        assert_eq!(
+            detect_transport_type("@anthropic/sdk"),
+            TransportType::Stdio
+        );
+    }
+
+    // ==========================================================================
+    // Edge Cases and Boundary Conditions
+    // ==========================================================================
+
+    #[test]
+    fn detect_empty_string() {
+        // Empty string should default to stdio
+        assert_eq!(detect_transport_type(""), TransportType::Stdio);
+    }
+
+    #[test]
+    fn detect_whitespace_only() {
+        assert_eq!(detect_transport_type("   "), TransportType::Stdio);
+        assert_eq!(detect_transport_type("\t\n"), TransportType::Stdio);
+    }
+
+    #[test]
+    fn detect_url_like_but_not_http() {
+        // These look like URLs but don't start with http(s)
+        assert_eq!(
+            detect_transport_type("ftp://example.com/mcp"),
+            TransportType::Stdio
+        );
+        assert_eq!(
+            detect_transport_type("ws://example.com/mcp"),
+            TransportType::Stdio
+        );
+        assert_eq!(
+            detect_transport_type("file:///path/to/server"),
+            TransportType::Stdio
+        );
+    }
+
+    #[test]
+    fn detect_http_in_middle_of_string() {
+        // "http://" not at start should be stdio
+        assert_eq!(
+            detect_transport_type("server http://example.com"),
+            TransportType::Stdio
+        );
+    }
+
+    #[test]
+    fn detect_partial_url() {
+        // URLs with http:// or https:// prefix are detected as HTTP transports
+        // even if incomplete - transport creation will handle validation
+        assert_eq!(
+            detect_transport_type("http://"),
+            TransportType::StreamableHttp
+        );
+        assert_eq!(
+            detect_transport_type("https://"),
+            TransportType::StreamableHttp
+        );
+        // Without :// it's not detected as URL, defaults to Stdio
+        assert_eq!(detect_transport_type("http:"), TransportType::Stdio);
+    }
 }

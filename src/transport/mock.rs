@@ -22,6 +22,7 @@ type SentNotifications = Arc<Mutex<Vec<(String, Option<Value>)>>>;
 /// Mock transport for testing
 ///
 /// Allows pre-configuring responses and capturing sent messages for assertions.
+#[derive(Debug)]
 pub struct MockTransport {
     /// Queue of responses to return for requests
     responses: Arc<Mutex<VecDeque<JsonRpcResponse>>>,

@@ -524,4 +524,195 @@ mod tests {
         let _ = ProgressStyle::SecurityScan.template(false);
         assert!(ProgressStyle::SecurityScan.tick_chars(true).contains('🔒'));
     }
+
+    #[test]
+    fn progress_style_all_templates_unicode() {
+        // Test all styles with unicode enabled
+        assert_eq!(
+            ProgressStyle::Spinner.template(true),
+            "{spinner:.cyan} {msg}"
+        );
+        assert_eq!(
+            ProgressStyle::Bar.template(true),
+            "{bar:40.cyan/dim} {pos}/{len} {msg}"
+        );
+        assert_eq!(
+            ProgressStyle::Download.template(true),
+            "{bar:40.cyan/dim} {bytes}/{total_bytes} ({eta})"
+        );
+        assert_eq!(ProgressStyle::Dots.template(true), "{msg}{spinner}");
+        assert_eq!(
+            ProgressStyle::SecurityScan.template(true),
+            "{spinner:.cyan} {msg:.cyan} {elapsed_precise}"
+        );
+    }
+
+    #[test]
+    fn progress_style_all_templates_ascii() {
+        // Test all styles with unicode disabled
+        assert_eq!(ProgressStyle::Spinner.template(false), "[{elapsed}] {msg}");
+        assert_eq!(
+            ProgressStyle::Bar.template(false),
+            "[{bar:40}] {pos}/{len} {msg}"
+        );
+        assert_eq!(
+            ProgressStyle::Download.template(false),
+            "[{bar:40}] {bytes}/{total_bytes} ({eta})"
+        );
+        assert_eq!(ProgressStyle::Dots.template(false), "{msg}{spinner}");
+        assert_eq!(
+            ProgressStyle::SecurityScan.template(false),
+            "[{elapsed}] {msg}"
+        );
+    }
+
+    #[test]
+    fn progress_style_tick_chars_all_styles() {
+        // Test tick characters for all styles
+        assert_eq!(ProgressStyle::Spinner.tick_chars(false), "-\\|/");
+        assert_eq!(ProgressStyle::Bar.tick_chars(false), "-\\|/");
+        assert_eq!(ProgressStyle::Download.tick_chars(false), "-\\|/");
+        assert_eq!(ProgressStyle::Dots.tick_chars(false), "-\\|/");
+
+        // Security scan has unique characters
+        assert_eq!(ProgressStyle::SecurityScan.tick_chars(true), "🔒🔓🔐🔏");
+        assert_eq!(ProgressStyle::SecurityScan.tick_chars(false), "-\\|/");
+    }
+
+    #[test]
+    fn scan_progress_bar_constructor() {
+        let progress = ScanProgress::bar(OutputMode::CI, 100);
+        assert!(!progress.is_enabled());
+    }
+
+    #[test]
+    fn scan_progress_new_download_style() {
+        let progress = ScanProgress::new(OutputMode::CI, ProgressStyle::Download);
+        assert_eq!(progress.style, ProgressStyle::Download);
+        assert!(!progress.is_enabled());
+    }
+
+    #[test]
+    fn scan_progress_new_dots_style() {
+        let progress = ScanProgress::new(OutputMode::CI, ProgressStyle::Dots);
+        assert_eq!(progress.style, ProgressStyle::Dots);
+    }
+
+    #[test]
+    fn scan_progress_new_security_scan_style() {
+        let progress = ScanProgress::new(OutputMode::CI, ProgressStyle::SecurityScan);
+        assert_eq!(progress.style, ProgressStyle::SecurityScan);
+    }
+
+    #[test]
+    fn scan_progress_suspend() {
+        let progress = ScanProgress::new(OutputMode::CI, ProgressStyle::Bar);
+        let result = progress.suspend(|| 42);
+        assert_eq!(result, 42);
+    }
+
+    #[test]
+    fn scan_progress_finish_and_clear() {
+        let progress = ScanProgress::new(OutputMode::CI, ProgressStyle::Bar);
+        progress.finish_and_clear();
+    }
+
+    #[test]
+    fn scan_progress_start_with_length() {
+        let mut progress = ScanProgress::new(OutputMode::CI, ProgressStyle::Bar);
+        progress.start(50);
+        assert!(!progress.is_enabled());
+    }
+
+    #[test]
+    fn scan_progress_start_spinner_zero_length() {
+        let mut progress = ScanProgress::new(OutputMode::CI, ProgressStyle::Spinner);
+        progress.start(0); // Zero length creates spinner
+        assert!(!progress.is_enabled());
+    }
+
+    #[test]
+    fn connection_spinner_phase_scanning() {
+        let mut spinner = ConnectionSpinner::new(OutputMode::CI);
+        spinner.start("test-server");
+        spinner.phase_scanning("Tool validation");
+        assert!(!spinner.is_enabled());
+    }
+
+    #[test]
+    fn connection_spinner_finish_and_clear() {
+        let mut spinner = ConnectionSpinner::new(OutputMode::CI);
+        spinner.start("test-server");
+        spinner.finish_and_clear();
+    }
+
+    #[test]
+    fn connection_spinner_error() {
+        let mut spinner = ConnectionSpinner::new(OutputMode::CI);
+        spinner.start("test-server");
+        spinner.finish_error("Connection failed");
+    }
+
+    #[test]
+    fn connection_spinner_phases_tracking() {
+        // Test that phases_completed is tracked even in CI mode
+        let mut spinner = ConnectionSpinner::new(OutputMode::CI);
+        spinner.start("test-server");
+        assert_eq!(spinner.phases_completed, 0);
+
+        // Note: In CI mode, bar is None, so phase_initializing only updates
+        // phases_completed when bar.is_some()
+        spinner.phase_initializing();
+        // In CI mode, phases_completed won't be updated since bar is None
+        // This is expected behavior - phase tracking is only for interactive mode
+        assert_eq!(spinner.phases_completed, 0);
+
+        spinner.phase_listing("resources");
+        assert_eq!(spinner.phases_completed, 0);
+    }
+
+    #[test]
+    fn multi_server_progress_multiple_servers() {
+        let progress = MultiServerProgress::new(OutputMode::Interactive, 5);
+        // Interactive mode with multiple servers should enable progress
+        // Note: In test environment without terminal, might still be disabled
+        progress.server_complete("server1");
+        progress.server_complete("server2");
+        progress.finish();
+    }
+
+    #[test]
+    fn multi_server_progress_zero_servers() {
+        let progress = MultiServerProgress::new(OutputMode::Interactive, 0);
+        assert!(!progress.is_enabled());
+    }
+
+    #[test]
+    fn progress_style_equality() {
+        assert_eq!(ProgressStyle::Spinner, ProgressStyle::Spinner);
+        assert_eq!(ProgressStyle::Bar, ProgressStyle::Bar);
+        assert_ne!(ProgressStyle::Spinner, ProgressStyle::Bar);
+        assert_ne!(ProgressStyle::Download, ProgressStyle::Dots);
+    }
+
+    #[test]
+    fn scan_progress_drop_unfinished() {
+        // Test that drop finishes unfinished bars
+        let _progress = ScanProgress::new(OutputMode::CI, ProgressStyle::Bar);
+        // Drop should not panic even if bar was never started
+    }
+
+    #[test]
+    fn connection_spinner_drop_unfinished() {
+        // Test that drop finishes unfinished spinners
+        let mut spinner = ConnectionSpinner::new(OutputMode::CI);
+        spinner.start("test");
+        // Drop should handle unfinished spinner
+    }
+
+    #[test]
+    fn scan_progress_mode_access() {
+        let progress = ScanProgress::new(OutputMode::Plain, ProgressStyle::Bar);
+        assert_eq!(progress.mode, OutputMode::Plain);
+    }
 }

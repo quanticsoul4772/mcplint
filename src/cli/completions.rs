@@ -27,7 +27,11 @@ pub fn print_completions(shell: Shell, cmd: &mut Command) {
 }
 
 /// Generate completions and save to a file
-pub fn save_completions(shell: Shell, cmd: &mut Command, path: &std::path::Path) -> std::io::Result<()> {
+pub fn save_completions(
+    shell: Shell,
+    cmd: &mut Command,
+    path: &std::path::Path,
+) -> std::io::Result<()> {
     let mut file = std::fs::File::create(path)?;
     generate_completions(shell, cmd, &mut file);
     Ok(())
@@ -219,12 +223,30 @@ pub fn get_cache_category_completions() -> Vec<(&'static str, &'static str)> {
 pub fn get_recipe_completions() -> Vec<(&'static str, &'static str)> {
     vec![
         ("first-scan", "Get started with mcplint security scanning"),
-        ("test-authentication", "Comprehensive authentication testing workflow"),
-        ("prevent-injection", "How to detect and prevent injection vulnerabilities"),
-        ("ci-integration", "Integrate mcplint into your CI/CD pipeline"),
-        ("schema-validation", "Ensure your MCP server schemas are correct"),
-        ("baseline-management", "Track security improvements with baselines"),
-        ("fuzz-testing", "Find edge cases with coverage-guided fuzzing"),
+        (
+            "test-authentication",
+            "Comprehensive authentication testing workflow",
+        ),
+        (
+            "prevent-injection",
+            "How to detect and prevent injection vulnerabilities",
+        ),
+        (
+            "ci-integration",
+            "Integrate mcplint into your CI/CD pipeline",
+        ),
+        (
+            "schema-validation",
+            "Ensure your MCP server schemas are correct",
+        ),
+        (
+            "baseline-management",
+            "Track security improvements with baselines",
+        ),
+        (
+            "fuzz-testing",
+            "Find edge cases with coverage-guided fuzzing",
+        ),
         ("troubleshooting", "Diagnose and fix common problems"),
     ]
 }
@@ -279,39 +301,34 @@ pub fn detect_shell() -> Option<Shell> {
 /// Get installation instructions for a shell
 pub fn get_install_instructions(shell: Shell) -> String {
     match shell {
-        Shell::Bash => {
-            r#"# Add to ~/.bashrc or ~/.bash_profile:
+        Shell::Bash => r#"# Add to ~/.bashrc or ~/.bash_profile:
 source <(mcplint completions bash)
 
 # Or save to completions directory:
-mcplint completions bash > ~/.local/share/bash-completion/completions/mcplint"#.to_string()
-        }
-        Shell::Zsh => {
-            r#"# Add to ~/.zshrc (before compinit):
+mcplint completions bash > ~/.local/share/bash-completion/completions/mcplint"#
+            .to_string(),
+        Shell::Zsh => r#"# Add to ~/.zshrc (before compinit):
 source <(mcplint completions zsh)
 
 # Or save to fpath directory:
 mcplint completions zsh > ~/.zfunc/_mcplint
-# Then add to ~/.zshrc: fpath=(~/.zfunc $fpath)"#.to_string()
-        }
-        Shell::Fish => {
-            r#"# Save to fish completions directory:
-mcplint completions fish > ~/.config/fish/completions/mcplint.fish"#.to_string()
-        }
-        Shell::PowerShell => {
-            r#"# Add to PowerShell profile ($PROFILE):
+# Then add to ~/.zshrc: fpath=(~/.zfunc $fpath)"#
+            .to_string(),
+        Shell::Fish => r#"# Save to fish completions directory:
+mcplint completions fish > ~/.config/fish/completions/mcplint.fish"#
+            .to_string(),
+        Shell::PowerShell => r#"# Add to PowerShell profile ($PROFILE):
 Invoke-Expression (& mcplint completions powershell | Out-String)
 
 # Or save to completions file:
-mcplint completions powershell > $HOME\Documents\PowerShell\Completions\mcplint.ps1"#.to_string()
-        }
-        Shell::Elvish => {
-            r#"# Add to ~/.config/elvish/rc.elv:
+mcplint completions powershell > $HOME\Documents\PowerShell\Completions\mcplint.ps1"#
+            .to_string(),
+        Shell::Elvish => r#"# Add to ~/.config/elvish/rc.elv:
 eval (mcplint completions elvish | slurp)
 
 # Or save to lib directory:
-mcplint completions elvish > ~/.config/elvish/lib/mcplint.elv"#.to_string()
-        }
+mcplint completions elvish > ~/.config/elvish/lib/mcplint.elv"#
+            .to_string(),
         _ => "See shell documentation for completion installation".to_string(),
     }
 }
