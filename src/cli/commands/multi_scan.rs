@@ -10,9 +10,9 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use serde::Deserialize;
 
+use crate::cli::OutputFormat;
 use crate::scanner::multi_server::{MultiServerScanner, ServerConfig};
 use crate::scanner::{ScanProfile, Severity};
-use crate::cli::OutputFormat;
 
 #[derive(Debug, Deserialize)]
 struct McpConfig {

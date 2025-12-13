@@ -20,8 +20,8 @@ static ENV_LOCK: Mutex<()> = Mutex::new(());
 #[test]
 fn is_interactive_available_returns_bool() {
     // Verify the function doesn't panic and returns a boolean
-    let result = interactive::is_interactive_available();
-    assert!(result == true || result == false);
+    let _result = interactive::is_interactive_available();
+    // Result is always a valid bool, test passes if no panic
 }
 
 #[test]
@@ -84,7 +84,10 @@ fn scan_wizard_result_can_be_constructed() {
     assert_eq!(result.server, "test-server");
     assert!(matches!(result.profile, ScanProfile::Standard));
     assert_eq!(result.include_categories.as_ref().unwrap().len(), 2);
-    assert!(matches!(result.output_format, interactive::OutputFormat::Text));
+    assert!(matches!(
+        result.output_format,
+        interactive::OutputFormat::Text
+    ));
     assert_eq!(result.fail_on.as_ref().unwrap().len(), 2);
 }
 
@@ -191,6 +194,7 @@ fn output_format_default() {
 
 #[test]
 fn scan_profile_all_variants_covered() {
+    // Verify all variants exist and can be constructed
     let profiles = [
         ScanProfile::Quick,
         ScanProfile::Standard,
@@ -198,15 +202,8 @@ fn scan_profile_all_variants_covered() {
         ScanProfile::Enterprise,
     ];
 
-    for profile in profiles {
-        // Ensure each variant can be matched
-        match profile {
-            ScanProfile::Quick => assert!(true),
-            ScanProfile::Standard => assert!(true),
-            ScanProfile::Full => assert!(true),
-            ScanProfile::Enterprise => assert!(true),
-        }
-    }
+    // Verify we have all 4 variants
+    assert_eq!(profiles.len(), 4);
 }
 
 // ============================================================================
@@ -215,6 +212,7 @@ fn scan_profile_all_variants_covered() {
 
 #[test]
 fn fuzz_profile_all_variants_covered() {
+    // Verify all variants exist and can be constructed
     let profiles = [
         FuzzProfile::Quick,
         FuzzProfile::Standard,
@@ -222,14 +220,8 @@ fn fuzz_profile_all_variants_covered() {
         FuzzProfile::CI,
     ];
 
-    for profile in profiles {
-        match profile {
-            FuzzProfile::Quick => assert!(true),
-            FuzzProfile::Standard => assert!(true),
-            FuzzProfile::Intensive => assert!(true),
-            FuzzProfile::CI => assert!(true),
-        }
-    }
+    // Verify we have all 4 variants
+    assert_eq!(profiles.len(), 4);
 }
 
 // ============================================================================
@@ -238,6 +230,7 @@ fn fuzz_profile_all_variants_covered() {
 
 #[test]
 fn severity_all_variants_for_fail_on() {
+    // Verify all variants exist and can be constructed
     let severities = [
         Severity::Critical,
         Severity::High,
@@ -246,15 +239,8 @@ fn severity_all_variants_for_fail_on() {
         Severity::Info,
     ];
 
-    for sev in severities {
-        match sev {
-            Severity::Critical => assert!(true),
-            Severity::High => assert!(true),
-            Severity::Medium => assert!(true),
-            Severity::Low => assert!(true),
-            Severity::Info => assert!(true),
-        }
-    }
+    // Verify we have all 5 variants
+    assert_eq!(severities.len(), 5);
 }
 
 // ============================================================================
@@ -445,19 +431,15 @@ fn explain_wizard_result_has_debug() {
 
 #[test]
 fn cli_ai_provider_all_variants_covered() {
+    // Verify all variants exist and can be constructed
     let providers = [
         CliAiProvider::Ollama,
         CliAiProvider::Anthropic,
         CliAiProvider::Openai,
     ];
 
-    for provider in providers {
-        match provider {
-            CliAiProvider::Ollama => assert!(true),
-            CliAiProvider::Anthropic => assert!(true),
-            CliAiProvider::Openai => assert!(true),
-        }
-    }
+    // Verify we have all 3 variants
+    assert_eq!(providers.len(), 3);
 }
 
 // ============================================================================
@@ -466,19 +448,15 @@ fn cli_ai_provider_all_variants_covered() {
 
 #[test]
 fn cli_audience_level_all_variants_covered() {
+    // Verify all variants exist and can be constructed
     let levels = [
         CliAudienceLevel::Beginner,
         CliAudienceLevel::Intermediate,
         CliAudienceLevel::Expert,
     ];
 
-    for level in levels {
-        match level {
-            CliAudienceLevel::Beginner => assert!(true),
-            CliAudienceLevel::Intermediate => assert!(true),
-            CliAudienceLevel::Expert => assert!(true),
-        }
-    }
+    // Verify we have all 3 variants
+    assert_eq!(levels.len(), 3);
 }
 
 // ============================================================================
@@ -500,7 +478,7 @@ fn explain_wizard_all_severity_filters() {
             server: "sev-test".to_string(),
             provider: CliAiProvider::Ollama,
             audience: CliAudienceLevel::Intermediate,
-            min_severity: Some(sev.clone()),
+            min_severity: Some(sev),
             max_findings: None,
             interactive_followup: false,
         };

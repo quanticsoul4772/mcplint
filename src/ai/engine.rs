@@ -403,15 +403,19 @@ mod tests {
         assert_eq!(stats.avg_response_time_ms(), 0);
 
         // 100% cache hit rate
-        let mut stats = EngineStats::default();
-        stats.cache_hits = 10;
-        stats.cache_misses = 0;
+        let stats = EngineStats {
+            cache_hits: 10,
+            cache_misses: 0,
+            ..Default::default()
+        };
         assert_eq!(stats.cache_hit_rate(), 100.0);
 
         // 0% cache hit rate
-        let mut stats = EngineStats::default();
-        stats.cache_hits = 0;
-        stats.cache_misses = 10;
+        let stats = EngineStats {
+            cache_hits: 0,
+            cache_misses: 10,
+            ..Default::default()
+        };
         assert_eq!(stats.cache_hit_rate(), 0.0);
     }
 

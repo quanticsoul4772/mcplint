@@ -68,7 +68,6 @@ struct Cli {
     command: Commands,
 }
 
-
 /// Shell type for completions generation
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
 pub enum CompletionShell {
@@ -528,7 +527,6 @@ enum CacheAction {
     },
 }
 
-
 fn init_logging(verbosity: u8, quiet: bool) {
     let filter = if quiet {
         EnvFilter::new("error")
@@ -786,16 +784,18 @@ async fn main() -> Result<()> {
             non_interactive,
         } => {
             // Determine output path and whether to use wizard
-            let (output_path, use_wizard_config) =
-                if output.is_none() && !non_interactive && interactive::is_interactive_available() {
-                    // Launch interactive wizard
-                    let wizard_result = interactive::run_init_wizard()?;
-                    let path = wizard_result.output_path.clone();
-                    (path, Some(wizard_result))
-                } else {
-                    // Use provided path or default
-                    (output.unwrap_or_else(|| ".mcplint.toml".to_string()), None)
-                };
+            let (output_path, use_wizard_config) = if output.is_none()
+                && !non_interactive
+                && interactive::is_interactive_available()
+            {
+                // Launch interactive wizard
+                let wizard_result = interactive::run_init_wizard()?;
+                let path = wizard_result.output_path.clone();
+                (path, Some(wizard_result))
+            } else {
+                // Use provided path or default
+                (output.unwrap_or_else(|| ".mcplint.toml".to_string()), None)
+            };
 
             commands::init::run_with_config(&output_path, force, use_wizard_config)?;
         }
@@ -839,28 +839,34 @@ async fn main() -> Result<()> {
             config,
         } => {
             // Check if we need interactive wizard
-            let (resolved_server, resolved_provider, resolved_audience, resolved_severity, resolved_max, resolved_interactive) =
-                if server.is_none() && interactive::is_interactive_available() {
-                    // Launch explain wizard
-                    let wizard_result = interactive::run_explain_wizard()?;
-                    (
-                        wizard_result.server,
-                        wizard_result.provider,
-                        wizard_result.audience,
-                        wizard_result.min_severity,
-                        wizard_result.max_findings,
-                        wizard_result.interactive_followup,
-                    )
-                } else if let Some(s) = server {
-                    // Use provided server and CLI args
-                    (s, provider, audience, severity, max_findings, interactive)
-                } else {
-                    // No server and not interactive
-                    anyhow::bail!(
-                        "Server argument required in non-interactive mode.\n\
+            let (
+                resolved_server,
+                resolved_provider,
+                resolved_audience,
+                resolved_severity,
+                resolved_max,
+                resolved_interactive,
+            ) = if server.is_none() && interactive::is_interactive_available() {
+                // Launch explain wizard
+                let wizard_result = interactive::run_explain_wizard()?;
+                (
+                    wizard_result.server,
+                    wizard_result.provider,
+                    wizard_result.audience,
+                    wizard_result.min_severity,
+                    wizard_result.max_findings,
+                    wizard_result.interactive_followup,
+                )
+            } else if let Some(s) = server {
+                // Use provided server and CLI args
+                (s, provider, audience, severity, max_findings, interactive)
+            } else {
+                // No server and not interactive
+                anyhow::bail!(
+                    "Server argument required in non-interactive mode.\n\
                          Run with --help for usage information."
-                    );
-                };
+                );
+            };
 
             commands::explain::run_scan(
                 &resolved_server,

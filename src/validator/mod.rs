@@ -1505,7 +1505,7 @@ mod tests {
     #[test]
     fn validation_severity_copy_clone() {
         let original = ValidationSeverity::Pass;
-        let cloned = original.clone();
+        let cloned = original; // Copy (implements Copy trait)
         let copied = original;
 
         assert_eq!(original, cloned);

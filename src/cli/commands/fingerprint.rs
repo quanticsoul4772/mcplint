@@ -11,12 +11,12 @@ use tracing::{debug, info};
 
 use crate::baseline::Baseline;
 use crate::cli::server::resolve_server;
+use crate::cli::OutputFormat;
 use crate::fingerprinting::{
     ChangeSeverity, FingerprintComparator, FingerprintDiff, FingerprintHasher, ToolFingerprint,
 };
 use crate::protocol::mcp::Tool;
 use crate::transport::{stdio::StdioTransport, Transport, TransportConfig};
-use crate::cli::OutputFormat;
 
 /// Fetch tools from an MCP server
 async fn fetch_tools(

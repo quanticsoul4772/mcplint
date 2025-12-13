@@ -7,9 +7,9 @@ use colored::Colorize;
 use tracing::{debug, info};
 
 use crate::cli::server::resolve_servers;
+use crate::cli::OutputFormat;
 use crate::ui::{ConnectionSpinner, MultiServerProgress, OutputMode, Printer};
 use crate::validator::ProtocolValidator;
-use crate::cli::OutputFormat;
 
 pub async fn run(
     server: Option<&str>,
