@@ -163,7 +163,8 @@ pub async fn run(
                 serde_json::to_string_pretty(&results.to_sarif()).unwrap_or_default()
             );
         }
-        OutputFormat::Text | OutputFormat::Junit | OutputFormat::Gitlab => {
+        OutputFormat::Text | OutputFormat::Junit | OutputFormat::Gitlab | OutputFormat::Html => {
+            // HTML format for multi-scan uses text summary for now
             results.print_summary();
         }
     }

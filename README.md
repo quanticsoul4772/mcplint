@@ -357,6 +357,21 @@ Run `mcplint rules --details` to see all rules.
 | sarif | --format sarif | GitHub Code Scanning |
 | junit | --format junit | Test runners |
 | gitlab | --format gitlab | GitLab Code Quality |
+| html | --format html | Rich HTML reports with charts |
+
+### HTML Reports
+
+Generate visual HTML reports with severity charts and detailed findings:
+
+```bash
+mcplint scan <server> --format html > report.html
+```
+
+HTML reports include:
+- Severity distribution pie chart
+- Finding cards with details
+- Remediation guidance
+- Responsive design for viewing on any device
 
 ## Configuration
 

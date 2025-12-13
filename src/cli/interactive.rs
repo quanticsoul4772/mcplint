@@ -25,6 +25,7 @@ pub enum OutputFormat {
     Sarif,
     Junit,
     Gitlab,
+    Html,
 }
 
 impl OutputFormat {
@@ -35,6 +36,7 @@ impl OutputFormat {
             OutputFormat::Sarif => "sarif",
             OutputFormat::Junit => "junit",
             OutputFormat::Gitlab => "gitlab",
+            OutputFormat::Html => "html",
         }
     }
 }
@@ -226,6 +228,7 @@ pub fn select_output_format() -> Result<OutputFormat> {
         ("SARIF", "SARIF 2.1.0 for CI/CD integration"),
         ("JUnit", "JUnit XML for test runners"),
         ("GitLab", "GitLab Code Quality format"),
+        ("HTML", "Rich HTML report with charts"),
     ];
 
     println!();
@@ -250,6 +253,7 @@ pub fn select_output_format() -> Result<OutputFormat> {
         2 => OutputFormat::Sarif,
         3 => OutputFormat::Junit,
         4 => OutputFormat::Gitlab,
+        5 => OutputFormat::Html,
         _ => OutputFormat::Text, // Fallback to default
     })
 }
@@ -1132,6 +1136,7 @@ mod tests {
             OutputFormat::Sarif,
             OutputFormat::Junit,
             OutputFormat::Gitlab,
+            OutputFormat::Html,
         ];
 
         for fmt in formats {
@@ -1141,6 +1146,7 @@ mod tests {
                 OutputFormat::Sarif => {}
                 OutputFormat::Junit => {}
                 OutputFormat::Gitlab => {}
+                OutputFormat::Html => {}
             }
         }
     }
@@ -1152,6 +1158,7 @@ mod tests {
         assert_eq!(OutputFormat::Sarif.as_str(), "sarif");
         assert_eq!(OutputFormat::Junit.as_str(), "junit");
         assert_eq!(OutputFormat::Gitlab.as_str(), "gitlab");
+        assert_eq!(OutputFormat::Html.as_str(), "html");
     }
 
     #[test]

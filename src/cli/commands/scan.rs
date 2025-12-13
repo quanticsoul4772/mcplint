@@ -14,7 +14,7 @@ use crate::cli::commands::explain::build_ai_config;
 use crate::cli::config::{AiExplainConfig, ScanCommandConfig};
 use crate::cli::server::resolve_server;
 use crate::cli::OutputFormat;
-use crate::reporter::{generate_gitlab, generate_junit};
+use crate::reporter::{generate_gitlab, generate_html, generate_junit};
 use crate::scanner::{ScanConfig, ScanProfile, Severity};
 use crate::ui::{ConnectionSpinner, OutputMode};
 
@@ -312,6 +312,9 @@ pub async fn run(config: ScanCommandConfig) -> Result<()> {
         }
         OutputFormat::Gitlab => {
             println!("{}", generate_gitlab(&results));
+        }
+        OutputFormat::Html => {
+            println!("{}", generate_html(&results));
         }
     }
 

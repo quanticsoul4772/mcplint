@@ -180,6 +180,7 @@ fn output_format_as_str() {
     assert_eq!(interactive::OutputFormat::Sarif.as_str(), "sarif");
     assert_eq!(interactive::OutputFormat::Junit.as_str(), "junit");
     assert_eq!(interactive::OutputFormat::Gitlab.as_str(), "gitlab");
+    assert_eq!(interactive::OutputFormat::Html.as_str(), "html");
 }
 
 #[test]
