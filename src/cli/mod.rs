@@ -16,6 +16,7 @@ pub enum OutputFormat {
     Sarif,
     Junit,
     Gitlab,
+    Html,
 }
 
 /// Scan profile for CLI commands (wrapper around scanner::ScanProfile)

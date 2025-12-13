@@ -97,7 +97,8 @@ pub async fn run(
             OutputFormat::Sarif => {
                 results.print_sarif()?;
             }
-            OutputFormat::Junit | OutputFormat::Gitlab => {
+            OutputFormat::Junit | OutputFormat::Gitlab | OutputFormat::Html => {
+                // HTML format not applicable to validation results, fall back to JSON
                 results.print_json()?;
             }
         }

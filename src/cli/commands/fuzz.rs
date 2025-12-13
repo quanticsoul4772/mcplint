@@ -285,7 +285,7 @@ pub async fn run(args: FuzzArgs) -> Result<()> {
         OutputFormat::Sarif => {
             results.print_sarif()?;
         }
-        OutputFormat::Junit | OutputFormat::Gitlab => {
+        OutputFormat::Junit | OutputFormat::Gitlab | OutputFormat::Html => {
             // Fuzz results use JSON as fallback for unsupported formats
             results.print_json()?;
         }

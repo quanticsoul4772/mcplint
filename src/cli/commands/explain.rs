@@ -409,7 +409,7 @@ pub async fn run_scan(
             );
             print_explanations_json(&explanations)?;
         }
-        OutputFormat::Junit | OutputFormat::Gitlab => {
+        OutputFormat::Junit | OutputFormat::Gitlab | OutputFormat::Html => {
             // Explanation results use JSON as fallback for unsupported formats
             print_explanations_json(&explanations)?;
         }
