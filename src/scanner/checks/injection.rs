@@ -1610,7 +1610,7 @@ mod tests {
             .push(make_tool("exec_command", None, make_string_schema()));
 
         let finding = checker.check_command_injection(&ctx).unwrap();
-        assert!(finding.evidence.len() > 0);
+        assert!(!finding.evidence.is_empty());
         let evidence_text = format!("{:?}", finding.evidence);
         assert!(evidence_text.contains("exec"));
     }
@@ -1623,7 +1623,7 @@ mod tests {
             .push(make_tool("sql_query", None, make_string_schema()));
 
         let finding = checker.check_sql_injection(&ctx).unwrap();
-        assert!(finding.evidence.len() > 0);
+        assert!(!finding.evidence.is_empty());
         let evidence_text = format!("{:?}", finding.evidence);
         assert!(evidence_text.contains("sql"));
     }
@@ -1740,7 +1740,8 @@ mod tests {
         for pattern in patterns {
             let mut ctx = ServerContext::for_test("test");
             let tool_name = format!("{}_handler", pattern);
-            ctx.tools.push(make_tool(&tool_name, None, make_url_schema()));
+            ctx.tools
+                .push(make_tool(&tool_name, None, make_url_schema()));
 
             let tool = &ctx.tools[0];
             let has_url = has_url_parameters(&tool.input_schema);

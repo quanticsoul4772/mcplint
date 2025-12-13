@@ -533,8 +533,14 @@ mod tests {
         let (sender, mut receiver) = stream_channel(2);
 
         // Fill buffer
-        sender.send(StreamChunk::Text("1".to_string())).await.unwrap();
-        sender.send(StreamChunk::Text("2".to_string())).await.unwrap();
+        sender
+            .send(StreamChunk::Text("1".to_string()))
+            .await
+            .unwrap();
+        sender
+            .send(StreamChunk::Text("2".to_string()))
+            .await
+            .unwrap();
 
         // Receive one to make room
         assert!(receiver.recv().await.is_some());
@@ -547,7 +553,10 @@ mod tests {
     async fn stream_channel_sender_dropped() {
         let (sender, mut receiver) = stream_channel(10);
 
-        sender.send(StreamChunk::Text("before drop".to_string())).await.unwrap();
+        sender
+            .send(StreamChunk::Text("before drop".to_string()))
+            .await
+            .unwrap();
         drop(sender);
 
         // Can still receive sent message

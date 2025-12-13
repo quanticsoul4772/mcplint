@@ -433,15 +433,24 @@ mod tests {
         let key3 = CacheKey::scan_result("server3", "ruleset1");
 
         cache
-            .set(&key1, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .set(
+                &key1,
+                CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)),
+            )
             .await
             .unwrap();
         cache
-            .set(&key2, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .set(
+                &key2,
+                CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)),
+            )
             .await
             .unwrap();
         cache
-            .set(&key3, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .set(
+                &key3,
+                CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)),
+            )
             .await
             .unwrap();
 
@@ -469,11 +478,17 @@ mod tests {
         let key3 = CacheKey::schema("valid");
 
         cache
-            .set(&key1, CacheEntry::new(vec![0u8; 100], Duration::from_secs(0)))
+            .set(
+                &key1,
+                CacheEntry::new(vec![0u8; 100], Duration::from_secs(0)),
+            )
             .await
             .unwrap();
         cache
-            .set(&key2, CacheEntry::new(vec![0u8; 100], Duration::from_secs(0)))
+            .set(
+                &key2,
+                CacheEntry::new(vec![0u8; 100], Duration::from_secs(0)),
+            )
             .await
             .unwrap();
         cache
@@ -600,7 +615,10 @@ mod tests {
         let key2 = CacheKey::schema("valid");
 
         cache
-            .set(&key1, CacheEntry::new(vec![0u8; 100], Duration::from_secs(0)))
+            .set(
+                &key1,
+                CacheEntry::new(vec![0u8; 100], Duration::from_secs(0)),
+            )
             .await
             .unwrap();
         cache
@@ -676,7 +694,10 @@ mod tests {
         // Add entry well under capacity
         let key = CacheKey::schema("server1");
         cache
-            .set(&key, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .set(
+                &key,
+                CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)),
+            )
             .await
             .unwrap();
 
@@ -695,7 +716,10 @@ mod tests {
         // Add first entry
         let key1 = CacheKey::schema("server1");
         cache
-            .set(&key1, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .set(
+                &key1,
+                CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)),
+            )
             .await
             .unwrap();
 
@@ -704,7 +728,10 @@ mod tests {
         // Add second entry (should fit since 200 < 250 in previous test)
         let key2 = CacheKey::schema("server2");
         cache
-            .set(&key2, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .set(
+                &key2,
+                CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)),
+            )
             .await
             .unwrap();
 
@@ -713,7 +740,10 @@ mod tests {
         // Add third entry (triggers eviction of oldest)
         let key3 = CacheKey::schema("server3");
         cache
-            .set(&key3, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .set(
+                &key3,
+                CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)),
+            )
             .await
             .unwrap();
 
@@ -730,7 +760,10 @@ mod tests {
         let key = CacheKey::schema("test");
 
         cache
-            .set(&key, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .set(
+                &key,
+                CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)),
+            )
             .await
             .unwrap();
 
@@ -754,7 +787,10 @@ mod tests {
 
         // Add expired entry
         cache
-            .set(&key, CacheEntry::new(vec![0u8; 100], Duration::from_secs(0)))
+            .set(
+                &key,
+                CacheEntry::new(vec![0u8; 100], Duration::from_secs(0)),
+            )
             .await
             .unwrap();
 

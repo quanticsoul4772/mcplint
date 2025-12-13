@@ -714,7 +714,7 @@ mod tests {
 
     #[test]
     fn resource_category_variants() {
-        let categories = vec![
+        let categories = [
             ResourceCategory::Documentation,
             ResourceCategory::Article,
             ResourceCategory::Tool,

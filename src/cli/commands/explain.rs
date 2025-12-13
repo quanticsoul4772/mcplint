@@ -17,9 +17,9 @@ use crate::ai::{
 };
 use crate::cache::{CacheConfig, CacheManager};
 use crate::cli::server::resolve_server;
+use crate::cli::OutputFormat;
 use crate::scanner::{Finding, ScanProfile, Severity};
 use crate::transport::TransportConfig;
-use crate::cli::OutputFormat;
 
 /// AI provider selection for CLI
 #[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
@@ -289,7 +289,11 @@ pub async fn run_scan(
         );
         println!();
         println!("  {}  {}", "Server:".dimmed(), name.white());
-        println!("  {}  {}", "Profile:".dimmed(), scan_results.profile.white());
+        println!(
+            "  {}  {}",
+            "Profile:".dimmed(),
+            scan_results.profile.white()
+        );
         println!(
             "  {} {}",
             "Checks:".dimmed(),

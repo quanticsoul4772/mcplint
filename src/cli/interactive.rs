@@ -133,10 +133,7 @@ pub fn select_scan_profile() -> Result<ScanProfile> {
 
     let profiles = [
         ("Quick", "Fast scan with essential rules (~30s)"),
-        (
-            "Standard",
-            "Balanced security scan (~2min) [Recommended]",
-        ),
+        ("Standard", "Balanced security scan (~2min) [Recommended]"),
         ("Full", "Comprehensive scan with all rules (~5min)"),
         ("Enterprise", "Compliance-focused enterprise scan (~10min)"),
     ];
@@ -181,10 +178,7 @@ pub fn select_rule_categories() -> Result<Option<Vec<String>>> {
 
     println!();
     println!("{}", "Customize Rule Categories:".cyan().bold());
-    println!(
-        "{}",
-        "(Press Space to toggle, Enter when done)".dimmed()
-    );
+    println!("{}", "(Press Space to toggle, Enter when done)".dimmed());
     println!();
 
     // Ask if they want to customize
@@ -539,7 +533,10 @@ pub fn select_fuzz_profile() -> Result<FuzzProfile> {
             "Standard",
             "Standard fuzzing (~5 minutes, all mutations) [Recommended]",
         ),
-        ("Intensive", "Aggressive fuzzing (unlimited, deep mutations)"),
+        (
+            "Intensive",
+            "Aggressive fuzzing (unlimited, deep mutations)",
+        ),
         ("CI", "CI-optimized (fast feedback, deterministic seed)"),
     ];
 
@@ -774,10 +771,7 @@ pub fn select_audience_level() -> Result<CliAudienceLevel> {
 
     let levels = [
         ("Beginner", "Simple explanations, no jargon, step-by-step"),
-        (
-            "Intermediate",
-            "Balanced technical detail [Recommended]",
-        ),
+        ("Intermediate", "Balanced technical detail [Recommended]"),
         ("Expert", "Deep technical analysis, assumes expertise"),
     ];
 
@@ -894,7 +888,7 @@ pub fn select_max_findings() -> Result<Option<usize>> {
         0 => Some(3),
         1 => Some(5),
         2 => Some(10),
-        3 => None, // All findings
+        3 => None,    // All findings
         _ => Some(5), // Safe fallback
     })
 }
@@ -918,7 +912,10 @@ pub fn run_explain_wizard() -> Result<ExplainWizardResult> {
     // Header
     println!();
     println!("{}", "═".repeat(60).cyan());
-    println!("{}", "  MCPLint AI-Powered Explanation Wizard".cyan().bold());
+    println!(
+        "{}",
+        "  MCPLint AI-Powered Explanation Wizard".cyan().bold()
+    );
     println!("{}", "═".repeat(60).cyan());
 
     // Step 1/5: Server selection

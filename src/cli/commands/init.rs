@@ -308,11 +308,7 @@ pub fn run_with_config(
             match create_github_actions_workflow() {
                 Ok(()) => {}
                 Err(e) => {
-                    println!(
-                        "  {} Failed to create workflow: {}",
-                        "✗".red(),
-                        e
-                    );
+                    println!("  {} Failed to create workflow: {}", "✗".red(), e);
                 }
             }
         }
@@ -321,11 +317,7 @@ pub fn run_with_config(
         match create_gitignore_entry() {
             Ok(()) => {}
             Err(e) => {
-                println!(
-                    "  {} Failed to update .gitignore: {}",
-                    "✗".red(),
-                    e
-                );
+                println!("  {} Failed to update .gitignore: {}", "✗".red(), e);
             }
         }
 
@@ -336,8 +328,7 @@ pub fn run_with_config(
             for server in &wizard.servers_to_test {
                 println!(
                     "  mcplint scan {} --profile {:?}",
-                    server,
-                    wizard.default_profile
+                    server, wizard.default_profile
                 );
             }
             println!();
@@ -444,10 +435,7 @@ pub fn create_gitignore_entry() -> Result<()> {
                 ".mcplint-cache/".yellow()
             );
         } else {
-            println!(
-                "  {} .mcplint-cache/ already in .gitignore",
-                "✓".green()
-            );
+            println!("  {} .mcplint-cache/ already in .gitignore", "✓".green());
         }
     } else {
         fs::write(gitignore_path, entry.trim_start())?;

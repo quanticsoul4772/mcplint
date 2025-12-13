@@ -1307,7 +1307,7 @@ mod tests {
 
     #[test]
     fn all_interesting_reasons_covered() {
-        let reasons = vec![
+        let reasons = [
             InterestingReason::NewCoverage,
             InterestingReason::UnexpectedSuccess,
             InterestingReason::NewErrorCode,
@@ -1435,7 +1435,7 @@ mod tests {
     fn crash_type_copy_and_clone() {
         let crash1 = CrashType::Segfault;
         let crash2 = crash1; // Copy
-        let crash3 = crash1.clone(); // Clone
+        let crash3 = crash1; // Copy (implements Copy trait)
 
         assert_eq!(crash1, crash2);
         assert_eq!(crash1, crash3);
@@ -1445,7 +1445,7 @@ mod tests {
     fn interesting_reason_copy_and_clone() {
         let reason1 = InterestingReason::ProtocolViolation;
         let reason2 = reason1; // Copy
-        let reason3 = reason1.clone(); // Clone
+        let reason3 = reason1; // Copy (implements Copy trait)
 
         assert_eq!(reason1, reason2);
         assert_eq!(reason1, reason3);
@@ -1669,7 +1669,7 @@ mod tests {
 
     #[test]
     fn crash_types_are_distinct() {
-        let types = vec![
+        let types = [
             CrashType::Panic,
             CrashType::Segfault,
             CrashType::OutOfMemory,
@@ -1692,7 +1692,7 @@ mod tests {
 
     #[test]
     fn interesting_reasons_are_distinct() {
-        let reasons = vec![
+        let reasons = [
             InterestingReason::NewCoverage,
             InterestingReason::UnexpectedSuccess,
             InterestingReason::NewErrorCode,

@@ -655,12 +655,12 @@ mod tests {
         for i in 0..3 {
             results.add_finding(
                 Finding::new(
-                    &format!("CRIT-{}", i),
+                    format!("CRIT-{}", i),
                     Severity::Critical,
                     "Critical Finding",
                     "Description",
                 )
-                .with_location(FindingLocation::tool(&format!("tool{}", i))),
+                .with_location(FindingLocation::tool(format!("tool{}", i))),
             );
         }
 
