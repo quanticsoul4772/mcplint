@@ -7,8 +7,8 @@ use std::path::PathBuf;
 
 use crate::cli::commands::explain::CliAiProvider;
 use crate::scanner::Severity;
-use crate::OutputFormat;
-use crate::ScanProfile as CliScanProfile;
+use crate::cli::OutputFormat;
+use crate::cli::ScanProfile as CliScanProfile;
 
 /// Configuration for scan command execution
 #[derive(Debug, Clone)]

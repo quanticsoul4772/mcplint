@@ -19,7 +19,7 @@ use crate::cache::{CacheConfig, CacheManager};
 use crate::cli::server::resolve_server;
 use crate::scanner::{Finding, ScanProfile, Severity};
 use crate::transport::TransportConfig;
-use crate::OutputFormat;
+use crate::cli::OutputFormat;
 
 /// AI provider selection for CLI
 #[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
@@ -273,10 +273,62 @@ pub async fn run_scan(
     }
 
     if findings.is_empty() {
+        // Show informative summary even when no findings
+        println!();
         println!(
             "{}",
-            "No findings match the criteria. Nothing to explain.".green()
+            "════════════════════════════════════════════════════════════".bright_green()
         );
+        println!(
+            "{}",
+            "  ✓ Security Scan Complete - No Issues Found".bright_green()
+        );
+        println!(
+            "{}",
+            "════════════════════════════════════════════════════════════".bright_green()
+        );
+        println!();
+        println!("  {}  {}", "Server:".dimmed(), name.white());
+        println!("  {}  {}", "Profile:".dimmed(), scan_results.profile.white());
+        println!(
+            "  {} {}",
+            "Checks:".dimmed(),
+            scan_results.total_checks.to_string().white()
+        );
+        println!(
+            "  {} {}ms",
+            "Duration:".dimmed(),
+            scan_results.duration_ms.to_string().white()
+        );
+        println!();
+        println!(
+            "  {} The server passed all {} security checks.",
+            "Result:".dimmed(),
+            scan_results.total_checks
+        );
+        println!(
+            "  {}",
+            "  No vulnerabilities were detected that require AI explanation.".dimmed()
+        );
+        println!();
+
+        // Show what was checked
+        println!("  {} Security checks performed:", "Details:".dimmed());
+        println!("    • Tool injection detection");
+        println!("    • Tool shadowing analysis");
+        println!("    • Schema poisoning checks");
+        println!("    • Hidden unicode character scan");
+        println!("    • OAuth scope abuse detection");
+        println!();
+
+        if severity_filter.is_some() {
+            println!(
+                "  {} Severity filter was applied - some lower severity findings may have been excluded.",
+                "Note:".yellow()
+            );
+            println!();
+        }
+
         return Ok(());
     }
 

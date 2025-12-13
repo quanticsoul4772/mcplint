@@ -5,6 +5,36 @@ All notable changes to MCPLint will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2025-12-12
+
+### Added
+
+- **Interactive Mode**
+  - Scan wizard with server selection, profile choice, and category filtering
+  - Fuzz wizard with profile, duration, workers, and corpus configuration
+  - Init wizard for guided configuration file creation
+  - Explain wizard with AI provider, audience level, and severity filtering
+  - Automatic TTY and CI environment detection
+  - FuzzySelect for intuitive server selection
+
+- **Init Command Enhancements**
+  - GitHub Actions workflow generation (.github/workflows/mcplint.yml)
+  - Automatic .gitignore entry for .mcplint-cache/
+  - Wizard-driven configuration with sensible defaults
+
+### Changed
+
+- Server argument now optional for scan, fuzz, and explain commands (wizard activates)
+- OutputFormat and ScanProfile types consolidated in cli module
+- Improved module organization for library consumers
+
+### Tests
+
+- Added interactive_tests.rs with 30 integration tests
+- Test coverage for wizard result structs and output formats
+- AI provider and audience level variant tests
+- CI environment detection tests
+
 ## [0.2.0] - 2025-12-12
 
 ### Added

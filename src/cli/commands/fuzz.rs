@@ -9,7 +9,7 @@ use crate::cli::server::resolve_server;
 use crate::fuzzer::limits::{format_bytes, format_duration, ResourceLimits};
 use crate::fuzzer::{FuzzConfig, FuzzEngine, FuzzProfile};
 use crate::ui::{OutputMode, Printer};
-use crate::OutputFormat;
+use crate::cli::OutputFormat;
 
 /// Arguments for the fuzz command
 pub struct FuzzArgs {

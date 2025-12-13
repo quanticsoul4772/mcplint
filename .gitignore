@@ -15,6 +15,7 @@ Thumbs.db
 
 # MCPLint
 .mcplint/
+.mcplint.toml
 *.sarif
 
 # Fuzzing

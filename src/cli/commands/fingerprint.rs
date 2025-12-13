@@ -16,7 +16,7 @@ use crate::fingerprinting::{
 };
 use crate::protocol::mcp::Tool;
 use crate::transport::{stdio::StdioTransport, Transport, TransportConfig};
-use crate::OutputFormat;
+use crate::cli::OutputFormat;
 
 /// Fetch tools from an MCP server
 async fn fetch_tools(

@@ -20,6 +20,59 @@ Security testing tool for Model Context Protocol (MCP) servers.
 - **CI/CD integration** - SARIF, JUnit, GitLab output formats
 - **Smart context detection** - auto-detects TTY, CI, NO_COLOR modes
 - **Config file support** - reads Claude Desktop config to find servers
+- **Interactive mode** - guided wizards for scan, fuzz, and init commands
+
+## Interactive Mode
+
+MCPLint includes interactive wizards that guide you through common operations when running in a terminal. Interactive mode automatically activates when:
+
+- Running in a TTY (terminal)
+- Not in a CI environment
+- Command arguments are omitted
+
+### Scan Wizard
+
+Run `mcplint scan` without arguments to launch the scan wizard:
+
+```bash
+mcplint scan
+# Prompts for:
+# - Server selection (from configured servers)
+# - Scan profile (quick/standard/full/enterprise)
+# - Categories to include
+# - Output format
+# - Severity threshold for failure
+```
+
+### Fuzz Wizard
+
+Run `mcplint fuzz` without arguments:
+
+```bash
+mcplint fuzz
+# Prompts for:
+# - Server selection
+# - Fuzz profile (quick/standard/intensive/CI)
+# - Duration
+# - Number of workers
+# - Corpus directory
+```
+
+### Init Wizard
+
+Run `mcplint init` to generate configuration with guidance:
+
+```bash
+mcplint init
+# Prompts for:
+# - Output path
+# - Servers to test
+# - Default scan profile
+# - Create GitHub Actions workflow
+# - Run initial scan
+```
+
+Interactive mode is disabled in CI environments or when piping output. Use explicit arguments for non-interactive execution.
 
 ## Installation
 

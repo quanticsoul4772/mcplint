@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use crate::scanner::multi_server::{MultiServerScanner, ServerConfig};
 use crate::scanner::{ScanProfile, Severity};
-use crate::OutputFormat;
+use crate::cli::OutputFormat;
 
 #[derive(Debug, Deserialize)]
 struct McpConfig {
