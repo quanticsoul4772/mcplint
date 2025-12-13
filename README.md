@@ -72,6 +72,21 @@ mcplint init
 # - Run initial scan
 ```
 
+### Explain Wizard
+
+Run `mcplint explain` without arguments to get AI-powered explanations:
+
+```bash
+mcplint explain
+# Prompts for:
+# - Server selection
+# - AI provider (Ollama/Anthropic/OpenAI)
+# - Audience level (beginner/intermediate/expert)
+# - Severity filter (optional)
+# - Max findings to explain
+# - Enable interactive follow-up Q&A
+```
+
 Interactive mode is disabled in CI environments or when piping output. Use explicit arguments for non-interactive execution.
 
 ## Installation
