@@ -1,6 +1,6 @@
 [package]
 name = "mcplint"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Russ Smith <quanticsoul4772@users.noreply.github.com>"]
 description = "MCP Server Testing, Fuzzing, and Security Scanning Platform"
@@ -50,6 +50,9 @@ dialoguer = { version = "0.11", features = ["fuzzy-select"] }
 
 # CI detection
 is_ci = "1.2"
+
+# Signal handling for Ctrl+C
+ctrlc = "3.4"
 
 # HTTP client (for remote MCP servers)
 reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"], default-features = false }

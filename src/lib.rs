@@ -47,6 +47,12 @@ pub mod transport;
 pub mod ui;
 pub mod validator;
 
+// CLI module is internal - used by binary, not exported for library users
+// The cli module depends on types defined in main.rs (OutputFormat, ScanProfile)
+// which are only available in the binary context
+#[doc(hidden)]
+pub mod cli;
+
 // Re-export commonly used types
 pub use ai::{AiConfig, ExplainEngine, ExplanationResponse};
 pub use baseline::{Baseline, DiffEngine, DiffResult};

@@ -389,4 +389,401 @@ mod tests {
         assert_eq!(stats.hits, 1);
         assert_eq!(stats.misses, 1);
     }
+
+    #[tokio::test]
+    async fn memory_cache_miss_on_nonexistent() {
+        let cache = MemoryCache::new(CacheConfig::memory());
+        let key = CacheKey::schema("nonexistent");
+
+        // Get non-existent key should return None
+        let result = cache.get(&key).await.unwrap();
+        assert!(result.is_none());
+
+        // Stats should show a miss
+        let stats = cache.stats().await.unwrap();
+        assert_eq!(stats.misses, 1);
+        assert_eq!(stats.hits, 0);
+    }
+
+    #[tokio::test]
+    async fn memory_cache_replace_existing() {
+        let cache = MemoryCache::new(CacheConfig::memory());
+        let key = CacheKey::schema("test-server");
+
+        // Set initial value
+        let entry1 = CacheEntry::new(b"data1".to_vec(), Duration::from_secs(3600));
+        cache.set(&key, entry1).await.unwrap();
+
+        // Replace with new value
+        let entry2 = CacheEntry::new(b"data2".to_vec(), Duration::from_secs(3600));
+        cache.set(&key, entry2).await.unwrap();
+
+        // Should get the new value
+        let retrieved = cache.get(&key).await.unwrap().unwrap();
+        assert_eq!(retrieved.data, b"data2".to_vec());
+    }
+
+    #[tokio::test]
+    async fn memory_cache_clear_all() {
+        let cache = MemoryCache::new(CacheConfig::memory());
+
+        // Add entries to different categories
+        let key1 = CacheKey::schema("server1");
+        let key2 = CacheKey::validation("server2", "1.0");
+        let key3 = CacheKey::scan_result("server3", "ruleset1");
+
+        cache
+            .set(&key1, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .await
+            .unwrap();
+        cache
+            .set(&key2, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .await
+            .unwrap();
+        cache
+            .set(&key3, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .await
+            .unwrap();
+
+        // Clear all
+        let cleared = cache.clear(None).await.unwrap();
+        assert_eq!(cleared, 3);
+
+        // All entries should be gone
+        assert!(!cache.exists(&key1).await.unwrap());
+        assert!(!cache.exists(&key2).await.unwrap());
+        assert!(!cache.exists(&key3).await.unwrap());
+
+        // Stats should be reset
+        let stats = cache.stats().await.unwrap();
+        assert_eq!(stats.total_entries, 0);
+    }
+
+    #[tokio::test]
+    async fn memory_cache_prune_expired() {
+        let cache = MemoryCache::new(CacheConfig::memory());
+
+        // Add mix of expired and valid entries
+        let key1 = CacheKey::schema("expired1");
+        let key2 = CacheKey::schema("expired2");
+        let key3 = CacheKey::schema("valid");
+
+        cache
+            .set(&key1, CacheEntry::new(vec![0u8; 100], Duration::from_secs(0)))
+            .await
+            .unwrap();
+        cache
+            .set(&key2, CacheEntry::new(vec![0u8; 100], Duration::from_secs(0)))
+            .await
+            .unwrap();
+        cache
+            .set(
+                &key3,
+                CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)),
+            )
+            .await
+            .unwrap();
+
+        // Wait for expiration
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        // Prune expired
+        let pruned = cache.prune_expired().await.unwrap();
+        assert_eq!(pruned, 2);
+
+        // Only valid entry should remain
+        assert!(cache.exists(&key3).await.unwrap());
+        assert!(!cache.exists(&key1).await.unwrap());
+        assert!(!cache.exists(&key2).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn memory_cache_keys_by_category() {
+        let cache = MemoryCache::new(CacheConfig::memory());
+
+        // Add entries to different categories
+        let key1 = CacheKey::schema("server1");
+        let key2 = CacheKey::schema("server2");
+        let key3 = CacheKey::validation("server3", "1.0");
+
+        cache
+            .set(&key1, CacheEntry::new(vec![], Duration::from_secs(3600)))
+            .await
+            .unwrap();
+        cache
+            .set(&key2, CacheEntry::new(vec![], Duration::from_secs(3600)))
+            .await
+            .unwrap();
+        cache
+            .set(&key3, CacheEntry::new(vec![], Duration::from_secs(3600)))
+            .await
+            .unwrap();
+
+        // Get only schema keys
+        let schema_keys = cache.keys(Some(CacheCategory::Schema)).await.unwrap();
+        assert_eq!(schema_keys.len(), 2);
+
+        // Get all keys
+        let all_keys = cache.keys(None).await.unwrap();
+        assert_eq!(all_keys.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn memory_cache_exists_with_expired() {
+        let cache = MemoryCache::new(CacheConfig::memory());
+        let key = CacheKey::schema("test");
+
+        // Add expired entry
+        cache
+            .set(&key, CacheEntry::new(vec![], Duration::from_secs(0)))
+            .await
+            .unwrap();
+
+        // Wait for expiration
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        // Should return false for expired entry
+        assert!(!cache.exists(&key).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn memory_cache_with_entries_constructor() {
+        let mut entries = HashMap::new();
+        let key = CacheKey::schema("preloaded");
+        let entry = CacheEntry::new(b"data".to_vec(), Duration::from_secs(3600));
+        entries.insert(key.clone(), entry);
+
+        let cache = MemoryCache::with_entries(CacheConfig::memory(), entries);
+
+        // Should be able to retrieve pre-populated entry
+        let retrieved = cache.get(&key).await.unwrap();
+        assert!(retrieved.is_some());
+        assert_eq!(retrieved.unwrap().data, b"data".to_vec());
+
+        // Stats should reflect pre-populated entry
+        let stats = cache.stats().await.unwrap();
+        assert_eq!(stats.total_entries, 1);
+    }
+
+    #[tokio::test]
+    async fn memory_cache_default_constructor() {
+        let cache = MemoryCache::default();
+
+        // Should be able to use default cache
+        let key = CacheKey::schema("test");
+        let entry = CacheEntry::new(b"data".to_vec(), Duration::from_secs(3600));
+
+        cache.set(&key, entry).await.unwrap();
+
+        let retrieved = cache.get(&key).await.unwrap();
+        assert!(retrieved.is_some());
+    }
+
+    #[tokio::test]
+    async fn memory_cache_empty_cache_stats() {
+        let cache = MemoryCache::new(CacheConfig::memory());
+
+        let stats = cache.stats().await.unwrap();
+        assert_eq!(stats.total_entries, 0);
+        assert_eq!(stats.total_size_bytes, 0);
+        assert_eq!(stats.expired_entries, 0);
+        assert!(stats.oldest_entry.is_none());
+        assert!(stats.newest_entry.is_none());
+    }
+
+    #[tokio::test]
+    async fn memory_cache_stats_with_expired() {
+        let cache = MemoryCache::new(CacheConfig::memory());
+
+        // Add mix of expired and valid
+        let key1 = CacheKey::schema("expired");
+        let key2 = CacheKey::schema("valid");
+
+        cache
+            .set(&key1, CacheEntry::new(vec![0u8; 100], Duration::from_secs(0)))
+            .await
+            .unwrap();
+        cache
+            .set(
+                &key2,
+                CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)),
+            )
+            .await
+            .unwrap();
+
+        // Wait for expiration
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        let stats = cache.stats().await.unwrap();
+        assert_eq!(stats.total_entries, 2);
+        assert_eq!(stats.expired_entries, 1);
+    }
+
+    #[tokio::test]
+    async fn memory_cache_stats_by_category() {
+        let cache = MemoryCache::new(CacheConfig::memory());
+
+        // Add entries to different categories
+        cache
+            .set(
+                &CacheKey::schema("server1"),
+                CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)),
+            )
+            .await
+            .unwrap();
+        cache
+            .set(
+                &CacheKey::schema("server2"),
+                CacheEntry::new(vec![0u8; 150], Duration::from_secs(3600)),
+            )
+            .await
+            .unwrap();
+        cache
+            .set(
+                &CacheKey::validation("server3", "1.0"),
+                CacheEntry::new(vec![0u8; 200], Duration::from_secs(3600)),
+            )
+            .await
+            .unwrap();
+
+        let stats = cache.stats().await.unwrap();
+        assert!(stats.by_category.contains_key("schemas"));
+        assert!(stats.by_category.contains_key("validation"));
+
+        let schema_stats = &stats.by_category["schemas"];
+        assert_eq!(schema_stats.entries, 2);
+        assert_eq!(schema_stats.size_bytes, 250);
+    }
+
+    #[tokio::test]
+    async fn memory_cache_delete_nonexistent() {
+        let cache = MemoryCache::new(CacheConfig::memory());
+        let key = CacheKey::schema("nonexistent");
+
+        // Deleting non-existent key should not error
+        cache.delete(&key).await.unwrap();
+
+        // Stats should remain unchanged
+        let stats = cache.stats().await.unwrap();
+        assert_eq!(stats.total_entries, 0);
+    }
+
+    #[tokio::test]
+    async fn memory_cache_no_eviction_when_under_capacity() {
+        let config = CacheConfig::memory().with_max_size(1000);
+        let cache = MemoryCache::new(config);
+
+        // Add entry well under capacity
+        let key = CacheKey::schema("server1");
+        cache
+            .set(&key, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .await
+            .unwrap();
+
+        // Should still exist
+        assert!(cache.exists(&key).await.unwrap());
+
+        let stats = cache.stats().await.unwrap();
+        assert_eq!(stats.total_entries, 1);
+    }
+
+    #[tokio::test]
+    async fn memory_cache_lru_eviction_multiple_rounds() {
+        let config = CacheConfig::memory().with_max_size(150);
+        let cache = MemoryCache::new(config);
+
+        // Add first entry
+        let key1 = CacheKey::schema("server1");
+        cache
+            .set(&key1, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        // Add second entry (should fit since 200 < 250 in previous test)
+        let key2 = CacheKey::schema("server2");
+        cache
+            .set(&key2, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        // Add third entry (triggers eviction of oldest)
+        let key3 = CacheKey::schema("server3");
+        cache
+            .set(&key3, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .await
+            .unwrap();
+
+        // First entry should be evicted (LRU)
+        assert!(!cache.exists(&key1).await.unwrap());
+        // Second and third should remain
+        assert!(cache.exists(&key2).await.unwrap());
+        assert!(cache.exists(&key3).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn memory_cache_touch_updates_last_accessed() {
+        let cache = MemoryCache::new(CacheConfig::memory());
+        let key = CacheKey::schema("test");
+
+        cache
+            .set(&key, CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)))
+            .await
+            .unwrap();
+
+        // Get should update last_accessed via touch()
+        let entry1 = cache.get(&key).await.unwrap().unwrap();
+        let accessed1 = entry1.last_accessed;
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        let entry2 = cache.get(&key).await.unwrap().unwrap();
+        let accessed2 = entry2.last_accessed;
+
+        // Last accessed should have been updated
+        assert!(accessed2 > accessed1);
+    }
+
+    #[tokio::test]
+    async fn memory_cache_expired_on_get_removes_entry() {
+        let cache = MemoryCache::new(CacheConfig::memory());
+        let key = CacheKey::schema("test");
+
+        // Add expired entry
+        cache
+            .set(&key, CacheEntry::new(vec![0u8; 100], Duration::from_secs(0)))
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_millis(10)).await;
+
+        // Get should remove expired entry
+        let result = cache.get(&key).await.unwrap();
+        assert!(result.is_none());
+
+        // Entry should no longer exist
+        let keys = cache.keys(None).await.unwrap();
+        assert_eq!(keys.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn memory_cache_prune_expired_empty_cache() {
+        let cache = MemoryCache::new(CacheConfig::memory());
+
+        // Pruning empty cache should return 0
+        let pruned = cache.prune_expired().await.unwrap();
+        assert_eq!(pruned, 0);
+    }
+
+    #[tokio::test]
+    async fn memory_cache_clear_category_empty() {
+        let cache = MemoryCache::new(CacheConfig::memory());
+
+        // Clearing non-existent category should return 0
+        let cleared = cache.clear(Some(CacheCategory::Schema)).await.unwrap();
+        assert_eq!(cleared, 0);
+    }
 }

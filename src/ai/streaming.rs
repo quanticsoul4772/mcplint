@@ -248,4 +248,311 @@ mod tests {
 
         assert_eq!(callback.into_content(), "Hello world");
     }
+
+    #[test]
+    fn stream_chunk_is_terminal() {
+        let text = StreamChunk::Text("content".to_string());
+        assert!(!text.is_terminal());
+
+        let partial = StreamChunk::PartialJson("{}".to_string());
+        assert!(!partial.is_terminal());
+
+        let token_update = StreamChunk::TokenUpdate {
+            input: 5,
+            output: 10,
+        };
+        assert!(!token_update.is_terminal());
+
+        let done = StreamChunk::Done;
+        assert!(done.is_terminal());
+
+        let error = StreamChunk::Error("fail".to_string());
+        assert!(error.is_terminal());
+    }
+
+    #[test]
+    fn stream_chunk_as_text() {
+        let text = StreamChunk::Text("hello".to_string());
+        assert_eq!(text.as_text(), Some("hello"));
+
+        let partial = StreamChunk::PartialJson("{}".to_string());
+        assert_eq!(partial.as_text(), None);
+
+        let token_update = StreamChunk::TokenUpdate {
+            input: 5,
+            output: 10,
+        };
+        assert_eq!(token_update.as_text(), None);
+
+        let done = StreamChunk::Done;
+        assert_eq!(done.as_text(), None);
+
+        let error = StreamChunk::Error("fail".to_string());
+        assert_eq!(error.as_text(), None);
+    }
+
+    #[test]
+    fn stream_channel_creation() {
+        let (sender, mut receiver) = stream_channel(10);
+        assert!(sender.try_send(StreamChunk::Done).is_ok());
+        assert!(receiver.try_recv().is_ok());
+    }
+
+    #[test]
+    fn accumulator_partial_json() {
+        let mut acc = StreamAccumulator::new();
+
+        acc.process(StreamChunk::PartialJson(r#"{"key":"#.to_string()));
+        assert_eq!(acc.content, r#"{"key":"#);
+
+        // PartialJson replaces content, not appends
+        acc.process(StreamChunk::PartialJson(r#"{"key":"value"}"#.to_string()));
+        assert_eq!(acc.content, r#"{"key":"value"}"#);
+    }
+
+    #[test]
+    fn accumulator_empty_chunks() {
+        let mut acc = StreamAccumulator::new();
+
+        acc.process(StreamChunk::Text("".to_string()));
+        assert_eq!(acc.content, "");
+
+        acc.process(StreamChunk::Text("content".to_string()));
+        acc.process(StreamChunk::Text("".to_string()));
+        assert_eq!(acc.content, "content");
+    }
+
+    #[test]
+    fn accumulator_large_chunks() {
+        let mut acc = StreamAccumulator::new();
+
+        let large_text = "x".repeat(10_000);
+        acc.process(StreamChunk::Text(large_text.clone()));
+        assert_eq!(acc.content.len(), 10_000);
+        assert_eq!(acc.content, large_text);
+    }
+
+    #[test]
+    fn accumulator_multiple_token_updates() {
+        let mut acc = StreamAccumulator::new();
+
+        acc.process(StreamChunk::TokenUpdate {
+            input: 10,
+            output: 20,
+        });
+        assert_eq!(acc.input_tokens, 10);
+        assert_eq!(acc.output_tokens, 20);
+        assert_eq!(acc.total_tokens(), 30);
+
+        // Later update replaces previous values
+        acc.process(StreamChunk::TokenUpdate {
+            input: 15,
+            output: 25,
+        });
+        assert_eq!(acc.input_tokens, 15);
+        assert_eq!(acc.output_tokens, 25);
+        assert_eq!(acc.total_tokens(), 40);
+    }
+
+    #[test]
+    fn accumulator_completion_without_error() {
+        let mut acc = StreamAccumulator::new();
+
+        acc.process(StreamChunk::Text("content".to_string()));
+        acc.process(StreamChunk::Done);
+
+        assert!(acc.completed);
+        assert!(!acc.has_error());
+        assert_eq!(acc.error, None);
+    }
+
+    #[test]
+    fn accumulator_error_after_content() {
+        let mut acc = StreamAccumulator::new();
+
+        acc.process(StreamChunk::Text("partial content".to_string()));
+        acc.process(StreamChunk::TokenUpdate {
+            input: 5,
+            output: 10,
+        });
+        acc.process(StreamChunk::Error("network error".to_string()));
+
+        assert_eq!(acc.content, "partial content");
+        assert_eq!(acc.input_tokens, 5);
+        assert_eq!(acc.output_tokens, 10);
+        assert!(acc.has_error());
+        assert_eq!(acc.error, Some("network error".to_string()));
+        assert!(!acc.completed);
+    }
+
+    #[test]
+    fn accumulator_default_state() {
+        let acc = StreamAccumulator::new();
+
+        assert_eq!(acc.content, "");
+        assert_eq!(acc.input_tokens, 0);
+        assert_eq!(acc.output_tokens, 0);
+        assert_eq!(acc.total_tokens(), 0);
+        assert!(!acc.completed);
+        assert!(!acc.has_error());
+        assert_eq!(acc.error, None);
+    }
+
+    #[test]
+    fn accumulator_mixed_chunk_sequence() {
+        let mut acc = StreamAccumulator::new();
+
+        acc.process(StreamChunk::Text("Start ".to_string()));
+        acc.process(StreamChunk::TokenUpdate {
+            input: 5,
+            output: 0,
+        });
+        acc.process(StreamChunk::Text("middle ".to_string()));
+        acc.process(StreamChunk::TokenUpdate {
+            input: 5,
+            output: 10,
+        });
+        acc.process(StreamChunk::Text("end".to_string()));
+        acc.process(StreamChunk::Done);
+
+        assert_eq!(acc.content, "Start middle end");
+        assert_eq!(acc.input_tokens, 5);
+        assert_eq!(acc.output_tokens, 10);
+        assert_eq!(acc.total_tokens(), 15);
+        assert!(acc.completed);
+        assert!(!acc.has_error());
+    }
+
+    #[test]
+    fn print_callback_creation() {
+        let callback_immediate = PrintCallback::new(true);
+        assert!(callback_immediate.immediate);
+
+        let callback_buffered = PrintCallback::new(false);
+        assert!(!callback_buffered.immediate);
+    }
+
+    #[test]
+    fn print_callback_handles_text() {
+        let mut callback = PrintCallback::new(false);
+        // Should not panic when immediate is false
+        callback.on_text("test text");
+        callback.on_done();
+        callback.on_error("error message");
+    }
+
+    #[test]
+    fn collect_callback_default() {
+        let callback = CollectCallback::default();
+        assert_eq!(callback.content, "");
+    }
+
+    #[test]
+    fn collect_callback_empty_text() {
+        let mut callback = CollectCallback::new();
+        callback.on_text("");
+        callback.on_text("content");
+        callback.on_text("");
+
+        assert_eq!(callback.into_content(), "content");
+    }
+
+    #[test]
+    fn collect_callback_ignores_errors() {
+        let mut callback = CollectCallback::new();
+        callback.on_text("before error");
+        callback.on_error("something went wrong");
+        callback.on_text(" after error");
+
+        assert_eq!(callback.into_content(), "before error after error");
+    }
+
+    #[test]
+    fn collect_callback_multiple_done() {
+        let mut callback = CollectCallback::new();
+        callback.on_text("text");
+        callback.on_done();
+        callback.on_done();
+        callback.on_text(" more");
+
+        assert_eq!(callback.into_content(), "text more");
+    }
+
+    #[test]
+    fn collect_callback_large_content() {
+        let mut callback = CollectCallback::new();
+        let large_text = "x".repeat(10_000);
+        callback.on_text(&large_text);
+
+        assert_eq!(callback.into_content().len(), 10_000);
+    }
+
+    #[test]
+    fn stream_chunk_text_from_string() {
+        let chunk = StreamChunk::text(String::from("owned"));
+        assert_eq!(chunk.as_text(), Some("owned"));
+    }
+
+    #[test]
+    fn stream_chunk_text_from_str() {
+        let chunk = StreamChunk::text("borrowed");
+        assert_eq!(chunk.as_text(), Some("borrowed"));
+    }
+
+    #[test]
+    fn stream_chunk_error_from_string() {
+        let chunk = StreamChunk::error(String::from("owned error"));
+        assert!(chunk.is_terminal());
+        assert_eq!(chunk.as_text(), None);
+    }
+
+    #[test]
+    fn stream_chunk_error_from_str() {
+        let chunk = StreamChunk::error("borrowed error");
+        assert!(chunk.is_terminal());
+    }
+
+    #[test]
+    fn print_callback_on_tokens() {
+        let mut callback = PrintCallback::new(true);
+        // Default implementation does nothing, should not panic
+        callback.on_tokens(10, 20);
+    }
+
+    #[test]
+    fn collect_callback_on_tokens() {
+        let mut callback = CollectCallback::new();
+        // Default implementation does nothing, should not panic
+        callback.on_tokens(10, 20);
+        callback.on_text("text");
+        assert_eq!(callback.into_content(), "text");
+    }
+
+    #[tokio::test]
+    async fn stream_channel_buffer_overflow() {
+        let (sender, mut receiver) = stream_channel(2);
+
+        // Fill buffer
+        sender.send(StreamChunk::Text("1".to_string())).await.unwrap();
+        sender.send(StreamChunk::Text("2".to_string())).await.unwrap();
+
+        // Receive one to make room
+        assert!(receiver.recv().await.is_some());
+
+        // Can send again
+        sender.send(StreamChunk::Done).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn stream_channel_sender_dropped() {
+        let (sender, mut receiver) = stream_channel(10);
+
+        sender.send(StreamChunk::Text("before drop".to_string())).await.unwrap();
+        drop(sender);
+
+        // Can still receive sent message
+        assert!(receiver.recv().await.is_some());
+        // Next receive returns None because sender was dropped
+        assert!(receiver.recv().await.is_none());
+    }
 }

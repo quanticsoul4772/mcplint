@@ -32,6 +32,8 @@ use cli::commands::explain::{CliAiProvider, CliAudienceLevel};
 use cli::config::{
     AiExplainConfig, BaselineConfig, OutputConfig, ScanCommandConfig, ScanRunConfig,
 };
+use cli::interactive;
+use cli::{OutputFormat, ScanProfile};
 use fuzzer::FuzzProfile;
 use scanner::Severity;
 
@@ -66,15 +68,6 @@ struct Cli {
     command: Commands,
 }
 
-#[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
-pub enum OutputFormat {
-    #[default]
-    Text,
-    Json,
-    Sarif,
-    Junit,
-    Gitlab,
-}
 
 /// Shell type for completions generation
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
@@ -127,9 +120,10 @@ enum Commands {
 
     /// Scan MCP server for security vulnerabilities
     Scan {
-        /// Server name (from config) or path to MCP server executable
-        #[arg(required = true)]
-        server: String,
+        /// Server name (from config) or path to MCP server executable.
+        /// If not specified in interactive mode, launches wizard for selection.
+        #[arg(default_value = None)]
+        server: Option<String>,
 
         /// Arguments to pass to the server
         #[arg(last = true)]
@@ -222,9 +216,10 @@ enum Commands {
 
     /// Fuzz MCP server with generated inputs
     Fuzz {
-        /// Path to MCP server executable or command
-        #[arg(required = true)]
-        server: String,
+        /// Path to MCP server executable or command.
+        /// If not specified in interactive mode, launches wizard for selection.
+        #[arg(default_value = None)]
+        server: Option<String>,
 
         /// Arguments to pass to the server
         #[arg(last = true)]
@@ -282,13 +277,18 @@ enum Commands {
 
     /// Generate a configuration file
     Init {
-        /// Output path for config file
-        #[arg(short, long, default_value = ".mcplint.toml")]
-        output: String,
+        /// Output path for config file (defaults to .mcplint.toml).
+        /// If not specified in interactive mode, launches configuration wizard.
+        #[arg(short, long)]
+        output: Option<String>,
 
         /// Overwrite existing config
         #[arg(long)]
         force: bool,
+
+        /// Skip interactive wizard and use defaults
+        #[arg(long)]
+        non_interactive: bool,
     },
 
     /// List available security rules
@@ -317,9 +317,10 @@ enum Commands {
 
     /// Get AI-powered explanations for security findings
     Explain {
-        /// Server name (from config) or path to MCP server executable
-        #[arg(required = true)]
-        server: String,
+        /// Server name (from config) or path to MCP server executable.
+        /// If not specified in interactive mode, launches wizard for selection.
+        #[arg(default_value = None)]
+        server: Option<String>,
 
         /// Arguments to pass to the server
         #[arg(last = true)]
@@ -527,40 +528,6 @@ enum CacheAction {
     },
 }
 
-#[derive(Clone, Copy, Debug, Default, clap::ValueEnum)]
-enum ScanProfile {
-    /// Quick scan with essential rules only
-    Quick,
-    /// Standard security scan
-    #[default]
-    Standard,
-    /// Comprehensive scan including experimental rules
-    Full,
-    /// Enterprise compliance-focused scan
-    Enterprise,
-}
-
-impl From<ScanProfile> for scanner::ScanProfile {
-    fn from(p: ScanProfile) -> Self {
-        match p {
-            ScanProfile::Quick => scanner::ScanProfile::Quick,
-            ScanProfile::Standard => scanner::ScanProfile::Standard,
-            ScanProfile::Full => scanner::ScanProfile::Full,
-            ScanProfile::Enterprise => scanner::ScanProfile::Enterprise,
-        }
-    }
-}
-
-impl ScanProfile {
-    fn as_str(self) -> &'static str {
-        match self {
-            ScanProfile::Quick => "Quick",
-            ScanProfile::Standard => "Standard",
-            ScanProfile::Full => "Full",
-            ScanProfile::Enterprise => "Enterprise",
-        }
-    }
-}
 
 fn init_logging(verbosity: u8, quiet: bool) {
     let filter = if quiet {
@@ -642,11 +609,50 @@ async fn main() -> Result<()> {
             fail_on,
             config,
         } => {
+            use cli::interactive;
+
+            // Determine server - interactive mode or CLI args
+            let (server_name, scan_profile, include_cats, fail_on_sevs): (
+                String,
+                scanner::ScanProfile,
+                Option<Vec<String>>,
+                Option<Vec<Severity>>,
+            ) = if server.is_none() && interactive::is_interactive_available() {
+                // Launch interactive wizard
+                let wizard_result = interactive::run_scan_wizard()?;
+                (
+                    wizard_result.server,
+                    wizard_result.profile,
+                    wizard_result.include_categories,
+                    wizard_result.fail_on,
+                )
+            } else if let Some(s) = server {
+                // Non-interactive mode with server specified
+                (s, profile.into(), include, fail_on)
+            } else {
+                // Non-interactive mode without server = error
+                eprintln!(
+                    "{}",
+                    "Error: Server argument required in non-interactive mode".red()
+                );
+                eprintln!("Usage: mcplint scan <server>");
+                eprintln!("   Or: mcplint scan (interactive mode in terminal)");
+                std::process::exit(1);
+            };
+
+            // Convert scanner::ScanProfile to CLI ScanProfile for ScanRunConfig
+            let cli_scan_profile: ScanProfile = match scan_profile {
+                scanner::ScanProfile::Quick => ScanProfile::Quick,
+                scanner::ScanProfile::Standard => ScanProfile::Standard,
+                scanner::ScanProfile::Full => ScanProfile::Full,
+                scanner::ScanProfile::Enterprise => ScanProfile::Enterprise,
+            };
+
             // Build run configuration
-            let mut run_config = ScanRunConfig::new(server, profile)
+            let mut run_config = ScanRunConfig::new(server_name, cli_scan_profile)
                 .with_args(args)
                 .with_timeout(timeout);
-            if let Some(inc) = include {
+            if let Some(inc) = include_cats {
                 run_config.include = Some(inc);
             }
             if let Some(exc) = exclude {
@@ -666,7 +672,7 @@ async fn main() -> Result<()> {
             if let Some(path) = save_baseline {
                 baseline_config = baseline_config.with_save_baseline(path);
             }
-            if let Some(severities) = fail_on {
+            if let Some(severities) = fail_on_sevs {
                 baseline_config = baseline_config.with_fail_on(severities);
             }
 
@@ -729,15 +735,41 @@ async fn main() -> Result<()> {
             max_restarts,
             no_limits,
         } => {
+            // Interactive mode detection
+            let (server_name, fuzz_profile, fuzz_duration, fuzz_workers, fuzz_corpus) =
+                if server.is_none() && interactive::is_interactive_available() {
+                    // Launch interactive wizard
+                    let wizard_result = interactive::run_fuzz_wizard()?;
+                    (
+                        wizard_result.server,
+                        wizard_result.profile,
+                        wizard_result.duration,
+                        wizard_result.workers,
+                        wizard_result.corpus,
+                    )
+                } else if let Some(s) = server {
+                    // Non-interactive mode with server specified
+                    (s, profile, duration, workers, corpus)
+                } else {
+                    // Non-interactive mode without server = error
+                    eprintln!(
+                        "{}",
+                        "Error: Server argument required in non-interactive mode".red()
+                    );
+                    eprintln!("Usage: mcplint fuzz <server>");
+                    eprintln!("   Or: mcplint fuzz (interactive mode in terminal)");
+                    std::process::exit(1);
+                };
+
             let fuzz_args = commands::fuzz::FuzzArgs::new(
-                server,
+                server_name,
                 args,
-                duration,
-                corpus,
+                fuzz_duration,
+                fuzz_corpus,
                 iterations,
-                workers,
+                fuzz_workers,
                 tools,
-                profile,
+                fuzz_profile,
                 seed,
                 cli.format,
                 max_memory,
@@ -748,8 +780,24 @@ async fn main() -> Result<()> {
             );
             commands::fuzz::run(fuzz_args).await?;
         }
-        Commands::Init { output, force } => {
-            commands::init::run(&output, force)?;
+        Commands::Init {
+            output,
+            force,
+            non_interactive,
+        } => {
+            // Determine output path and whether to use wizard
+            let (output_path, use_wizard_config) =
+                if output.is_none() && !non_interactive && interactive::is_interactive_available() {
+                    // Launch interactive wizard
+                    let wizard_result = interactive::run_init_wizard()?;
+                    let path = wizard_result.output_path.clone();
+                    (path, Some(wizard_result))
+                } else {
+                    // Use provided path or default
+                    (output.unwrap_or_else(|| ".mcplint.toml".to_string()), None)
+                };
+
+            commands::init::run_with_config(&output_path, force, use_wizard_config)?;
         }
         Commands::Rules { category, details } => {
             commands::rules::run(category, details)?;
@@ -790,17 +838,41 @@ async fn main() -> Result<()> {
             timeout,
             config,
         } => {
+            // Check if we need interactive wizard
+            let (resolved_server, resolved_provider, resolved_audience, resolved_severity, resolved_max, resolved_interactive) =
+                if server.is_none() && interactive::is_interactive_available() {
+                    // Launch explain wizard
+                    let wizard_result = interactive::run_explain_wizard()?;
+                    (
+                        wizard_result.server,
+                        wizard_result.provider,
+                        wizard_result.audience,
+                        wizard_result.min_severity,
+                        wizard_result.max_findings,
+                        wizard_result.interactive_followup,
+                    )
+                } else if let Some(s) = server {
+                    // Use provided server and CLI args
+                    (s, provider, audience, severity, max_findings, interactive)
+                } else {
+                    // No server and not interactive
+                    anyhow::bail!(
+                        "Server argument required in non-interactive mode.\n\
+                         Run with --help for usage information."
+                    );
+                };
+
             commands::explain::run_scan(
-                &server,
+                &resolved_server,
                 &args,
-                provider,
+                resolved_provider,
                 model,
-                audience,
-                severity,
-                max_findings,
+                resolved_audience,
+                resolved_severity,
+                resolved_max,
                 cli.format,
                 no_cache,
-                interactive,
+                resolved_interactive,
                 timeout,
                 config.as_deref(),
             )

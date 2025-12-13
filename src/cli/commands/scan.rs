@@ -16,7 +16,7 @@ use crate::cli::server::resolve_server;
 use crate::reporter::{generate_gitlab, generate_junit};
 use crate::scanner::{ScanConfig, ScanProfile, Severity};
 use crate::ui::{ConnectionSpinner, OutputMode};
-use crate::OutputFormat;
+use crate::cli::OutputFormat;
 
 /// Run a security scan using resolved server specification
 ///
@@ -615,7 +615,7 @@ mod tests {
     use crate::cli::commands::explain::CliAiProvider;
     use crate::cli::config::{BaselineConfig, OutputConfig, ScanRunConfig};
     use crate::scanner::{Finding, ScanResults, ScanSummary};
-    use crate::ScanProfile as CliScanProfile;
+    use crate::cli::ScanProfile as CliScanProfile;
     use std::path::PathBuf;
 
     fn create_test_results(findings: Vec<Finding>) -> ScanResults {
