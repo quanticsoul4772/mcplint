@@ -1710,4 +1710,625 @@ mod tests {
             }
         }
     }
+
+    // ============================================================
+    // FILE I/O TESTS - Coverage for save_seeds, load_from_disk,
+    // load_inputs_from_dir, and record_* with base_path
+    // ============================================================
+
+    #[test]
+    fn save_seeds_creates_files() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        let mut corpus = CorpusManager::with_path(temp_dir.clone());
+
+        // Add some seeds
+        corpus.add_seed(FuzzInput::ping());
+        corpus.add_seed(FuzzInput::tools_list());
+        corpus.add_seed(FuzzInput::initialize());
+
+        // Save seeds to disk
+        corpus.save_seeds().unwrap();
+
+        // Verify seeds directory was created
+        let seeds_dir = temp_dir.join("seeds");
+        assert!(seeds_dir.exists());
+
+        // Verify seed files were created
+        let entries: Vec<_> = fs::read_dir(&seeds_dir).unwrap().collect();
+        assert_eq!(entries.len(), 3);
+
+        // Verify files are named correctly
+        assert!(seeds_dir.join("seed_0000.json").exists());
+        assert!(seeds_dir.join("seed_0001.json").exists());
+        assert!(seeds_dir.join("seed_0002.json").exists());
+
+        // Verify file contents are valid JSON
+        let content = fs::read_to_string(seeds_dir.join("seed_0000.json")).unwrap();
+        let _parsed: FuzzInput = serde_json::from_str(&content).unwrap();
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn save_seeds_without_base_path() {
+        let corpus = CorpusManager::new();
+
+        // Should succeed but not write any files (no base_path)
+        let result = corpus.save_seeds();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn load_inputs_from_dir_loads_json_files() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create some JSON input files
+        let input1 = FuzzInput::ping();
+        let input2 = FuzzInput::tools_list();
+        let input3 = FuzzInput::initialize();
+
+        fs::write(
+            temp_dir.join("input1.json"),
+            serde_json::to_string(&input1).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            temp_dir.join("input2.json"),
+            serde_json::to_string(&input2).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            temp_dir.join("input3.json"),
+            serde_json::to_string(&input3).unwrap(),
+        )
+        .unwrap();
+
+        // Create a non-JSON file (should be ignored)
+        fs::write(temp_dir.join("readme.txt"), "test file").unwrap();
+
+        // Load inputs
+        let loaded = CorpusManager::load_inputs_from_dir(&temp_dir).unwrap();
+
+        assert_eq!(loaded.len(), 3);
+        assert!(loaded.iter().any(|i| i.method == "ping"));
+        assert!(loaded.iter().any(|i| i.method == "tools/list"));
+        assert!(loaded.iter().any(|i| i.method == "initialize"));
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn load_inputs_from_dir_handles_invalid_json() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        // Create valid input
+        let input1 = FuzzInput::ping();
+        fs::write(
+            temp_dir.join("valid.json"),
+            serde_json::to_string(&input1).unwrap(),
+        )
+        .unwrap();
+
+        // Create invalid JSON (should be skipped)
+        fs::write(temp_dir.join("invalid.json"), "{ invalid json }").unwrap();
+
+        // Load inputs - should only get the valid one
+        let loaded = CorpusManager::load_inputs_from_dir(&temp_dir).unwrap();
+        assert_eq!(loaded.len(), 1);
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn load_inputs_from_dir_empty_directory() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        // Load from empty directory
+        let loaded = CorpusManager::load_inputs_from_dir(&temp_dir).unwrap();
+        assert_eq!(loaded.len(), 0);
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn record_crash_saves_to_disk() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        let mut corpus = CorpusManager::with_path(temp_dir.clone());
+
+        let crash = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::Panic,
+            "test panic".to_string(),
+            Some("stack trace".to_string()),
+            1,
+        );
+
+        let crash_id = crash.id.clone();
+        corpus.record_crash(crash).unwrap();
+
+        // Verify crashes directory was created
+        let crashes_dir = temp_dir.join("crashes");
+        assert!(crashes_dir.exists());
+
+        // Verify crash file was created with correct naming
+        let expected_filename = format!("crash_panic_{}.json", crash_id);
+        let crash_file = crashes_dir.join(expected_filename);
+        assert!(crash_file.exists());
+
+        // Verify file contents
+        let content = fs::read_to_string(&crash_file).unwrap();
+        let loaded: CrashRecord = serde_json::from_str(&content).unwrap();
+        assert_eq!(loaded.id, crash_id);
+        assert_eq!(loaded.crash_type, CrashType::Panic);
+        assert_eq!(loaded.error_message, "test panic");
+
+        // Verify in-memory recording
+        assert_eq!(corpus.crash_count(), 1);
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn record_hang_saves_to_disk() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        let mut corpus = CorpusManager::with_path(temp_dir.clone());
+
+        let hang = CorpusManager::create_hang_record(FuzzInput::tools_list(), 5000, 10);
+        let hang_id = hang.id.clone();
+
+        corpus.record_hang(hang).unwrap();
+
+        // Verify hangs directory was created
+        let hangs_dir = temp_dir.join("hangs");
+        assert!(hangs_dir.exists());
+
+        // Verify hang file was created
+        let expected_filename = format!("hang_{}.json", hang_id);
+        let hang_file = hangs_dir.join(expected_filename);
+        assert!(hang_file.exists());
+
+        // Verify file contents
+        let content = fs::read_to_string(&hang_file).unwrap();
+        let loaded: HangRecord = serde_json::from_str(&content).unwrap();
+        assert_eq!(loaded.id, hang_id);
+        assert_eq!(loaded.timeout_ms, 5000);
+        assert_eq!(loaded.iteration, 10);
+
+        // Verify in-memory recording
+        assert_eq!(corpus.hang_count(), 1);
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn record_interesting_saves_to_disk() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        let mut corpus = CorpusManager::with_path(temp_dir.clone());
+
+        let record = CorpusManager::create_interesting_record(
+            FuzzInput::resources_list(),
+            InterestingReason::NewCoverage,
+            0xABCDEF,
+            42,
+        );
+        let record_id = record.id.clone();
+
+        corpus.record_interesting(record).unwrap();
+
+        // Verify interesting directory was created
+        let interesting_dir = temp_dir.join("interesting");
+        assert!(interesting_dir.exists());
+
+        // Verify interesting file was created
+        let expected_filename = format!("interesting_{}.json", record_id);
+        let interesting_file = interesting_dir.join(expected_filename);
+        assert!(interesting_file.exists());
+
+        // Verify file contents
+        let content = fs::read_to_string(&interesting_file).unwrap();
+        let loaded: InterestingInput = serde_json::from_str(&content).unwrap();
+        assert_eq!(loaded.id, record_id);
+        assert_eq!(loaded.coverage_hash, 0xABCDEF);
+        assert_eq!(loaded.iteration, 42);
+        assert_eq!(loaded.reason, InterestingReason::NewCoverage);
+
+        // Verify in-memory recording
+        assert_eq!(corpus.interesting_count(), 1);
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn record_multiple_crashes_to_disk() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        let mut corpus = CorpusManager::with_path(temp_dir.clone());
+
+        // Record different crash types
+        let crash1 = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::Panic,
+            "panic 1".to_string(),
+            None,
+            1,
+        );
+        let crash2 = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::Segfault,
+            "segfault 1".to_string(),
+            None,
+            2,
+        );
+        let crash3 = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::OutOfMemory,
+            "oom 1".to_string(),
+            None,
+            3,
+        );
+
+        corpus.record_crash(crash1).unwrap();
+        corpus.record_crash(crash2).unwrap();
+        corpus.record_crash(crash3).unwrap();
+
+        // Verify all crash files were created
+        let crashes_dir = temp_dir.join("crashes");
+        let entries: Vec<_> = fs::read_dir(&crashes_dir).unwrap().collect();
+        assert_eq!(entries.len(), 3);
+
+        // Verify different crash types in filenames
+        let mut filenames = Vec::new();
+        for entry in fs::read_dir(&crashes_dir).unwrap() {
+            filenames.push(entry.unwrap().file_name().into_string().unwrap());
+        }
+
+        assert!(filenames.iter().any(|f| f.contains("crash_panic_")));
+        assert!(filenames.iter().any(|f| f.contains("crash_segfault_")));
+        assert!(filenames.iter().any(|f| f.contains("crash_oom_")));
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn load_from_disk_loads_seeds() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        let seeds_dir = temp_dir.join("seeds");
+        fs::create_dir_all(&seeds_dir).unwrap();
+
+        // Create seed files
+        let seed1 = FuzzInput::ping();
+        let seed2 = FuzzInput::tools_list();
+
+        fs::write(
+            seeds_dir.join("seed1.json"),
+            serde_json::to_string(&seed1).unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            seeds_dir.join("seed2.json"),
+            serde_json::to_string(&seed2).unwrap(),
+        )
+        .unwrap();
+
+        // Load corpus
+        let mut corpus = CorpusManager::with_path(temp_dir.clone());
+        corpus.initialize().unwrap();
+
+        // Should have loaded seeds plus default generated seeds
+        assert!(corpus.seed_count() > 2);
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn load_from_disk_loads_crashes() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        let crashes_dir = temp_dir.join("crashes");
+        fs::create_dir_all(&crashes_dir).unwrap();
+
+        // Create crash file
+        let crash = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::Panic,
+            "test crash".to_string(),
+            Some("trace".to_string()),
+            1,
+        );
+
+        fs::write(
+            crashes_dir.join("crash_panic_test.json"),
+            serde_json::to_string(&crash).unwrap(),
+        )
+        .unwrap();
+
+        // Load corpus
+        let mut corpus = CorpusManager::with_path(temp_dir.clone());
+        corpus.initialize().unwrap();
+
+        // Should have loaded the crash
+        assert_eq!(corpus.crash_count(), 1);
+        assert_eq!(corpus.crashes()[0].error_message, "test crash");
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn load_from_disk_loads_hangs() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        let hangs_dir = temp_dir.join("hangs");
+        fs::create_dir_all(&hangs_dir).unwrap();
+
+        // Create hang file
+        let hang = CorpusManager::create_hang_record(FuzzInput::tools_list(), 3000, 5);
+
+        fs::write(
+            hangs_dir.join("hang_test.json"),
+            serde_json::to_string(&hang).unwrap(),
+        )
+        .unwrap();
+
+        // Load corpus
+        let mut corpus = CorpusManager::with_path(temp_dir.clone());
+        corpus.initialize().unwrap();
+
+        // Should have loaded the hang
+        assert_eq!(corpus.hang_count(), 1);
+        assert_eq!(corpus.hangs()[0].timeout_ms, 3000);
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn load_from_disk_loads_interesting() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        let interesting_dir = temp_dir.join("interesting");
+        fs::create_dir_all(&interesting_dir).unwrap();
+
+        // Create interesting input file
+        let record = CorpusManager::create_interesting_record(
+            FuzzInput::resources_list(),
+            InterestingReason::NewCoverage,
+            0x123456,
+            10,
+        );
+
+        fs::write(
+            interesting_dir.join("interesting_test.json"),
+            serde_json::to_string(&record).unwrap(),
+        )
+        .unwrap();
+
+        // Load corpus
+        let mut corpus = CorpusManager::with_path(temp_dir.clone());
+        corpus.initialize().unwrap();
+
+        // Should have loaded the interesting input
+        assert_eq!(corpus.interesting_count(), 1);
+        assert_eq!(corpus.interesting()[0].coverage_hash, 0x123456);
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn load_from_disk_handles_missing_directories() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&temp_dir).unwrap();
+
+        // Don't create any subdirectories - should handle gracefully
+        let mut corpus = CorpusManager::with_path(temp_dir.clone());
+        let result = corpus.initialize();
+
+        // Should succeed even with no existing corpus directories
+        assert!(result.is_ok());
+        assert!(corpus.seed_count() > 0); // Should still have generated default seeds
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn load_from_disk_skips_invalid_json_files() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        let crashes_dir = temp_dir.join("crashes");
+        fs::create_dir_all(&crashes_dir).unwrap();
+
+        // Create valid crash
+        let crash = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::Panic,
+            "valid crash".to_string(),
+            None,
+            1,
+        );
+        fs::write(
+            crashes_dir.join("valid.json"),
+            serde_json::to_string(&crash).unwrap(),
+        )
+        .unwrap();
+
+        // Create invalid JSON file
+        fs::write(crashes_dir.join("invalid.json"), "{ broken json }").unwrap();
+
+        // Create non-JSON file (should be ignored)
+        fs::write(crashes_dir.join("readme.txt"), "not json").unwrap();
+
+        // Load corpus
+        let mut corpus = CorpusManager::with_path(temp_dir.clone());
+        corpus.initialize().unwrap();
+
+        // Should only load the valid crash
+        assert_eq!(corpus.crash_count(), 1);
+        assert_eq!(corpus.crashes()[0].error_message, "valid crash");
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn full_round_trip_save_and_load() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+
+        // Create and populate corpus
+        let mut corpus1 = CorpusManager::with_path(temp_dir.clone());
+        corpus1.add_seed(FuzzInput::ping());
+        corpus1.add_seed(FuzzInput::tools_list());
+        corpus1.add_seed(FuzzInput::initialize());
+
+        // Save seeds
+        corpus1.save_seeds().unwrap();
+
+        // Record some findings
+        let crash = CorpusManager::create_crash_record(
+            FuzzInput::ping(),
+            CrashType::Panic,
+            "panic error".to_string(),
+            None,
+            1,
+        );
+        corpus1.record_crash(crash).unwrap();
+
+        let hang = CorpusManager::create_hang_record(FuzzInput::tools_list(), 2000, 2);
+        corpus1.record_hang(hang).unwrap();
+
+        let interesting = CorpusManager::create_interesting_record(
+            FuzzInput::resources_list(),
+            InterestingReason::NewCoverage,
+            0x999,
+            3,
+        );
+        corpus1.record_interesting(interesting).unwrap();
+
+        // Create new corpus and load from disk
+        let mut corpus2 = CorpusManager::with_path(temp_dir.clone());
+        corpus2.initialize().unwrap();
+
+        // Verify loaded data
+        assert!(corpus2.seed_count() >= 3); // Saved seeds + default seeds
+        assert_eq!(corpus2.crash_count(), 1);
+        assert_eq!(corpus2.hang_count(), 1);
+        assert_eq!(corpus2.interesting_count(), 1);
+
+        // Verify specific values
+        assert_eq!(corpus2.crashes()[0].error_message, "panic error");
+        assert_eq!(corpus2.hangs()[0].timeout_ms, 2000);
+        assert_eq!(corpus2.interesting()[0].coverage_hash, 0x999);
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn initialize_with_path_loads_existing_corpus() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        let seeds_dir = temp_dir.join("seeds");
+        fs::create_dir_all(&seeds_dir).unwrap();
+
+        // Pre-populate with seeds
+        fs::write(
+            seeds_dir.join("existing.json"),
+            serde_json::to_string(&FuzzInput::ping()).unwrap(),
+        )
+        .unwrap();
+
+        // Initialize corpus with path
+        let mut corpus = CorpusManager::with_path(temp_dir.clone());
+        corpus.initialize().unwrap();
+
+        // Should have loaded existing seed plus generated defaults
+        let seed_count = corpus.seed_count();
+        assert!(seed_count > 1);
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
+
+    #[test]
+    fn load_from_disk_populates_seen_hashes() {
+        use std::fs;
+
+        let temp_dir = std::env::temp_dir().join(format!("mcplint_test_{}", uuid::Uuid::new_v4()));
+        let interesting_dir = temp_dir.join("interesting");
+        fs::create_dir_all(&interesting_dir).unwrap();
+
+        // Create interesting input with specific hash
+        let hash = 0xDEADBEEF;
+        let record = CorpusManager::create_interesting_record(
+            FuzzInput::ping(),
+            InterestingReason::NewCoverage,
+            hash,
+            1,
+        );
+
+        fs::write(
+            interesting_dir.join("interesting1.json"),
+            serde_json::to_string(&record).unwrap(),
+        )
+        .unwrap();
+
+        // Load corpus
+        let mut corpus = CorpusManager::with_path(temp_dir.clone());
+        corpus.initialize().unwrap();
+
+        // Try to add the same hash again
+        let duplicate = CorpusManager::create_interesting_record(
+            FuzzInput::tools_list(),
+            InterestingReason::NewErrorCode,
+            hash, // Same hash
+            2,
+        );
+
+        corpus.record_interesting(duplicate).unwrap();
+
+        // Should still only have 1 (deduplication worked)
+        assert_eq!(corpus.interesting_count(), 1);
+
+        // Cleanup
+        fs::remove_dir_all(temp_dir).ok();
+    }
 }
