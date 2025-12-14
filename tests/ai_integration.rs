@@ -393,7 +393,7 @@ async fn test_openai_explain_finding() {
     let provider = OpenAiProvider::new(
         api_key,
         "gpt-4o-mini".to_string(),
-        2048,
+        4096, // Increased from 2048 to prevent response truncation
         0.3,
         Duration::from_secs(60),
     );
