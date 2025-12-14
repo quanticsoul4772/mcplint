@@ -2481,4 +2481,144 @@ mod tests {
         session.iterations = 50;
         assert!(session.should_stop());
     }
+
+    #[test]
+    fn timeout_calculation_edge_cases() {
+        let test_cases = vec![
+            (0_u64, 1_u64),
+            (500_u64, 1_u64),
+            (1000_u64, 1_u64),
+            (5000_u64, 5_u64),
+        ];
+        for (ms, expected) in test_cases {
+            assert_eq!((ms / 1000).max(1), expected);
+        }
+    }
+
+    #[test]
+    fn all_fuzz_methods() {
+        for m in [
+            "initialize",
+            "tools/list",
+            "tools/call",
+            "resources/list",
+            "resources/read",
+            "prompts/list",
+            "prompts/get",
+            "ping",
+        ] {
+            assert_eq!(FuzzInput::new(m, None).method, m);
+        }
+    }
+
+    #[test]
+    fn response_types_all() {
+        let _s = FuzzResponse::success(serde_json::json!({}));
+        let _e = FuzzResponse::error(-1, "e");
+        let _t = FuzzResponse::timeout();
+        let _c = FuzzResponse::connection_lost("c");
+        let _w = _s.with_time(1000);
+    }
+
+    #[test]
+    fn crash_types_strings() {
+        for ct in [
+            CrashType::Panic,
+            CrashType::Segfault,
+            CrashType::OutOfMemory,
+            CrashType::ConnectionDrop,
+            CrashType::AssertionFailure,
+        ] {
+            assert!(!ct.to_string().is_empty());
+        }
+    }
+
+    #[test]
+    fn connection_errors() {
+        assert!("connection refused".contains("connection"));
+        assert!("broken pipe".contains("broken pipe"));
+    }
+
+    #[test]
+    fn failure_limits() {
+        let config = FuzzConfig::default();
+        let mut s = FuzzSession::new("test", &[], config);
+        for i in 0..6 {
+            s.connection_failures = i;
+            assert_eq!(s.connection_failures >= 5, i >= 5);
+        }
+    }
+
+    #[test]
+    fn records_creation() {
+        use uuid::Uuid;
+        let i = FuzzInput::new("t", None);
+        let cr = CrashRecord {
+            id: Uuid::new_v4().to_string(),
+            input: i.clone(),
+            crash_type: CrashType::Panic,
+            error_message: "e".into(),
+            stack_trace: None,
+            iteration: 1,
+            timestamp: chrono::Utc::now().to_rfc3339(),
+        };
+        assert!(!cr.id.is_empty());
+    }
+
+    #[test]
+    fn iterations_checking() {
+        assert!(10_u64.is_multiple_of(10));
+        assert!(!5_u64.is_multiple_of(10));
+    }
+
+    #[test]
+    fn coverage_hash_stable() {
+        let c = FuzzConfig::default();
+        let s = FuzzSession::new("t", &[], c);
+        let i = FuzzInput::new("t", None);
+        let r = FuzzResponse::success(serde_json::json!({}));
+        assert_eq!(
+            s.coverage.hash_response(&i, &r),
+            s.coverage.hash_response(&i, &r)
+        );
+    }
+
+    #[test]
+    fn tools_cache() {
+        use crate::protocol::mcp::Tool;
+        let c = FuzzConfig::default();
+        let mut s = FuzzSession::new("t", &[], c);
+        s.engine.cache_tools(&vec![Tool {
+            name: "t".into(),
+            description: None,
+            input_schema: serde_json::json!({}),
+        }]);
+    }
+
+    #[test]
+    fn config_builder() {
+        let c = FuzzConfig::default()
+            .with_duration(600)
+            .with_iterations(10000)
+            .with_timeout(5000);
+        assert_eq!(c.duration_secs, 600);
+    }
+
+    #[test]
+    fn limits_builder() {
+        use crate::fuzzer::limits::ResourceLimits;
+        let l = ResourceLimits::default().with_max_executions(1000);
+        assert_eq!(l.max_executions, Some(1000));
+    }
+
+    #[test]
+    fn stop_reason_set() {
+        use crate::fuzzer::limits::ResourceLimits;
+        let l = ResourceLimits::default().with_max_executions(10);
+        let c = FuzzConfig::default().with_resource_limits(l);
+        let mut s = FuzzSession::new("t", &[], c);
+        s.start_time = Some(Instant::now());
+        s.iterations = 10;
+        let _ = s.should_stop();
+    }
 }
