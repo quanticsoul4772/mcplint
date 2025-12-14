@@ -1062,4 +1062,331 @@ mod tests {
         assert_eq!(suspicious.len(), 1);
         assert_eq!(suspicious[0].category, UnicodeCategory::Homoglyph);
     }
+
+    // Additional coverage tests for untested code paths
+
+    #[test]
+    fn test_function_application() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("a\u{2061}b")[0].category,
+            UnicodeCategory::ZeroWidth
+        );
+    }
+
+    #[test]
+    fn test_invisible_times() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("a\u{2062}b")[0].category,
+            UnicodeCategory::ZeroWidth
+        );
+    }
+
+    #[test]
+    fn test_invisible_separator() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("a\u{2063}b")[0].category,
+            UnicodeCategory::ZeroWidth
+        );
+    }
+
+    #[test]
+    fn test_invisible_plus() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("a\u{2064}b")[0].category,
+            UnicodeCategory::ZeroWidth
+        );
+    }
+
+    #[test]
+    fn test_mongolian_separator() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("a\u{180E}b")[0].category,
+            UnicodeCategory::ZeroWidth
+        );
+    }
+
+    #[test]
+    fn test_pop_dir_format() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("a\u{202C}b")[0].category,
+            UnicodeCategory::Bidirectional
+        );
+    }
+
+    #[test]
+    fn test_ltr_override_char() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("a\u{202D}b")[0].category,
+            UnicodeCategory::Bidirectional
+        );
+    }
+
+    #[test]
+    fn test_ltr_isolate_char() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("a\u{2066}b")[0].category,
+            UnicodeCategory::Bidirectional
+        );
+    }
+
+    #[test]
+    fn test_rtl_isolate_char() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("a\u{2067}b")[0].category,
+            UnicodeCategory::Bidirectional
+        );
+    }
+
+    #[test]
+    fn test_first_strong_isolate_char() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("a\u{2068}b")[0].category,
+            UnicodeCategory::Bidirectional
+        );
+    }
+
+    #[test]
+    fn test_pop_dir_isolate() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("a\u{2069}b")[0].category,
+            UnicodeCategory::Bidirectional
+        );
+    }
+
+    #[test]
+    fn test_tag_upper_range() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("a\u{E0100}b")[0].category,
+            UnicodeCategory::Tag
+        );
+    }
+
+    #[test]
+    fn test_private_use_supp_a() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("a\u{F0000}b")[0].category,
+            UnicodeCategory::PrivateUse
+        );
+    }
+
+    #[test]
+    fn test_private_use_supp_b() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("a\u{100000}b")[0].category,
+            UnicodeCategory::PrivateUse
+        );
+    }
+
+    #[test]
+    fn test_deprecated_format_end() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("a\u{206F}b")[0].category,
+            UnicodeCategory::DeprecatedFormat
+        );
+    }
+
+    #[test]
+    fn test_combining_extended() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "e\u{1AB0}\u{1AB1}\u{1AB2}\u{1AB3}";
+        assert_eq!(
+            detector.detect_suspicious_unicode(text)[0].category,
+            UnicodeCategory::Combining
+        );
+    }
+
+    #[test]
+    fn test_combining_supplement() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "e\u{1DC0}\u{1DC1}\u{1DC2}\u{1DC3}";
+        assert_eq!(
+            detector.detect_suspicious_unicode(text)[0].category,
+            UnicodeCategory::Combining
+        );
+    }
+
+    #[test]
+    fn test_combining_symbols() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "a\u{20D0}\u{20D1}\u{20D2}\u{20D3}";
+        assert_eq!(
+            detector.detect_suspicious_unicode(text)[0].category,
+            UnicodeCategory::Combining
+        );
+    }
+
+    #[test]
+    fn test_combining_half() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "a\u{FE20}\u{FE21}\u{FE22}\u{FE23}";
+        assert_eq!(
+            detector.detect_suspicious_unicode(text)[0].category,
+            UnicodeCategory::Combining
+        );
+    }
+
+    #[test]
+    fn test_truncate_many_chars() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "a\u{200B}b\u{200B}c\u{200B}d\u{200B}e\u{200B}f\u{200B}g";
+        let tools = vec![make_tool("t", Some(text))];
+        let findings = detector.check_tools(&tools);
+        assert_eq!(findings.len(), 1);
+    }
+
+    #[test]
+    fn test_truncate_long_text() {
+        let detector = UnicodeHiddenDetector::new();
+        let long = format!("{}\u{200B}{}", "a".repeat(30), "b".repeat(30));
+        let tools = vec![make_tool("t", Some(&long))];
+        let findings = detector.check_tools(&tools);
+        assert!(findings[0].evidence[0].description.contains("..."));
+    }
+
+    #[test]
+    fn test_schema_nulls() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![Tool {
+            name: "t".into(),
+            description: None,
+            input_schema: json!({"f": null}),
+        }];
+        assert!(detector.check_tools(&tools).is_empty());
+    }
+
+    #[test]
+    fn test_schema_bools() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![Tool {
+            name: "t".into(),
+            description: None,
+            input_schema: json!({"r": true}),
+        }];
+        assert!(detector.check_tools(&tools).is_empty());
+    }
+
+    #[test]
+    fn test_schema_numbers() {
+        let detector = UnicodeHiddenDetector::new();
+        let tools = vec![Tool {
+            name: "t".into(),
+            description: None,
+            input_schema: json!({"m": 100}),
+        }];
+        assert!(detector.check_tools(&tools).is_empty());
+    }
+
+    #[test]
+    fn test_cyrillic_upper() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.detect_suspicious_unicode("Н")[0].category,
+            UnicodeCategory::Homoglyph
+        );
+    }
+
+    #[test]
+    fn test_greek_upper() {
+        let detector = UnicodeHiddenDetector::new();
+        let chars = detector.detect_suspicious_unicode("ΒΕΖΗ");
+        assert!(chars.len() >= 4);
+        assert!(chars
+            .iter()
+            .all(|c| c.category == UnicodeCategory::Homoglyph));
+    }
+
+    #[test]
+    fn test_math_italic() {
+        let detector = UnicodeHiddenDetector::new();
+        let chars = detector.detect_suspicious_unicode("𝑨𝒁");
+        assert_eq!(chars.len(), 2);
+        assert!(chars
+            .iter()
+            .all(|c| c.category == UnicodeCategory::Homoglyph));
+    }
+
+    #[test]
+    fn test_sans_bold() {
+        let detector = UnicodeHiddenDetector::new();
+        let chars = detector.detect_suspicious_unicode("𝗔𝗭");
+        assert_eq!(chars.len(), 2);
+        assert!(chars
+            .iter()
+            .all(|c| c.category == UnicodeCategory::Homoglyph));
+    }
+
+    #[test]
+    fn test_sans_italic() {
+        let detector = UnicodeHiddenDetector::new();
+        let chars = detector.detect_suspicious_unicode("𝘈𝘡");
+        assert_eq!(chars.len(), 2);
+        assert!(chars
+            .iter()
+            .all(|c| c.category == UnicodeCategory::Homoglyph));
+    }
+
+    #[test]
+    fn test_confusables() {
+        let detector = UnicodeHiddenDetector::new();
+        let chars = detector.detect_suspicious_unicode("ıȷɑɡℓ℮");
+        assert!(chars.len() >= 6);
+        assert!(chars
+            .iter()
+            .all(|c| c.category == UnicodeCategory::Homoglyph));
+    }
+
+    #[test]
+    fn test_severity_combining_cat() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.assess_severity(&[UnicodeCategory::Combining]),
+            Severity::Medium
+        );
+    }
+
+    #[test]
+    fn test_severity_deprecated_cat() {
+        let detector = UnicodeHiddenDetector::new();
+        assert_eq!(
+            detector.assess_severity(&[UnicodeCategory::DeprecatedFormat]),
+            Severity::Medium
+        );
+    }
+
+    #[test]
+    fn test_default_detector() {
+        let detector = UnicodeHiddenDetector::default();
+        assert!(detector.detect_suspicious_unicode("normal").is_empty());
+    }
+
+    #[test]
+    fn test_empty_tool_list() {
+        let detector = UnicodeHiddenDetector::new();
+        assert!(detector.check_tools(&Vec::<Tool>::new()).is_empty());
+    }
+
+    #[test]
+    fn test_mixed_combining() {
+        let detector = UnicodeHiddenDetector::new();
+        let text = "a\u{0301}\u{1AB0}\u{20D0}\u{FE20}";
+        assert_eq!(
+            detector.detect_suspicious_unicode(text)[0].category,
+            UnicodeCategory::Combining
+        );
+    }
 }
