@@ -3087,11 +3087,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool(
-            "run_script",
-            None,
-            make_string_schema(),
-        ));
+        ctx.tools
+            .push(make_tool("run_script", None, make_string_schema()));
 
         let finding = engine.check_command_injection(&ctx);
         assert!(finding.is_some());
@@ -3103,11 +3100,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool(
-            "system_call",
-            None,
-            make_string_schema(),
-        ));
+        ctx.tools
+            .push(make_tool("system_call", None, make_string_schema()));
 
         let finding = engine.check_command_injection(&ctx);
         assert!(finding.is_some());
@@ -3119,11 +3113,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool(
-            "spawn_process",
-            None,
-            make_string_schema(),
-        ));
+        ctx.tools
+            .push(make_tool("spawn_process", None, make_string_schema()));
 
         let finding = engine.check_command_injection(&ctx);
         assert!(finding.is_some());
@@ -3135,11 +3126,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool(
-            "popen_call",
-            None,
-            make_string_schema(),
-        ));
+        ctx.tools
+            .push(make_tool("popen_call", None, make_string_schema()));
 
         let finding = engine.check_command_injection(&ctx);
         assert!(finding.is_some());
@@ -3152,11 +3140,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool(
-            "sqlite_query",
-            None,
-            make_string_schema(),
-        ));
+        ctx.tools
+            .push(make_tool("sqlite_query", None, make_string_schema()));
 
         let finding = engine.check_sql_injection(&ctx);
         assert!(finding.is_some());
@@ -3168,11 +3153,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool(
-            "mongodb_find",
-            None,
-            make_string_schema(),
-        ));
+        ctx.tools
+            .push(make_tool("mongodb_find", None, make_string_schema()));
 
         let finding = engine.check_sql_injection(&ctx);
         assert!(finding.is_some());
@@ -3185,11 +3167,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool(
-            "load_file",
-            None,
-            make_path_schema(),
-        ));
+        ctx.tools
+            .push(make_tool("load_file", None, make_path_schema()));
 
         let finding = engine.check_path_traversal(&ctx);
         assert!(finding.is_some());
@@ -3201,11 +3180,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool(
-            "save_data",
-            None,
-            make_path_schema(),
-        ));
+        ctx.tools
+            .push(make_tool("save_data", None, make_path_schema()));
 
         let finding = engine.check_path_traversal(&ctx);
         assert!(finding.is_some());
@@ -3217,11 +3193,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool(
-            "open_file",
-            None,
-            make_path_schema(),
-        ));
+        ctx.tools
+            .push(make_tool("open_file", None, make_path_schema()));
 
         let finding = engine.check_path_traversal(&ctx);
         assert!(finding.is_some());
@@ -3267,11 +3240,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool(
-            "get_account_details",
-            None,
-            make_empty_schema(),
-        ));
+        ctx.tools
+            .push(make_tool("get_account_details", None, make_empty_schema()));
 
         let finding = engine.check_sensitive_data_exposure(&ctx);
         assert!(finding.is_some());
@@ -3283,11 +3253,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool(
-            "read_config",
-            None,
-            make_empty_schema(),
-        ));
+        ctx.tools
+            .push(make_tool("read_config", None, make_empty_schema()));
 
         let finding = engine.check_sensitive_data_exposure(&ctx);
         assert!(finding.is_some());
@@ -3299,11 +3266,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool(
-            "list_environment",
-            None,
-            make_empty_schema(),
-        ));
+        ctx.tools
+            .push(make_tool("list_environment", None, make_empty_schema()));
 
         let finding = engine.check_sensitive_data_exposure(&ctx);
         assert!(finding.is_some());
@@ -3316,11 +3280,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool(
-            "upload_files",
-            None,
-            make_empty_schema(),
-        ));
+        ctx.tools
+            .push(make_tool("upload_files", None, make_empty_schema()));
 
         let finding = engine.check_resource_consumption(&ctx);
         assert!(finding.is_some());
@@ -3332,11 +3293,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool(
-            "stream_data",
-            None,
-            make_empty_schema(),
-        ));
+        ctx.tools
+            .push(make_tool("stream_data", None, make_empty_schema()));
 
         let finding = engine.check_resource_consumption(&ctx);
         assert!(finding.is_some());
@@ -3348,11 +3306,8 @@ mod tests {
         let engine = ScanEngine::new(config);
 
         let mut ctx = ServerContext::for_test("test");
-        ctx.tools.push(make_tool(
-            "download_all",
-            None,
-            make_empty_schema(),
-        ));
+        ctx.tools
+            .push(make_tool("download_all", None, make_empty_schema()));
 
         let finding = engine.check_resource_consumption(&ctx);
         assert!(finding.is_some());
@@ -3372,7 +3327,9 @@ mod tests {
         ));
 
         let findings = engine.check_rug_pull_indicators(&ctx);
-        assert!(findings.iter().any(|f| f.title == "Dynamic Code Loading Capability"));
+        assert!(findings
+            .iter()
+            .any(|f| f.title == "Dynamic Code Loading Capability"));
     }
 
     // ScanConfig tests

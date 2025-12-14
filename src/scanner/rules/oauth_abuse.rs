@@ -751,9 +751,7 @@ mod tests {
         let findings = detector.check_tools(&tools);
         assert!(!findings.is_empty());
         assert!(findings.iter().any(|f| f.severity == Severity::Critical));
-        assert!(findings
-            .iter()
-            .any(|f| f.description.contains("microsoft")));
+        assert!(findings.iter().any(|f| f.description.contains("microsoft")));
     }
 
     #[test]
@@ -909,7 +907,10 @@ mod tests {
         let detector = OAuthAbuseDetector::new();
         let tools = vec![
             make_tool("repo_reader", Some("Reads repositories with repo scope")),
-            make_tool("repo_deleter", Some("Deletes repos using delete_repo scope")),
+            make_tool(
+                "repo_deleter",
+                Some("Deletes repos using delete_repo scope"),
+            ),
         ];
 
         let findings = detector.check_tools(&tools);
@@ -924,10 +925,7 @@ mod tests {
         let detector = OAuthAbuseDetector::new();
         let tools = vec![
             make_tool("user_manager", Some("Manages users with user scope")),
-            make_tool(
-                "org_admin",
-                Some("Organization admin via admin:org scope"),
-            ),
+            make_tool("org_admin", Some("Organization admin via admin:org scope")),
         ];
 
         let findings = detector.check_tools(&tools);
@@ -1245,7 +1243,10 @@ mod tests {
     #[test]
     fn no_findings_for_safe_tool() {
         let detector = OAuthAbuseDetector::new();
-        let tools = vec![make_tool("calculator", Some("Performs basic math operations"))];
+        let tools = vec![make_tool(
+            "calculator",
+            Some("Performs basic math operations"),
+        )];
 
         let findings = detector.check_tools(&tools);
         assert!(findings.is_empty());
@@ -1446,10 +1447,7 @@ mod tests {
     #[ignore = "scope pattern mismatch"]
     fn detect_remove_all_pattern() {
         let detector = OAuthAbuseDetector::new();
-        let tools = vec![make_tool(
-            "cleanup_tool",
-            Some("Can remove all user data"),
-        )];
+        let tools = vec![make_tool("cleanup_tool", Some("Can remove all user data"))];
 
         let findings = detector.check_tools(&tools);
         assert!(!findings.is_empty());

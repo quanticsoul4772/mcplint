@@ -1272,16 +1272,26 @@ mod tests {
 
         // Add findings of all severity levels
         results.findings.push(
-            Finding::new("TEST-001", Severity::Critical, "Critical Issue", "Critical finding")
-                .with_location(FindingLocation::tool("test")),
+            Finding::new(
+                "TEST-001",
+                Severity::Critical,
+                "Critical Issue",
+                "Critical finding",
+            )
+            .with_location(FindingLocation::tool("test")),
         );
         results.findings.push(
             Finding::new("TEST-002", Severity::High, "High Issue", "High finding")
                 .with_location(FindingLocation::tool("test")),
         );
         results.findings.push(
-            Finding::new("TEST-003", Severity::Medium, "Medium Issue", "Medium finding")
-                .with_location(FindingLocation::tool("test")),
+            Finding::new(
+                "TEST-003",
+                Severity::Medium,
+                "Medium Issue",
+                "Medium finding",
+            )
+            .with_location(FindingLocation::tool("test")),
         );
         results.findings.push(
             Finding::new("TEST-004", Severity::Low, "Low Issue", "Low finding")
@@ -1304,11 +1314,8 @@ mod tests {
     #[test]
     fn multi_server_results_print_summary_with_unknown_error() {
         let config = ServerConfig::new("test-server", "cmd");
-        let mut result = ServerScanResult::failure(
-            config,
-            "Network error".to_string(),
-            Duration::from_secs(2),
-        );
+        let mut result =
+            ServerScanResult::failure(config, "Network error".to_string(), Duration::from_secs(2));
 
         // Simulate unknown error by clearing error message
         result.error = None;
@@ -1353,7 +1360,11 @@ mod tests {
                 scan_results.findings.push(
                     Finding::new(
                         format!("TEST-{:02}{:02}", i, j),
-                        if j % 2 == 0 { Severity::Critical } else { Severity::High },
+                        if j % 2 == 0 {
+                            Severity::Critical
+                        } else {
+                            Severity::High
+                        },
                         format!("Issue {} from server {}", j, i),
                         format!("Finding {} from server {}", j, i),
                     )
@@ -1416,12 +1427,13 @@ mod tests {
         let mut results = ScanResults::new("test-server", ScanProfile::Standard);
 
         results.findings.push(
-            Finding::new("TEST-001", Severity::High, "Issue", "Finding")
-                .with_location(FindingLocation {
+            Finding::new("TEST-001", Severity::High, "Issue", "Finding").with_location(
+                FindingLocation {
                     component: "my-component".to_string(),
                     identifier: "my-identifier".to_string(),
                     context: Some("additional context".to_string()),
-                }),
+                },
+            ),
         );
 
         let success = ServerScanResult::success(config, results, Duration::from_secs(5));
@@ -1437,7 +1449,10 @@ mod tests {
             "/usr/local/bin/test-command"
         );
         assert_eq!(results_array[0]["properties"]["component"], "my-component");
-        assert_eq!(results_array[0]["properties"]["identifier"], "my-identifier");
+        assert_eq!(
+            results_array[0]["properties"]["identifier"],
+            "my-identifier"
+        );
     }
 
     #[test]
@@ -1491,10 +1506,8 @@ mod tests {
         let success2 = ServerScanResult::success(config2, results2, Duration::from_secs(8));
 
         let total_duration = Duration::from_secs(15);
-        let multi_results = MultiServerResults::from_server_results(
-            vec![success1, success2],
-            total_duration,
-        );
+        let multi_results =
+            MultiServerResults::from_server_results(vec![success1, success2], total_duration);
 
         assert_eq!(multi_results.total_duration, total_duration);
         assert_eq!(multi_results.total_duration.as_secs(), 15);
@@ -1530,8 +1543,13 @@ mod tests {
         let mut results = ScanResults::new("server", ScanProfile::Standard);
 
         results.findings.push(
-            Finding::new("TEST-001", Severity::Medium, "Medium Issue", "Medium finding")
-                .with_location(FindingLocation::tool("test")),
+            Finding::new(
+                "TEST-001",
+                Severity::Medium,
+                "Medium Issue",
+                "Medium finding",
+            )
+            .with_location(FindingLocation::tool("test")),
         );
         results.findings.push(
             Finding::new("TEST-002", Severity::Low, "Low Issue", "Low finding")
@@ -1559,7 +1577,10 @@ mod tests {
     #[test]
     fn multi_server_scanner_concurrency_zero_clamped() {
         let scanner = MultiServerScanner::new(vec![]).with_concurrency(0);
-        assert_eq!(scanner.concurrency, 1, "Concurrency should be clamped to minimum of 1");
+        assert_eq!(
+            scanner.concurrency, 1,
+            "Concurrency should be clamped to minimum of 1"
+        );
     }
 
     #[test]
@@ -1593,11 +1614,8 @@ mod tests {
     fn server_scan_result_error_message_preserved() {
         let config = ServerConfig::new("test", "cmd");
         let error_msg = "Detailed error: connection refused on port 8080";
-        let result = ServerScanResult::failure(
-            config,
-            error_msg.to_string(),
-            Duration::from_secs(1),
-        );
+        let result =
+            ServerScanResult::failure(config, error_msg.to_string(), Duration::from_secs(1));
 
         assert_eq!(result.error.as_deref(), Some(error_msg));
         assert!(!result.success);
@@ -1609,9 +1627,12 @@ mod tests {
         let config2 = ServerConfig::new("beta", "cmd2");
         let config3 = ServerConfig::new("gamma", "cmd3");
 
-        let failure1 = ServerScanResult::failure(config1, "error1".to_string(), Duration::from_secs(1));
-        let failure2 = ServerScanResult::failure(config2, "error2".to_string(), Duration::from_secs(1));
-        let failure3 = ServerScanResult::failure(config3, "error3".to_string(), Duration::from_secs(1));
+        let failure1 =
+            ServerScanResult::failure(config1, "error1".to_string(), Duration::from_secs(1));
+        let failure2 =
+            ServerScanResult::failure(config2, "error2".to_string(), Duration::from_secs(1));
+        let failure3 =
+            ServerScanResult::failure(config3, "error3".to_string(), Duration::from_secs(1));
 
         let multi_results = MultiServerResults::from_server_results(
             vec![failure1, failure2, failure3],
