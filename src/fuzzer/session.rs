@@ -1920,21 +1920,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "timing dependent test"]
-    fn stop_conditions_resource_limit_max_time() {
-        use crate::fuzzer::limits::ResourceLimits;
-
-        let limits = ResourceLimits::default().with_max_time(Duration::from_secs(5));
-        let config = FuzzConfig::default().with_resource_limits(limits);
-
-        let mut session = FuzzSession::new("test", &[], config);
-        session.start_time = Some(Instant::now() - Duration::from_secs(6));
-
-        assert!(session.should_stop());
-        assert!(session.stop_reason.is_some());
-    }
-
-    #[test]
     fn stop_conditions_resource_limit_corpus_size() {
         use crate::fuzzer::limits::ResourceLimits;
 

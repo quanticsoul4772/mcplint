@@ -561,4 +561,194 @@ mod tests {
         assert_eq!(recipe.see_also, vec!["other"]);
         assert_eq!(recipe.tags, vec!["test"]);
     }
+
+    #[test]
+    fn show_recipe_with_existing_recipe_interactive_mode() {
+        let help = HelpSystem::new();
+        // Should not panic - testing with Interactive (unicode + colors)
+        help.show_recipe("first-scan", OutputMode::Interactive);
+    }
+
+    #[test]
+    fn show_recipe_with_existing_recipe_plain_mode() {
+        let help = HelpSystem::new();
+        // Should not panic - testing with Plain (no unicode, no colors)
+        help.show_recipe("test-authentication", OutputMode::Plain);
+    }
+
+    #[test]
+    fn show_recipe_with_existing_recipe_ci_mode() {
+        let help = HelpSystem::new();
+        // Should not panic - testing with CI mode
+        help.show_recipe("prevent-injection", OutputMode::CI);
+    }
+
+    #[test]
+    fn show_recipe_with_non_existent_recipe() {
+        let help = HelpSystem::new();
+        // Should not panic - tests error handling path
+        help.show_recipe("non-existent-recipe", OutputMode::Plain);
+    }
+
+    #[test]
+    fn show_recipe_with_non_existent_recipe_suggests_similar() {
+        let help = HelpSystem::new();
+        // Test with a name similar to an existing one to trigger suggestion path
+        help.show_recipe("first-scam", OutputMode::Plain);
+    }
+
+    #[test]
+    fn show_recipe_displays_steps_with_notes() {
+        let help = HelpSystem::new();
+        // Get a recipe with steps that have notes
+        let recipe = help.get_recipe("ci-integration").unwrap();
+        // Verify recipe has steps with notes
+        assert!(recipe.steps.iter().any(|s| s.note.is_some()));
+        // Should render without panic in different modes
+        help.show_recipe("ci-integration", OutputMode::Interactive);
+        help.show_recipe("ci-integration", OutputMode::Plain);
+    }
+
+    #[test]
+    fn show_recipe_displays_see_also_section() {
+        let help = HelpSystem::new();
+        // Get a recipe with see_also references
+        let recipe = help.get_recipe("test-authentication").unwrap();
+        assert!(!recipe.see_also.is_empty());
+        // Should render see_also section without panic
+        help.show_recipe("test-authentication", OutputMode::Interactive);
+        help.show_recipe("test-authentication", OutputMode::Plain);
+    }
+
+    #[test]
+    fn show_list_does_not_panic_interactive() {
+        let help = HelpSystem::new();
+        // Should not panic with Interactive mode
+        help.show_list(OutputMode::Interactive);
+    }
+
+    #[test]
+    fn show_list_does_not_panic_plain() {
+        let help = HelpSystem::new();
+        // Should not panic with Plain mode
+        help.show_list(OutputMode::Plain);
+    }
+
+    #[test]
+    fn show_list_does_not_panic_ci() {
+        let help = HelpSystem::new();
+        // Should not panic with CI mode
+        help.show_list(OutputMode::CI);
+    }
+
+    #[test]
+    fn show_search_results_with_matches_interactive() {
+        let help = HelpSystem::new();
+        // Search for "security" should find matches
+        help.show_search_results("security", OutputMode::Interactive);
+    }
+
+    #[test]
+    fn show_search_results_with_matches_plain() {
+        let help = HelpSystem::new();
+        // Search for "fuzzing" should find matches
+        help.show_search_results("fuzzing", OutputMode::Plain);
+    }
+
+    #[test]
+    fn show_search_results_with_matches_ci() {
+        let help = HelpSystem::new();
+        // Search for "scan" should find matches
+        help.show_search_results("scan", OutputMode::CI);
+    }
+
+    #[test]
+    fn show_search_results_no_matches_interactive() {
+        let help = HelpSystem::new();
+        // Search for non-existent term should show no results message
+        help.show_search_results("xyznonexistent", OutputMode::Interactive);
+    }
+
+    #[test]
+    fn show_search_results_no_matches_plain() {
+        let help = HelpSystem::new();
+        // Search for non-existent term should show no results message
+        help.show_search_results("impossiblequery", OutputMode::Plain);
+    }
+
+    #[test]
+    fn show_search_results_no_matches_ci() {
+        let help = HelpSystem::new();
+        // Search for non-existent term should show no results message
+        help.show_search_results("zzznotfound", OutputMode::CI);
+    }
+
+    #[test]
+    fn help_system_default_creates_instance() {
+        let help = HelpSystem::default();
+        // Should create instance with all recipes
+        assert!(!help.recipes.is_empty());
+        assert!(help.get_recipe("first-scan").is_some());
+    }
+
+    #[test]
+    fn output_modes_unicode_behavior() {
+        // Test unicode_enabled for all modes
+        assert!(OutputMode::Interactive.unicode_enabled());
+        assert!(!OutputMode::Plain.unicode_enabled());
+        assert!(!OutputMode::CI.unicode_enabled());
+    }
+
+    #[test]
+    fn output_modes_colors_behavior() {
+        // Test colors_enabled for all modes
+        assert!(OutputMode::Interactive.colors_enabled());
+        assert!(!OutputMode::Plain.colors_enabled());
+        assert!(!OutputMode::CI.colors_enabled());
+    }
+
+    #[test]
+    fn recipe_with_multiline_commands() {
+        let help = HelpSystem::new();
+        // ci-integration has a multiline command (GitHub Actions example)
+        let recipe = help.get_recipe("ci-integration").unwrap();
+        // Verify it has steps
+        assert!(!recipe.steps.is_empty());
+        // Should render without panic
+        help.show_recipe("ci-integration", OutputMode::Plain);
+    }
+
+    #[test]
+    fn all_recipes_are_searchable() {
+        let help = HelpSystem::new();
+        // Each recipe should be findable by its name
+        for (name, _) in help.list_recipes() {
+            let results = help.search(name);
+            assert!(
+                !results.is_empty(),
+                "Recipe '{}' should be searchable",
+                name
+            );
+        }
+    }
+
+    #[test]
+    fn search_is_case_insensitive() {
+        let help = HelpSystem::new();
+        let lower = help.search("security");
+        let upper = help.search("SECURITY");
+        let mixed = help.search("SeCuRiTy");
+
+        assert_eq!(lower.len(), upper.len());
+        assert_eq!(lower.len(), mixed.len());
+        assert!(!lower.is_empty());
+    }
+
+    #[test]
+    fn step_without_note() {
+        let step = Step::new("Test", "command");
+        assert_eq!(step.description, "Test");
+        assert_eq!(step.command, "command");
+        assert_eq!(step.note, None);
+    }
 }

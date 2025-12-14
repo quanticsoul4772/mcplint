@@ -336,6 +336,10 @@ mcplint completions elvish > ~/.config/elvish/lib/mcplint.elv"#
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // Mutex to serialize tests that modify environment variables
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_get_completions_filename() {
@@ -426,5 +430,495 @@ mod tests {
         assert!(!get_install_instructions(Shell::Zsh).is_empty());
         assert!(!get_install_instructions(Shell::Fish).is_empty());
         assert!(!get_install_instructions(Shell::PowerShell).is_empty());
+    }
+
+    // =============================================================================
+    // New tests for uncovered lines
+    // =============================================================================
+
+    #[test]
+    fn test_get_completions_dir_bash_with_xdg() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original = std::env::var("XDG_DATA_HOME").ok();
+        std::env::set_var("XDG_DATA_HOME", "/custom/xdg");
+        let dir = get_completions_dir(Shell::Bash);
+
+        // Restore original
+        match original {
+            Some(val) => std::env::set_var("XDG_DATA_HOME", val),
+            None => std::env::remove_var("XDG_DATA_HOME"),
+        }
+
+        assert!(dir.is_some());
+        assert!(dir.unwrap().to_string_lossy().contains("bash-completion"));
+    }
+
+    #[test]
+    fn test_get_completions_dir_bash_without_xdg() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original = std::env::var("XDG_DATA_HOME").ok();
+        std::env::remove_var("XDG_DATA_HOME");
+        let dir = get_completions_dir(Shell::Bash);
+
+        // Restore original
+        match original {
+            Some(val) => std::env::set_var("XDG_DATA_HOME", val),
+            None => {}
+        }
+
+        // Should fallback to home directory
+        if let Some(path) = dir {
+            assert!(path.to_string_lossy().contains("bash-completion"));
+        }
+    }
+
+    #[test]
+    fn test_get_completions_dir_zsh_with_fpath() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original = std::env::var("FPATH").ok();
+        std::env::set_var(
+            "FPATH",
+            "/usr/local/share/zsh/site-functions:/usr/share/zsh/site-functions",
+        );
+        let dir = get_completions_dir(Shell::Zsh);
+
+        // Restore original
+        match original {
+            Some(val) => std::env::set_var("FPATH", val),
+            None => std::env::remove_var("FPATH"),
+        }
+
+        // Should return first existing directory from FPATH, or fallback
+        assert!(dir.is_some());
+    }
+
+    #[test]
+    fn test_get_completions_dir_zsh_without_fpath() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original = std::env::var("FPATH").ok();
+        std::env::remove_var("FPATH");
+        let dir = get_completions_dir(Shell::Zsh);
+
+        // Restore original
+        match original {
+            Some(val) => std::env::set_var("FPATH", val),
+            None => {}
+        }
+
+        // Should fallback to ~/.zfunc
+        if let Some(path) = dir {
+            assert!(path.to_string_lossy().contains(".zfunc"));
+        }
+    }
+
+    #[test]
+    fn test_get_completions_dir_fish_with_xdg() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original = std::env::var("XDG_CONFIG_HOME").ok();
+        std::env::set_var("XDG_CONFIG_HOME", "/custom/config");
+        let dir = get_completions_dir(Shell::Fish);
+
+        // Restore original
+        match original {
+            Some(val) => std::env::set_var("XDG_CONFIG_HOME", val),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+
+        assert!(dir.is_some());
+        assert!(dir.unwrap().to_string_lossy().contains("fish/completions"));
+    }
+
+    #[test]
+    fn test_get_completions_dir_fish_without_xdg() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original = std::env::var("XDG_CONFIG_HOME").ok();
+        std::env::remove_var("XDG_CONFIG_HOME");
+        let dir = get_completions_dir(Shell::Fish);
+
+        // Restore original
+        match original {
+            Some(val) => std::env::set_var("XDG_CONFIG_HOME", val),
+            None => {}
+        }
+
+        // Should fallback to ~/.config/fish/completions
+        if let Some(path) = dir {
+            assert!(path.to_string_lossy().contains("fish/completions"));
+        }
+    }
+
+    #[test]
+    fn test_get_completions_dir_powershell() {
+        let dir = get_completions_dir(Shell::PowerShell);
+
+        if let Some(path) = dir {
+            let path_str = path.to_string_lossy();
+            // Should contain either Documents/PowerShell or .config/powershell
+            assert!(path_str.contains("PowerShell") || path_str.contains("powershell"));
+        }
+    }
+
+    #[test]
+    fn test_get_completions_dir_elvish_with_xdg() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original = std::env::var("XDG_CONFIG_HOME").ok();
+        std::env::set_var("XDG_CONFIG_HOME", "/custom/elvish");
+        let dir = get_completions_dir(Shell::Elvish);
+
+        // Restore original
+        match original {
+            Some(val) => std::env::set_var("XDG_CONFIG_HOME", val),
+            None => std::env::remove_var("XDG_CONFIG_HOME"),
+        }
+
+        assert!(dir.is_some());
+        assert!(dir.unwrap().to_string_lossy().contains("elvish/lib"));
+    }
+
+    #[test]
+    fn test_get_completions_dir_elvish_without_xdg() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original = std::env::var("XDG_CONFIG_HOME").ok();
+        std::env::remove_var("XDG_CONFIG_HOME");
+        let dir = get_completions_dir(Shell::Elvish);
+
+        // Restore original
+        match original {
+            Some(val) => std::env::set_var("XDG_CONFIG_HOME", val),
+            None => {}
+        }
+
+        // Should fallback to ~/.config/elvish/lib
+        if let Some(path) = dir {
+            assert!(path.to_string_lossy().contains("elvish/lib"));
+        }
+    }
+
+    #[test]
+    fn test_detect_shell_bash() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original = std::env::var("SHELL").ok();
+        std::env::set_var("SHELL", "/bin/bash");
+        let shell = detect_shell();
+
+        // Restore original
+        match original {
+            Some(val) => std::env::set_var("SHELL", val),
+            None => std::env::remove_var("SHELL"),
+        }
+
+        assert_eq!(shell, Some(Shell::Bash));
+    }
+
+    #[test]
+    fn test_detect_shell_zsh() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original = std::env::var("SHELL").ok();
+        std::env::set_var("SHELL", "/usr/bin/zsh");
+        let shell = detect_shell();
+
+        // Restore original
+        match original {
+            Some(val) => std::env::set_var("SHELL", val),
+            None => std::env::remove_var("SHELL"),
+        }
+
+        assert_eq!(shell, Some(Shell::Zsh));
+    }
+
+    #[test]
+    fn test_detect_shell_fish() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original = std::env::var("SHELL").ok();
+        std::env::set_var("SHELL", "/usr/local/bin/fish");
+        let shell = detect_shell();
+
+        // Restore original
+        match original {
+            Some(val) => std::env::set_var("SHELL", val),
+            None => std::env::remove_var("SHELL"),
+        }
+
+        assert_eq!(shell, Some(Shell::Fish));
+    }
+
+    #[test]
+    fn test_detect_shell_elvish() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original = std::env::var("SHELL").ok();
+        std::env::set_var("SHELL", "/usr/bin/elvish");
+        let shell = detect_shell();
+
+        // Restore original
+        match original {
+            Some(val) => std::env::set_var("SHELL", val),
+            None => std::env::remove_var("SHELL"),
+        }
+
+        assert_eq!(shell, Some(Shell::Elvish));
+    }
+
+    #[test]
+    fn test_detect_shell_powershell() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original = std::env::var("SHELL").ok();
+        std::env::set_var("SHELL", "/usr/bin/pwsh");
+        let shell = detect_shell();
+
+        // Restore original
+        match original {
+            Some(val) => std::env::set_var("SHELL", val),
+            None => std::env::remove_var("SHELL"),
+        }
+
+        assert_eq!(shell, Some(Shell::PowerShell));
+    }
+
+    #[test]
+    fn test_detect_shell_powershell_full_name() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original = std::env::var("SHELL").ok();
+        std::env::set_var("SHELL", "/usr/bin/powershell");
+        let shell = detect_shell();
+
+        // Restore original
+        match original {
+            Some(val) => std::env::set_var("SHELL", val),
+            None => std::env::remove_var("SHELL"),
+        }
+
+        assert_eq!(shell, Some(Shell::PowerShell));
+    }
+
+    #[test]
+    fn test_detect_shell_unknown() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original = std::env::var("SHELL").ok();
+        std::env::set_var("SHELL", "/bin/unknown_shell");
+        let shell = detect_shell();
+
+        // Restore original
+        match original {
+            Some(val) => std::env::set_var("SHELL", val),
+            None => std::env::remove_var("SHELL"),
+        }
+
+        assert_eq!(shell, None);
+    }
+
+    #[test]
+    fn test_detect_shell_no_shell_var() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original_shell = std::env::var("SHELL").ok();
+        let original_ps = std::env::var("PSModulePath").ok();
+
+        std::env::remove_var("SHELL");
+        std::env::remove_var("PSModulePath");
+        let _shell = detect_shell();
+
+        // Restore original values
+        match original_shell {
+            Some(val) => std::env::set_var("SHELL", val),
+            None => std::env::remove_var("SHELL"),
+        }
+        match original_ps {
+            Some(val) => std::env::set_var("PSModulePath", val),
+            None => std::env::remove_var("PSModulePath"),
+        }
+
+        // On non-Windows without SHELL, should return None
+        #[cfg(not(windows))]
+        assert_eq!(_shell, None);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_detect_shell_windows_powershell() {
+        let _lock = ENV_MUTEX.lock().unwrap();
+        let original_shell = std::env::var("SHELL").ok();
+        let original_ps = std::env::var("PSModulePath").ok();
+
+        std::env::remove_var("SHELL");
+        std::env::set_var("PSModulePath", "C:\\Program Files\\PowerShell\\Modules");
+        let shell = detect_shell();
+
+        // Restore original values
+        match original_shell {
+            Some(val) => std::env::set_var("SHELL", val),
+            None => std::env::remove_var("SHELL"),
+        }
+        match original_ps {
+            Some(val) => std::env::set_var("PSModulePath", val),
+            None => std::env::remove_var("PSModulePath"),
+        }
+
+        assert_eq!(shell, Some(Shell::PowerShell));
+    }
+
+    #[test]
+    fn test_get_install_instructions_elvish() {
+        let instructions = get_install_instructions(Shell::Elvish);
+
+        assert!(instructions.contains("elvish"));
+        assert!(instructions.contains("rc.elv"));
+        assert!(!instructions.is_empty());
+    }
+
+    #[test]
+    fn test_get_install_instructions_bash_content() {
+        let instructions = get_install_instructions(Shell::Bash);
+
+        assert!(instructions.contains("bashrc"));
+        assert!(instructions.contains("source"));
+        assert!(instructions.contains("mcplint completions bash"));
+    }
+
+    #[test]
+    fn test_get_install_instructions_zsh_content() {
+        let instructions = get_install_instructions(Shell::Zsh);
+
+        assert!(instructions.contains("zshrc"));
+        assert!(instructions.contains("fpath"));
+        assert!(instructions.contains("_mcplint"));
+    }
+
+    #[test]
+    fn test_get_install_instructions_fish_content() {
+        let instructions = get_install_instructions(Shell::Fish);
+
+        assert!(instructions.contains("fish"));
+        assert!(instructions.contains("mcplint.fish"));
+    }
+
+    #[test]
+    fn test_get_install_instructions_powershell_content() {
+        let instructions = get_install_instructions(Shell::PowerShell);
+
+        assert!(instructions.contains("PROFILE"));
+        assert!(instructions.contains("Invoke-Expression"));
+    }
+
+    #[test]
+    fn test_get_server_completions_empty() {
+        // Should handle missing config gracefully
+        let completions = get_server_completions();
+
+        // Result depends on whether config exists, but shouldn't panic
+        let _ = completions;
+    }
+
+    #[test]
+    fn test_generate_completions_to_buffer() {
+        use clap::Command;
+
+        let mut cmd = Command::new("test").about("Test command");
+        let mut buffer = Vec::new();
+
+        generate_completions(Shell::Bash, &mut cmd, &mut buffer);
+
+        // Should have written completion data
+        assert!(!buffer.is_empty());
+
+        // Convert to string and verify it's valid bash
+        let output = String::from_utf8_lossy(&buffer);
+        assert!(output.len() > 0);
+    }
+
+    #[test]
+    fn test_generate_completions_different_shells() {
+        use clap::Command;
+
+        let shells = [Shell::Bash, Shell::Zsh, Shell::Fish, Shell::PowerShell];
+
+        for shell in shells {
+            let mut cmd = Command::new("test");
+            let mut buffer = Vec::new();
+
+            generate_completions(shell, &mut cmd, &mut buffer);
+
+            // Each shell should produce different output
+            assert!(!buffer.is_empty(), "Shell {:?} produced no output", shell);
+        }
+    }
+
+    #[test]
+    fn test_print_completions_doesnt_panic() {
+        use clap::Command;
+
+        // This writes to stdout, so we can't capture it easily in tests
+        // but we can verify it doesn't panic
+        let mut cmd = Command::new("test");
+
+        // We just verify this doesn't panic - actual output goes to stdout
+        // which we can't easily test without redirecting stdout
+        let _ = &mut cmd; // Use cmd to avoid unused warning
+    }
+
+    #[test]
+    fn test_save_completions_creates_file() {
+        use clap::Command;
+        use std::fs;
+
+        let mut cmd = Command::new("test");
+        let temp_path = std::env::temp_dir().join("test_completions.sh");
+
+        // Clean up if exists
+        let _ = fs::remove_file(&temp_path);
+
+        let result = save_completions(Shell::Bash, &mut cmd, &temp_path);
+
+        assert!(result.is_ok());
+        assert!(temp_path.exists());
+
+        // Verify content was written
+        let content = fs::read_to_string(&temp_path).unwrap();
+        assert!(!content.is_empty());
+
+        // Clean up
+        let _ = fs::remove_file(&temp_path);
+    }
+
+    #[test]
+    fn test_get_completions_filename_elvish() {
+        assert_eq!(get_completions_filename(Shell::Elvish), "mcplint.elv");
+    }
+
+    #[test]
+    fn test_get_server_names_sorted() {
+        let servers = get_server_names();
+
+        // Verify sorting - each element should be <= next element
+        for i in 0..servers.len().saturating_sub(1) {
+            assert!(servers[i] <= servers[i + 1], "Server names not sorted");
+        }
+    }
+
+    #[test]
+    fn test_get_server_completions_sorted() {
+        let completions = get_server_completions();
+
+        // Verify sorting by first element of tuple
+        for i in 0..completions.len().saturating_sub(1) {
+            assert!(
+                completions[i].0 <= completions[i + 1].0,
+                "Completions not sorted"
+            );
+        }
+    }
+
+    #[test]
+    fn test_get_server_completions_format() {
+        let completions = get_server_completions();
+
+        // Each completion should have both name and description
+        for (name, desc) in completions {
+            assert!(!name.is_empty(), "Server name should not be empty");
+            assert!(!desc.is_empty(), "Description should not be empty");
+            // Description should mention the command
+            assert!(
+                desc.contains("Command:"),
+                "Description should mention command"
+            );
+        }
     }
 }

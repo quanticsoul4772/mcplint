@@ -715,4 +715,260 @@ mod tests {
         let progress = ScanProgress::new(OutputMode::Plain, ProgressStyle::Bar);
         assert_eq!(progress.mode, OutputMode::Plain);
     }
+
+    // ===== NEW TESTS FOR INTERACTIVE MODE AND UNCOVERED LINES =====
+
+    #[test]
+    fn scan_progress_interactive_start_with_nonzero_length() {
+        // Test Interactive mode with non-zero length (creates ProgressBar::new(len))
+        let mut progress = ScanProgress::new(OutputMode::Interactive, ProgressStyle::Bar);
+        progress.start(100);
+        // In Interactive mode, progress should be enabled
+        assert!(progress.is_enabled());
+        progress.finish();
+    }
+
+    #[test]
+    fn scan_progress_interactive_start_with_zero_length() {
+        // Test Interactive mode with zero length (creates ProgressBar::new_spinner())
+        let mut progress = ScanProgress::new(OutputMode::Interactive, ProgressStyle::Spinner);
+        progress.start(0);
+        // In Interactive mode, spinner should be enabled
+        assert!(progress.is_enabled());
+        progress.finish();
+    }
+
+    #[test]
+    fn scan_progress_interactive_start_spinner() {
+        // Test start_spinner() in Interactive mode
+        let mut progress = ScanProgress::new(OutputMode::Interactive, ProgressStyle::Spinner);
+        progress.start_spinner("Connecting to server...");
+        // In Interactive mode, spinner should be enabled
+        assert!(progress.is_enabled());
+        // Test message update
+        progress.set_message("Connected!");
+        progress.finish_with_message("Done");
+    }
+
+    #[test]
+    fn scan_progress_interactive_all_styles() {
+        // Test all ProgressStyle variants in Interactive mode
+        for style in [
+            ProgressStyle::Spinner,
+            ProgressStyle::Bar,
+            ProgressStyle::Download,
+            ProgressStyle::Dots,
+            ProgressStyle::SecurityScan,
+        ] {
+            let mut progress = ScanProgress::new(OutputMode::Interactive, style);
+            progress.start(50);
+            assert!(progress.is_enabled());
+            progress.set_position(25);
+            progress.inc();
+            progress.inc_by(5);
+            progress.set_message("Processing...");
+            progress.set_length(100);
+            progress.finish();
+        }
+    }
+
+    #[test]
+    fn scan_progress_interactive_bar_constructor() {
+        // Test ScanProgress::bar() in Interactive mode
+        let progress = ScanProgress::bar(OutputMode::Interactive, 100);
+        assert!(progress.is_enabled());
+        progress.set_position(50);
+        progress.finish();
+    }
+
+    #[test]
+    fn scan_progress_interactive_spinner_constructor() {
+        // Test ScanProgress::spinner() in Interactive mode
+        let mut progress = ScanProgress::spinner(OutputMode::Interactive);
+        progress.start_spinner("Loading...");
+        assert!(progress.is_enabled());
+        progress.finish();
+    }
+
+    #[test]
+    fn scan_progress_interactive_suspend() {
+        // Test suspend() with actual progress bar
+        let mut progress = ScanProgress::new(OutputMode::Interactive, ProgressStyle::Bar);
+        progress.start(100);
+        let result = progress.suspend(|| {
+            // Simulate printing output while suspended
+            42
+        });
+        assert_eq!(result, 42);
+        progress.finish();
+    }
+
+    #[test]
+    fn scan_progress_interactive_finish_and_clear() {
+        // Test finish_and_clear() with actual progress bar
+        let mut progress = ScanProgress::new(OutputMode::Interactive, ProgressStyle::Bar);
+        progress.start(100);
+        progress.set_position(50);
+        progress.finish_and_clear();
+    }
+
+    #[test]
+    fn connection_spinner_interactive_phases() {
+        // Test ConnectionSpinner in Interactive mode with phase updates
+        let mut spinner = ConnectionSpinner::new(OutputMode::Interactive);
+        spinner.start("test-server");
+        assert!(spinner.is_enabled());
+        assert_eq!(spinner.phases_completed, 0);
+
+        // Test phase_initializing updates phases_completed
+        spinner.phase_initializing();
+        assert_eq!(spinner.phases_completed, 1);
+
+        // Test phase_listing updates phases_completed
+        spinner.phase_listing("tools");
+        assert_eq!(spinner.phases_completed, 2);
+
+        // Test other phase methods
+        spinner.phase_scanning("Tool validation");
+        spinner.phase_security_check("SEC-001");
+
+        spinner.finish_success("All checks passed");
+    }
+
+    #[test]
+    fn connection_spinner_interactive_unicode_vs_ascii() {
+        // Test unicode vs ASCII rendering in Interactive mode
+        let mut spinner_unicode = ConnectionSpinner::new(OutputMode::Interactive);
+        spinner_unicode.start("test-server-unicode");
+        assert!(spinner_unicode.is_enabled());
+
+        let mut spinner_ascii = ConnectionSpinner::new(OutputMode::Interactive);
+        spinner_ascii.start("test-server-ascii");
+        assert!(spinner_ascii.is_enabled());
+
+        spinner_unicode.phase_scanning("Check 1");
+        spinner_ascii.phase_scanning("Check 2");
+
+        spinner_unicode.finish_success("Done");
+        spinner_ascii.finish_error("Failed");
+    }
+
+    #[test]
+    fn connection_spinner_interactive_all_phases() {
+        // Test all phase methods in sequence
+        let mut spinner = ConnectionSpinner::new(OutputMode::Interactive);
+        spinner.start("comprehensive-test");
+        assert!(spinner.is_enabled());
+
+        spinner.phase_initializing();
+        assert_eq!(spinner.phases_completed, 1);
+
+        spinner.phase_listing("resources");
+        assert_eq!(spinner.phases_completed, 2);
+
+        spinner.phase_scanning("Validation");
+        spinner.phase_security_check("SEC-001");
+        spinner.phase_security_check("SEC-002");
+
+        spinner.finish_and_clear();
+    }
+
+    #[test]
+    fn multi_server_progress_interactive_multiple_servers() {
+        // Test MultiServerProgress with multiple servers in Interactive mode
+        let progress = MultiServerProgress::new(OutputMode::Interactive, 5);
+        // Should be enabled with multiple servers
+        assert!(progress.is_enabled());
+
+        // Test server completion updates
+        progress.server_complete("server1");
+        progress.server_complete("server2");
+        progress.server_complete("server3");
+        progress.server_complete("server4");
+        progress.server_complete("server5");
+
+        progress.finish();
+    }
+
+    #[test]
+    fn multi_server_progress_interactive_two_servers() {
+        // Test with exactly 2 servers (minimum for multi-progress)
+        let progress = MultiServerProgress::new(OutputMode::Interactive, 2);
+        assert!(progress.is_enabled());
+
+        progress.server_complete("server1");
+        progress.server_complete("server2");
+        progress.finish();
+    }
+
+    #[test]
+    fn multi_server_progress_interactive_large_count() {
+        // Test with large number of servers
+        let progress = MultiServerProgress::new(OutputMode::Interactive, 10);
+        assert!(progress.is_enabled());
+
+        for i in 0..10 {
+            progress.server_complete(&format!("server{}", i + 1));
+        }
+
+        progress.finish();
+    }
+
+    #[test]
+    fn scan_progress_interactive_unicode_chars() {
+        // Test unicode-specific progress characters
+        let mut progress = ScanProgress::new(OutputMode::Interactive, ProgressStyle::Bar);
+        progress.start(100);
+        assert!(progress.is_enabled());
+
+        // Progress chars should be "━━─" for unicode
+        progress.set_position(50);
+        progress.inc();
+        progress.finish();
+    }
+
+    #[test]
+    fn scan_progress_interactive_security_scan_style() {
+        // Test SecurityScan style specifically in Interactive mode
+        let mut progress = ScanProgress::new(OutputMode::Interactive, ProgressStyle::SecurityScan);
+        progress.start_spinner("Running security checks...");
+        assert!(progress.is_enabled());
+
+        progress.set_message("Checking for vulnerabilities...");
+        progress.finish_with_message("Security scan complete");
+    }
+
+    #[test]
+    fn connection_spinner_interactive_drop_unfinished() {
+        // Test that drop properly cleans up unfinished spinner in Interactive mode
+        let mut spinner = ConnectionSpinner::new(OutputMode::Interactive);
+        spinner.start("test-server");
+        assert!(spinner.is_enabled());
+        // Spinner will be dropped without finish - tests drop impl
+    }
+
+    #[test]
+    fn scan_progress_interactive_drop_unfinished() {
+        // Test that drop properly cleans up unfinished bar in Interactive mode
+        let mut progress = ScanProgress::new(OutputMode::Interactive, ProgressStyle::Bar);
+        progress.start(100);
+        assert!(progress.is_enabled());
+        progress.set_position(50);
+        // Progress will be dropped without finish - tests drop impl
+    }
+
+    #[test]
+    fn multi_server_progress_plain_mode() {
+        // Verify Plain mode disables multi-server progress
+        let progress = MultiServerProgress::new(OutputMode::Plain, 5);
+        assert!(!progress.is_enabled());
+    }
+
+    #[test]
+    fn connection_spinner_plain_mode() {
+        // Verify Plain mode disables connection spinner
+        let mut spinner = ConnectionSpinner::new(OutputMode::Plain);
+        spinner.start("test-server");
+        assert!(!spinner.is_enabled());
+    }
 }
