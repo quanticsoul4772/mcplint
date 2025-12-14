@@ -16,6 +16,7 @@ mod helpers;
 pub mod multi_server;
 mod results;
 pub mod rules;
+pub mod streaming;
 
 pub use context::{ScanConfig, ScanProfile, ServerContext};
 // Re-exports for public API - used by external consumers and tests
@@ -24,6 +25,11 @@ pub use engine::{ScanEngine, ScanResults, ScanSummary};
 #[allow(unused_imports)]
 pub use finding::{
     Evidence, EvidenceKind, Finding, FindingLocation, Reference, ReferenceKind, Severity,
+};
+#[allow(unused_imports)]
+pub use streaming::{
+    streaming_channel, streaming_channel_with_collection, FindingProducer, FindingStream,
+    StreamingConfig,
 };
 
 use anyhow::Result;
