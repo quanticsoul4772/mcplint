@@ -36,9 +36,10 @@
 //! let summary = stream.into_summary();
 //! ```
 
-// This module provides public API for streaming scan results.
-// The types are exported but not yet used by the CLI - they're intended
-// for library consumers and future CLI integration.
+// Public library API for streaming scan results - used by ScanEngine::scan_streaming().
+// CLI uses its own scan implementation (scan.rs) for UI integration (spinners, output formats).
+// This module is for programmatic library consumers, not CLI commands.
+// Fully tested below (26 tests). Silencing dead_code warnings since this is public API.
 #![allow(dead_code)]
 
 use tokio::sync::mpsc;

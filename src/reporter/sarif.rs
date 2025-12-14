@@ -3,7 +3,8 @@
 //! SARIF (Static Analysis Results Interchange Format) 2.1.0 types
 //! for CI/CD integration with GitHub, GitLab, and other platforms.
 
-#![allow(dead_code)] // Types are defined for future SARIF output implementation
+// SARIF types used by ValidationResults::to_sarif() and ScanEngine.
+// Some helper types may not be directly constructed but are needed for serialization.
 
 use serde::{Deserialize, Serialize};
 
@@ -94,6 +95,9 @@ impl SarifReport {
     }
 
     /// Create a SARIF report from security scan results
+    /// NOTE: Currently unused - scanner/mod.rs has inline to_sarif_report() instead.
+    /// This strongly-typed version exists for consistency with from_validation_results().
+    #[allow(dead_code)]
     pub fn from_scan_results(results: &crate::scanner::ScanResults) -> Self {
         // Collect unique rules from findings
         let mut rules: Vec<SarifRule> = Vec::new();
