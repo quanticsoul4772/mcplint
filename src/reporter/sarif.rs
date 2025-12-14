@@ -698,4 +698,42 @@ mod tests {
             "server/test-server"
         );
     }
+
+    #[test]
+    fn sarif_from_validation_results_with_info_and_skip() {
+        let mut results = make_empty_results();
+        results.results = vec![
+            make_validation_result(
+                "PROTO-001",
+                "Info Rule",
+                ValidationSeverity::Info,
+                Some("Informational message"),
+            ),
+            make_validation_result(
+                "PROTO-002",
+                "Skip Rule",
+                ValidationSeverity::Skip,
+                Some("Skipped validation"),
+            ),
+        ];
+
+        let sarif = SarifReport::from_validation_results(&results);
+
+        // Info and Skip should be filtered out (not included in results)
+        assert_eq!(sarif.runs[0].results.len(), 0);
+        // But rules should still be created with "note" level
+        assert_eq!(sarif.runs[0].tool.driver.rules.len(), 2);
+        assert_eq!(
+            sarif.runs[0].tool.driver.rules[0]
+                .default_configuration
+                .level,
+            "note"
+        );
+        assert_eq!(
+            sarif.runs[0].tool.driver.rules[1]
+                .default_configuration
+                .level,
+            "note"
+        );
+    }
 }

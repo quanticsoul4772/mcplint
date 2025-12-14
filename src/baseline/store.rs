@@ -705,4 +705,97 @@ mod tests {
         // Verify that tool_fingerprints is not included when None
         assert!(!json.contains("tool_fingerprints"));
     }
+
+    #[test]
+    fn test_baseline_save_io_error() {
+        let results = create_test_results();
+        let baseline = Baseline::from_results(&results);
+        let result = baseline.save("/invalid/path/baseline.json");
+        assert!(result.is_err());
+        assert!(matches!(result, Err(BaselineError::IoError { .. })));
+    }
+
+    #[test]
+    fn test_baseline_load_parse_error_missing_fields() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("incomplete.json");
+        fs::write(&path, r#"{"version": "1.0"}"#).unwrap();
+        let result = Baseline::load(&path);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(BaselineError::ParseError { .. })));
+    }
+
+    #[test]
+    fn test_baseline_finding_hash_in_set() {
+        use std::collections::HashSet;
+        let f1 = BaselineFinding {
+            rule_id: "R1".to_string(),
+            location_fingerprint: "l1".to_string(),
+            evidence_hash: "e1".to_string(),
+            severity: Severity::High,
+        };
+        let f2 = f1.clone();
+        let mut set = HashSet::new();
+        set.insert(f1.clone());
+        set.insert(f2);
+        assert_eq!(set.len(), 1);
+    }
+
+    #[test]
+    fn test_baseline_version_zero_incompatible() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("v0.json");
+        let content = r#"{"version":"0.9","created_at":"2025-01-01T00:00:00Z","server_id":"t","findings":[],"config":{"profile":"s","include_categories":[],"exclude_categories":[]}}"#;
+        fs::write(&path, content).unwrap();
+        let result = Baseline::load(&path);
+        assert!(result.is_err());
+        assert!(matches!(result, Err(BaselineError::VersionMismatch { .. })));
+    }
+
+    #[test]
+    fn test_baseline_empty_file_parse_error() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("empty.json");
+        fs::write(&path, "").unwrap();
+        let result = Baseline::load(&path);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_baseline_many_findings() {
+        let mut results = ScanResults {
+            server: "s".to_string(),
+            profile: "p".to_string(),
+            total_checks: 100,
+            findings: Vec::new(),
+            summary: ScanSummary::default(),
+            duration_ms: 1000,
+        };
+        for i in 0..100 {
+            results.add_finding(
+                Finding::new(format!("R{}", i), Severity::Low, "T", "D")
+                    .with_location(FindingLocation::tool(format!("t{}", i))),
+            );
+        }
+        let baseline = Baseline::from_results(&results);
+        assert_eq!(baseline.findings.len(), 100);
+    }
+
+    #[test]
+    fn test_baseline_error_messages() {
+        let err = BaselineError::IoError {
+            path: "/test".to_string(),
+            source: std::io::Error::new(std::io::ErrorKind::NotFound, "x"),
+        };
+        assert!(format!("{}", err).contains("/test"));
+    }
+
+    #[test]
+    fn test_baseline_clone_independence_mutation() {
+        let results = create_test_results();
+        let mut b1 = Baseline::from_results(&results);
+        let b2 = b1.clone();
+        b1.findings.clear();
+        assert_ne!(b1.findings.len(), b2.findings.len());
+    }
 }

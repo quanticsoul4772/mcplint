@@ -278,6 +278,18 @@ mod tests {
         })
     }
 
+    fn make_test_client() -> McpClient {
+        use crate::protocol::Implementation;
+        use crate::transport::mock::MockTransport;
+
+        let transport = Box::new(MockTransport::new());
+        let client_info = Implementation {
+            name: "test".to_string(),
+            version: "1.0.0".to_string(),
+        };
+        McpClient::new(transport, client_info)
+    }
+
     #[test]
     fn detect_command_injection_exec() {
         let checker = DefaultInjectionChecks;
@@ -1897,5 +1909,381 @@ mod tests {
         let finding = checker.check_path_traversal(&ctx).unwrap();
         assert_eq!(finding.location.component, "tool");
         assert_eq!(finding.location.identifier, "file_reader");
+    }
+
+    // Async SSRF tests to cover lines 195-231
+    #[tokio::test]
+    async fn ssrf_async_url_detection() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("fetch_url", None, make_url_schema()));
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await;
+        assert!(finding.is_some());
+        let f = finding.unwrap();
+        assert_eq!(f.rule_id, "MCP-INJ-004");
+        assert_eq!(f.severity, Severity::High);
+        assert_eq!(f.title, "Potential SSRF Vulnerability");
+    }
+
+    #[tokio::test]
+    async fn ssrf_async_http_pattern() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("http_get", None, make_url_schema()));
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await;
+        assert!(finding.is_some());
+        let f = finding.unwrap();
+        assert!(f.description.contains("http_get"));
+    }
+
+    #[tokio::test]
+    async fn ssrf_async_api_pattern() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("api_call", None, make_url_schema()));
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await;
+        assert!(finding.is_some());
+    }
+
+    #[tokio::test]
+    async fn ssrf_async_endpoint_pattern() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("query_endpoint", None, make_url_schema()));
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await;
+        assert!(finding.is_some());
+    }
+
+    #[tokio::test]
+    async fn ssrf_async_fetch_pattern() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("fetch_data", None, make_url_schema()));
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await;
+        assert!(finding.is_some());
+    }
+
+    #[tokio::test]
+    async fn ssrf_async_request_pattern() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("make_request", None, make_url_schema()));
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await;
+        assert!(finding.is_some());
+    }
+
+    #[tokio::test]
+    async fn ssrf_async_uri_pattern() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("uri_parser", None, make_url_schema()));
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await;
+        assert!(finding.is_some());
+    }
+
+    #[tokio::test]
+    async fn ssrf_async_no_finding_safe_tool() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("safe_processor", None, make_url_schema()));
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await;
+        assert!(finding.is_none());
+    }
+
+    #[tokio::test]
+    async fn ssrf_async_no_url_params() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("fetch_url", None, make_string_schema()));
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await;
+        assert!(finding.is_none());
+    }
+
+    #[tokio::test]
+    async fn ssrf_async_empty_tools() {
+        let checker = DefaultInjectionChecks;
+        let ctx = ServerContext::for_test("test");
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await;
+        assert!(finding.is_none());
+    }
+
+    #[tokio::test]
+    async fn ssrf_async_finding_has_remediation() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("fetch_url", None, make_url_schema()));
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await.unwrap();
+        assert!(!finding.remediation.is_empty());
+        assert!(finding.remediation.contains("allowlisting"));
+    }
+
+    #[tokio::test]
+    async fn ssrf_async_finding_has_cwe() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("fetch_url", None, make_url_schema()));
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await.unwrap();
+        assert!(finding.references.iter().any(|r| r.id == "CWE-918"));
+    }
+
+    #[tokio::test]
+    async fn ssrf_async_finding_has_evidence() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("fetch_url", None, make_url_schema()));
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await.unwrap();
+        assert!(!finding.evidence.is_empty());
+    }
+
+    #[tokio::test]
+    async fn ssrf_async_finding_location() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("fetch_url", None, make_url_schema()));
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await.unwrap();
+        assert_eq!(finding.location.component, "tool");
+        assert_eq!(finding.location.identifier, "fetch_url");
+    }
+
+    #[tokio::test]
+    async fn ssrf_async_remediation_mentions_internal_ips() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("http_request", None, make_url_schema()));
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await.unwrap();
+        assert!(finding.remediation.contains("10.x.x.x"));
+        assert!(finding.remediation.contains("192.168"));
+    }
+
+    #[tokio::test]
+    async fn ssrf_async_multiple_tools_first_match() {
+        let checker = DefaultInjectionChecks;
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools
+            .push(make_tool("safe_tool", None, make_url_schema()));
+        ctx.tools
+            .push(make_tool("http_get", None, make_url_schema()));
+        ctx.tools
+            .push(make_tool("fetch_url", None, make_url_schema()));
+
+        let mut client = make_test_client();
+        let finding = checker.check_ssrf(&ctx, &mut client).await;
+        assert!(finding.is_some());
+        let f = finding.unwrap();
+        assert!(f.description.contains("http_get"));
+    }
+
+    // Additional comprehensive edge case tests
+    #[test]
+    fn command_injection_all_patterns_with_description() {
+        let checker = DefaultInjectionChecks;
+        let patterns = vec![
+            "exec",
+            "shell",
+            "command",
+            "run",
+            "system",
+            "spawn",
+            "popen",
+            "bash",
+            "sh",
+            "cmd",
+            "powershell",
+        ];
+
+        for pattern in patterns {
+            let mut ctx = ServerContext::for_test("test");
+            ctx.tools.push(make_tool(
+                "safe_name",
+                Some(&format!("Uses {} functionality", pattern)),
+                make_string_schema(),
+            ));
+
+            let finding = checker.check_command_injection(&ctx);
+            assert!(
+                finding.is_some(),
+                "Pattern '{}' in description should trigger finding",
+                pattern
+            );
+        }
+    }
+
+    #[test]
+    fn sql_injection_all_patterns_with_description() {
+        let checker = DefaultInjectionChecks;
+        let patterns = vec![
+            "sql",
+            "query",
+            "database",
+            "db",
+            "mysql",
+            "postgres",
+            "sqlite",
+            "mongodb",
+            "execute_query",
+        ];
+
+        for pattern in patterns {
+            let mut ctx = ServerContext::for_test("test");
+            ctx.tools.push(make_tool(
+                "safe_name",
+                Some(&format!("Handles {} operations", pattern)),
+                make_string_schema(),
+            ));
+
+            let finding = checker.check_sql_injection(&ctx);
+            assert!(
+                finding.is_some(),
+                "Pattern '{}' in description should trigger finding",
+                pattern
+            );
+        }
+    }
+
+    #[test]
+    fn all_finding_titles_are_correct() {
+        let checker = DefaultInjectionChecks;
+
+        let mut ctx1 = ServerContext::for_test("test");
+        ctx1.tools
+            .push(make_tool("exec", None, make_string_schema()));
+        let f1 = checker.check_command_injection(&ctx1).unwrap();
+        assert_eq!(f1.title, "Potential Command Injection");
+
+        let mut ctx2 = ServerContext::for_test("test");
+        ctx2.tools
+            .push(make_tool("sql", None, make_string_schema()));
+        let f2 = checker.check_sql_injection(&ctx2).unwrap();
+        assert_eq!(f2.title, "Potential SQL Injection");
+
+        let mut ctx3 = ServerContext::for_test("test");
+        ctx3.tools.push(make_tool("file", None, make_path_schema()));
+        let f3 = checker.check_path_traversal(&ctx3).unwrap();
+        assert_eq!(f3.title, "Potential Path Traversal");
+    }
+
+    #[test]
+    fn all_findings_contain_tool_names() {
+        let checker = DefaultInjectionChecks;
+
+        let mut ctx1 = ServerContext::for_test("test");
+        ctx1.tools
+            .push(make_tool("my_exec_tool", None, make_string_schema()));
+        let f1 = checker.check_command_injection(&ctx1).unwrap();
+        assert!(f1.description.contains("my_exec_tool"));
+
+        let mut ctx2 = ServerContext::for_test("test");
+        ctx2.tools
+            .push(make_tool("my_sql_tool", None, make_string_schema()));
+        let f2 = checker.check_sql_injection(&ctx2).unwrap();
+        assert!(f2.description.contains("my_sql_tool"));
+
+        let mut ctx3 = ServerContext::for_test("test");
+        ctx3.tools
+            .push(make_tool("my_file_tool", None, make_path_schema()));
+        let f3 = checker.check_path_traversal(&ctx3).unwrap();
+        assert!(f3.description.contains("my_file_tool"));
+    }
+
+    #[test]
+    fn all_patterns_case_insensitive() {
+        let checker = DefaultInjectionChecks;
+
+        let mut ctx1 = ServerContext::for_test("test");
+        ctx1.tools
+            .push(make_tool("SHELL_EXEC", None, make_string_schema()));
+        assert!(checker.check_command_injection(&ctx1).is_some());
+
+        let mut ctx2 = ServerContext::for_test("test");
+        ctx2.tools
+            .push(make_tool("SQL_QUERY", None, make_string_schema()));
+        assert!(checker.check_sql_injection(&ctx2).is_some());
+
+        let mut ctx3 = ServerContext::for_test("test");
+        ctx3.tools
+            .push(make_tool("READ_FILE", None, make_path_schema()));
+        assert!(checker.check_path_traversal(&ctx3).is_some());
+    }
+
+    #[test]
+    fn all_findings_have_correct_cwe_format() {
+        let checker = DefaultInjectionChecks;
+
+        let mut ctx1 = ServerContext::for_test("test");
+        ctx1.tools
+            .push(make_tool("exec", None, make_string_schema()));
+        let f1 = checker.check_command_injection(&ctx1).unwrap();
+        assert!(f1.references.iter().any(|r| r.id == "CWE-78"));
+
+        let mut ctx2 = ServerContext::for_test("test");
+        ctx2.tools
+            .push(make_tool("sql", None, make_string_schema()));
+        let f2 = checker.check_sql_injection(&ctx2).unwrap();
+        assert!(f2.references.iter().any(|r| r.id == "CWE-89"));
+
+        let mut ctx3 = ServerContext::for_test("test");
+        ctx3.tools.push(make_tool("file", None, make_path_schema()));
+        let f3 = checker.check_path_traversal(&ctx3).unwrap();
+        assert!(f3.references.iter().any(|r| r.id == "CWE-22"));
+    }
+
+    #[test]
+    fn findings_mention_user_controlled_input() {
+        let checker = DefaultInjectionChecks;
+
+        let mut ctx1 = ServerContext::for_test("test");
+        ctx1.tools
+            .push(make_tool("exec", None, make_string_schema()));
+        let f1 = checker.check_command_injection(&ctx1).unwrap();
+        assert!(f1.description.to_lowercase().contains("user"));
+
+        let mut ctx2 = ServerContext::for_test("test");
+        ctx2.tools.push(make_tool("file", None, make_path_schema()));
+        let f2 = checker.check_path_traversal(&ctx2).unwrap();
+        assert!(f2.description.to_lowercase().contains("user"));
     }
 }
