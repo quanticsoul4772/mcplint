@@ -5,6 +5,45 @@ All notable changes to MCPLint will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2025-12-14
+
+### Added
+
+- **Advanced Prompt Engineering** (`src/ai/prompt_templates.rs`)
+  - `VulnCategory` enum for 8 vulnerability categories (Injection, Authentication, Cryptographic, etc.)
+  - `FewShotExample` struct with category-specific examples
+  - `AdvancedPromptBuilder` with chain-of-thought reasoning
+  - Confidence scoring in AI explanations
+  - Category-specific system prompts for better accuracy
+
+- **Neo4j Knowledge Graph Integration** (optional `--features neo4j`)
+  - `SecurityKnowledgeGraph` for storing and querying vulnerability findings
+  - Vector similarity search using cosine distance
+  - `VoyageEmbedder` for code-optimized embeddings (voyage-code-2, 1536 dimensions)
+  - CWE/CVE knowledge retrieval
+  - Cross-server vulnerability pattern detection
+
+- **Optional Feature Flags**
+  - `neo4j` - Neo4j graph database for vulnerability knowledge base
+  - `redis` - Redis distributed cache backend
+
+### Changed
+
+- AI providers now support advanced prompts with `use_advanced_prompts` flag
+- Ollama provider defaults to simplified prompts for better local model performance
+
+### Fixed
+
+- Clippy lints for CI compatibility (needless borrows, single char push, duplicated cfg attributes)
+- Fuzzer session test overflow on Windows
+- ExplainEngine integration test flakiness with retry logic
+
+### Tests
+
+- Added 93+ new tests across modules
+- Total test count: 3,066 passing tests
+- Neo4j integration tests (require live connection)
+
 ## [0.3.1] - 2025-12-13
 
 ### Added
