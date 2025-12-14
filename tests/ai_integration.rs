@@ -515,10 +515,10 @@ async fn test_explain_engine_with_anthropic() {
 
     let finding = simple_test_finding();
 
-    let response = engine
-        .explain(&finding)
+    // Use retry logic to handle occasional LLM response parsing failures
+    let response = with_retry(3, || async { engine.explain(&finding).await })
         .await
-        .expect("ExplainEngine explain failed with Anthropic");
+        .expect("ExplainEngine explain failed with Anthropic after 3 retries");
 
     assert!(!response.explanation.summary.is_empty());
 }
@@ -534,10 +534,10 @@ async fn test_explain_engine_with_openai() {
 
     let finding = simple_test_finding();
 
-    let response = engine
-        .explain(&finding)
+    // Use retry logic to handle occasional LLM response parsing failures
+    let response = with_retry(3, || async { engine.explain(&finding).await })
         .await
-        .expect("ExplainEngine explain failed with OpenAI");
+        .expect("ExplainEngine explain failed with OpenAI after 3 retries");
 
     assert!(!response.explanation.summary.is_empty());
 }
