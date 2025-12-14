@@ -1998,7 +1998,10 @@ mod tests {
         let detector = SchemaPoisoningDetector::new();
         // Create a base64 string that decodes to invalid UTF-8
         // Binary data that's not valid UTF-8
-        let invalid_utf8_bytes: Vec<u8> = vec![0xFF, 0xFE, 0xFD, 0xFC, 0xFB, 0xFA, 0xF9, 0xF8, 0xF7, 0xF6, 0xF5, 0xF4, 0xF3, 0xF2, 0xF1, 0xF0, 0xEF, 0xEE, 0xED, 0xEC];
+        let invalid_utf8_bytes: Vec<u8> = vec![
+            0xFF, 0xFE, 0xFD, 0xFC, 0xFB, 0xFA, 0xF9, 0xF8, 0xF7, 0xF6, 0xF5, 0xF4, 0xF3, 0xF2,
+            0xF1, 0xF0, 0xEF, 0xEE, 0xED, 0xEC,
+        ];
         let invalid_b64 = BASE64.encode(invalid_utf8_bytes);
 
         let tools = vec![make_tool_with_schema(
@@ -2071,7 +2074,10 @@ mod tests {
         let detector2 = SchemaPoisoningDetector::default();
 
         // Both should have the same number of patterns
-        assert_eq!(detector1.injection_patterns.len(), detector2.injection_patterns.len());
+        assert_eq!(
+            detector1.injection_patterns.len(),
+            detector2.injection_patterns.len()
+        );
     }
 
     // Enum with non-string values edge case

@@ -1315,14 +1315,8 @@ mod tests {
             Some(ChangeSeverity::Breaking)
         );
         assert_eq!(ChangeSeverity::parse("None"), Some(ChangeSeverity::None));
-        assert_eq!(
-            ChangeSeverity::parse("Patch"),
-            Some(ChangeSeverity::Patch)
-        );
-        assert_eq!(
-            ChangeSeverity::parse("MiNoR"),
-            Some(ChangeSeverity::Minor)
-        );
+        assert_eq!(ChangeSeverity::parse("Patch"), Some(ChangeSeverity::Patch));
+        assert_eq!(ChangeSeverity::parse("MiNoR"), Some(ChangeSeverity::Minor));
     }
 
     #[test]
