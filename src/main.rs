@@ -949,8 +949,9 @@ async fn main() -> Result<()> {
                 // Install to default location
                 if let Some(dir) = cli::completions::get_completions_dir(clap_shell) {
                     if !dir.exists() {
-                        std::fs::create_dir_all(&dir)
-                            .with_context(|| format!("Failed to create completions directory {}", dir.display()))?;
+                        std::fs::create_dir_all(&dir).with_context(|| {
+                            format!("Failed to create completions directory {}", dir.display())
+                        })?;
                     }
                     let filename = cli::completions::get_completions_filename(clap_shell);
                     let path = dir.join(filename);
