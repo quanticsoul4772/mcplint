@@ -27,21 +27,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `neo4j` - Neo4j graph database for vulnerability knowledge base
   - `redis` - Redis distributed cache backend
 
+- **Async Performance Optimization**
+  - Parallel security detector execution in scanner engine using `futures::stream::buffer_unordered`
+  - Parallel tool/resource/prompt validation using Rayon parallel iterators
+  - Parallel JSON Schema validation for large tool sets
+  - Design document at `docs/async-optimization-plan.md`
+
 ### Changed
 
 - AI providers now support advanced prompts with `use_advanced_prompts` flag
 - Ollama provider defaults to simplified prompts for better local model performance
+- Scanner `run_advanced_security_checks` now async with parallel detector execution
+- Validator `run_protocol_rules` and `run_schema_rules` use Rayon parallel iterators
 
 ### Fixed
 
 - Clippy lints for CI compatibility (needless borrows, single char push, duplicated cfg attributes)
 - Fuzzer session test overflow on Windows
 - ExplainEngine integration test flakiness with retry logic
+- Additional clippy lints (field_reassign_with_default, useless_vec, default_constructed_unit_structs)
 
 ### Tests
 
 - Added 93+ new tests across modules
-- Total test count: 3,066 passing tests
+- Total test count: 3,274 passing tests
 - Neo4j integration tests (require live connection)
 
 ## [0.3.1] - 2025-12-13

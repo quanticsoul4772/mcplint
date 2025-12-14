@@ -1,11 +1,13 @@
 //! Validation Engine - Core validation infrastructure
 //!
 //! Manages validation rule execution, result collection, and server communication.
+//! Uses parallel processing for CPU-bound validation tasks.
 
 use std::collections::HashMap;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::client::mock::McpClientTrait;
@@ -785,21 +787,29 @@ impl ValidationEngine {
     }
 
     /// Run protocol validation rules
+    ///
+    /// Uses parallel iteration for tool/resource/prompt validation.
     fn run_protocol_rules(&self, ctx: &ServerContext, results: &mut ValidationResults) {
         // PROTO-005: Valid tool definitions
         if let Some(ref tools) = ctx.tools {
             let rule = self.get_rule(ValidationRuleId::Proto005).unwrap();
             let start = Instant::now();
 
-            let mut issues = Vec::new();
-            for tool in tools {
-                if tool.name.is_empty() {
-                    issues.push("Tool has empty name".to_string());
-                }
-                if !tool.input_schema.is_object() {
-                    issues.push(format!("Tool '{}' has non-object inputSchema", tool.name));
-                }
-            }
+            // Parallel tool validation
+            let issues: Vec<String> = tools
+                .par_iter()
+                .flat_map(|tool| {
+                    let mut tool_issues = Vec::new();
+                    if tool.name.is_empty() {
+                        tool_issues.push("Tool has empty name".to_string());
+                    }
+                    if !tool.input_schema.is_object() {
+                        tool_issues
+                            .push(format!("Tool '{}' has non-object inputSchema", tool.name));
+                    }
+                    tool_issues
+                })
+                .collect();
 
             if issues.is_empty() {
                 results.add_result(ValidationResult::pass(
@@ -823,15 +833,21 @@ impl ValidationEngine {
             let rule = self.get_rule(ValidationRuleId::Proto006).unwrap();
             let start = Instant::now();
 
-            let mut issues = Vec::new();
-            for resource in &resources.resources {
-                if resource.uri.is_empty() {
-                    issues.push("Resource has empty URI".to_string());
-                }
-                if resource.name.is_empty() {
-                    issues.push(format!("Resource '{}' has empty name", resource.uri));
-                }
-            }
+            // Parallel resource validation
+            let issues: Vec<String> = resources
+                .resources
+                .par_iter()
+                .flat_map(|resource| {
+                    let mut res_issues = Vec::new();
+                    if resource.uri.is_empty() {
+                        res_issues.push("Resource has empty URI".to_string());
+                    }
+                    if resource.name.is_empty() {
+                        res_issues.push(format!("Resource '{}' has empty name", resource.uri));
+                    }
+                    res_issues
+                })
+                .collect();
 
             if issues.is_empty() {
                 results.add_result(ValidationResult::pass(
@@ -855,12 +871,18 @@ impl ValidationEngine {
             let rule = self.get_rule(ValidationRuleId::Proto007).unwrap();
             let start = Instant::now();
 
-            let mut issues = Vec::new();
-            for prompt in &prompts.prompts {
-                if prompt.name.is_empty() {
-                    issues.push("Prompt has empty name".to_string());
-                }
-            }
+            // Parallel prompt validation
+            let issues: Vec<String> = prompts
+                .prompts
+                .par_iter()
+                .filter_map(|prompt| {
+                    if prompt.name.is_empty() {
+                        Some("Prompt has empty name".to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
 
             if issues.is_empty() {
                 results.add_result(ValidationResult::pass(
@@ -917,18 +939,24 @@ impl ValidationEngine {
     }
 
     /// Run JSON Schema validation rules
+    ///
+    /// Uses parallel iteration via Rayon for CPU-bound schema validation.
     fn run_schema_rules(&self, ctx: &ServerContext, results: &mut ValidationResults) {
         // SCHEMA-001: Tool inputSchema is valid JSON Schema
+        // This is the most CPU-intensive validation - uses parallel iteration
         if let Some(ref tools) = ctx.tools {
             let rule = self.get_rule(ValidationRuleId::Schema001).unwrap();
             let start = Instant::now();
 
-            let mut issues = Vec::new();
-            for tool in tools {
-                if let Err(e) = validate_json_schema(&tool.input_schema) {
-                    issues.push(format!("Tool '{}': {}", tool.name, e));
-                }
-            }
+            // Use Rayon parallel iterator for schema validation
+            let issues: Vec<String> = tools
+                .par_iter()
+                .filter_map(|tool| {
+                    validate_json_schema(&tool.input_schema)
+                        .err()
+                        .map(|e| format!("Tool '{}': {}", tool.name, e))
+                })
+                .collect();
 
             if issues.is_empty() {
                 results.add_result(ValidationResult::pass(
@@ -952,17 +980,22 @@ impl ValidationEngine {
             let rule = self.get_rule(ValidationRuleId::Schema002).unwrap();
             let start = Instant::now();
 
-            let mut issues = Vec::new();
-            for tool in tools {
-                if let Some(obj) = tool.input_schema.as_object() {
-                    if !obj.contains_key("type") {
-                        issues.push(format!(
-                            "Tool '{}': inputSchema missing 'type' field",
-                            tool.name
-                        ));
-                    }
-                }
-            }
+            // Parallel validation for type field presence
+            let issues: Vec<String> = tools
+                .par_iter()
+                .filter_map(|tool| {
+                    tool.input_schema.as_object().and_then(|obj| {
+                        if !obj.contains_key("type") {
+                            Some(format!(
+                                "Tool '{}': inputSchema missing 'type' field",
+                                tool.name
+                            ))
+                        } else {
+                            None
+                        }
+                    })
+                })
+                .collect();
 
             if issues.is_empty() {
                 results.add_result(ValidationResult::pass(
@@ -986,19 +1019,23 @@ impl ValidationEngine {
             let rule = self.get_rule(ValidationRuleId::Schema003).unwrap();
             let start = Instant::now();
 
-            let mut issues = Vec::new();
-            for tool in tools {
-                if let Some(obj) = tool.input_schema.as_object() {
-                    if let Some(serde_json::Value::String(t)) = obj.get("type") {
-                        if t == "object" && !obj.contains_key("properties") {
-                            issues.push(format!(
-                                "Tool '{}': object schema missing 'properties' field",
-                                tool.name
-                            ));
+            // Parallel validation for properties field
+            let issues: Vec<String> = tools
+                .par_iter()
+                .filter_map(|tool| {
+                    tool.input_schema.as_object().and_then(|obj| {
+                        if let Some(serde_json::Value::String(t)) = obj.get("type") {
+                            if t == "object" && !obj.contains_key("properties") {
+                                return Some(format!(
+                                    "Tool '{}': object schema missing 'properties' field",
+                                    tool.name
+                                ));
+                            }
                         }
-                    }
-                }
-            }
+                        None
+                    })
+                })
+                .collect();
 
             if issues.is_empty() {
                 results.add_result(ValidationResult::pass(
@@ -1022,31 +1059,36 @@ impl ValidationEngine {
             let rule = self.get_rule(ValidationRuleId::Schema004).unwrap();
             let start = Instant::now();
 
-            let mut issues = Vec::new();
-            for tool in tools {
-                if let Some(obj) = tool.input_schema.as_object() {
-                    if let Some(required) = obj.get("required") {
-                        if !required.is_array() {
-                            issues
-                                .push(format!("Tool '{}': 'required' must be an array", tool.name));
-                        } else if let Some(arr) = required.as_array() {
-                            // Check all required fields exist in properties
-                            if let Some(props) = obj.get("properties").and_then(|p| p.as_object()) {
-                                for r in arr {
-                                    if let Some(name) = r.as_str() {
-                                        if !props.contains_key(name) {
-                                            issues.push(format!(
-                                                "Tool '{}': required field '{}' not in properties",
-                                                tool.name, name
-                                            ));
+            // Parallel validation for required array
+            let issues: Vec<String> = tools
+                .par_iter()
+                .flat_map(|tool| {
+                    let mut tool_issues = Vec::new();
+                    if let Some(obj) = tool.input_schema.as_object() {
+                        if let Some(required) = obj.get("required") {
+                            if !required.is_array() {
+                                tool_issues
+                                    .push(format!("Tool '{}': 'required' must be an array", tool.name));
+                            } else if let Some(arr) = required.as_array() {
+                                // Check all required fields exist in properties
+                                if let Some(props) = obj.get("properties").and_then(|p| p.as_object()) {
+                                    for r in arr {
+                                        if let Some(name) = r.as_str() {
+                                            if !props.contains_key(name) {
+                                                tool_issues.push(format!(
+                                                    "Tool '{}': required field '{}' not in properties",
+                                                    tool.name, name
+                                                ));
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                }
-            }
+                    tool_issues
+                })
+                .collect();
 
             if issues.is_empty() {
                 results.add_result(ValidationResult::pass(

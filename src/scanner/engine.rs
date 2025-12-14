@@ -1,11 +1,14 @@
 //! Scan Engine - Core security scanning orchestration
 //!
 //! Coordinates security rule execution and findings collection.
+//! Uses parallel execution for independent checks to maximize throughput.
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
+use futures::stream::{self, StreamExt};
 use regex::Regex;
 
 use crate::client::McpClient;
@@ -163,8 +166,8 @@ impl ScanEngine {
         self.run_data_checks(&ctx, &mut results);
         self.run_dos_checks(&ctx, &mut results);
 
-        // Run M6 advanced security checks
-        self.run_advanced_security_checks(&ctx, &mut results);
+        // Run M6 advanced security checks (parallelized)
+        self.run_advanced_security_checks(&ctx, &mut results).await;
 
         // Cleanup
         let _ = client.close().await;
@@ -790,65 +793,68 @@ impl ScanEngine {
     }
 
     /// M6 Advanced Security Checks (SEC-040 to SEC-045)
-    fn run_advanced_security_checks(&self, ctx: &ServerContext, results: &mut ScanResults) {
-        // MCP-SEC-040: Enhanced Tool Description Injection
+    ///
+    /// Runs detectors in parallel for better performance on multi-core systems.
+    async fn run_advanced_security_checks(&self, ctx: &ServerContext, results: &mut ScanResults) {
+        // Build list of checks to run based on config
+        let mut checks_to_run: Vec<(&str, &str)> = Vec::new();
+
         if self.should_run("MCP-SEC-040", "injection") {
-            results.total_checks += 1;
-            let detector = ToolInjectionDetector::new();
-            let findings = detector.check_tools(&ctx.tools);
-            for finding in findings {
-                results.add_finding(finding);
-            }
+            checks_to_run.push(("MCP-SEC-040", "injection"));
         }
-
-        // MCP-SEC-041: Cross-Server Tool Shadowing
         if self.should_run("MCP-SEC-041", "protocol") {
-            results.total_checks += 1;
-            let detector = ToolShadowingDetector::new();
-            // Pass server name to help identify legitimate tool sources
-            let server_name = Some(ctx.server_name.as_str());
-            let findings = detector.check_tools(&ctx.tools, server_name);
-            for finding in findings {
-                results.add_finding(finding);
-            }
+            checks_to_run.push(("MCP-SEC-041", "protocol"));
         }
-
-        // MCP-SEC-042: Rug Pull Detection
-        // Note: Full rug pull detection requires baseline comparison.
-        // Here we perform basic checks for suspicious tool definition patterns
-        // that might indicate preparation for a rug pull attack.
         if self.should_run("MCP-SEC-042", "protocol") {
-            results.total_checks += 1;
-            for finding in self.check_rug_pull_indicators(ctx) {
-                results.add_finding(finding);
-            }
+            checks_to_run.push(("MCP-SEC-042", "rug_pull"));
         }
-
-        // MCP-SEC-043: OAuth Scope Abuse
         if self.should_run("MCP-SEC-043", "auth") {
-            results.total_checks += 1;
-            let detector = OAuthAbuseDetector::new();
-            let findings = detector.check_tools(&ctx.tools);
-            for finding in findings {
-                results.add_finding(finding);
-            }
+            checks_to_run.push(("MCP-SEC-043", "auth"));
         }
-
-        // MCP-SEC-044: Unicode Hidden Instructions
         if self.should_run("MCP-SEC-044", "injection") {
-            results.total_checks += 1;
-            let detector = UnicodeHiddenDetector::new();
-            let findings = detector.check_tools(&ctx.tools);
-            for finding in findings {
-                results.add_finding(finding);
-            }
+            checks_to_run.push(("MCP-SEC-044", "unicode"));
+        }
+        if self.should_run("MCP-SEC-045", "injection") {
+            checks_to_run.push(("MCP-SEC-045", "schema"));
         }
 
-        // MCP-SEC-045: Schema Poisoning
-        if self.should_run("MCP-SEC-045", "injection") {
-            results.total_checks += 1;
-            let detector = SchemaPoisoningDetector::new();
-            let findings = detector.check_tools(&ctx.tools);
+        results.total_checks += checks_to_run.len();
+
+        if checks_to_run.is_empty() {
+            return;
+        }
+
+        // Use Arc to share context across parallel tasks
+        let ctx = Arc::new(ctx.clone());
+        let concurrency = num_cpus::get().min(checks_to_run.len()).max(1);
+
+        // Run all detectors in parallel
+        let all_findings: Vec<Vec<Finding>> = stream::iter(checks_to_run)
+            .map(|(rule_id, check_type)| {
+                let ctx = Arc::clone(&ctx);
+                async move {
+                    match check_type {
+                        "injection" if rule_id == "MCP-SEC-040" => {
+                            ToolInjectionDetector::new().check_tools(&ctx.tools)
+                        }
+                        "protocol" if rule_id == "MCP-SEC-041" => {
+                            let server_name = Some(ctx.server_name.as_str());
+                            ToolShadowingDetector::new().check_tools(&ctx.tools, server_name)
+                        }
+                        "rug_pull" => check_rug_pull_indicators_standalone(&ctx),
+                        "auth" => OAuthAbuseDetector::new().check_tools(&ctx.tools),
+                        "unicode" => UnicodeHiddenDetector::new().check_tools(&ctx.tools),
+                        "schema" => SchemaPoisoningDetector::new().check_tools(&ctx.tools),
+                        _ => Vec::new(),
+                    }
+                }
+            })
+            .buffer_unordered(concurrency)
+            .collect()
+            .await;
+
+        // Aggregate all findings
+        for findings in all_findings {
             for finding in findings {
                 results.add_finding(finding);
             }
@@ -980,6 +986,127 @@ impl ScanEngine {
 
         findings
     }
+}
+
+/// Standalone rug pull indicator check for parallel execution
+fn check_rug_pull_indicators_standalone(ctx: &ServerContext) -> Vec<Finding> {
+    let mut findings = Vec::new();
+
+    for tool in &ctx.tools {
+        let desc = tool.description.as_deref().unwrap_or("");
+        let desc_lower = desc.to_lowercase();
+        let name_lower = tool.name.to_lowercase();
+
+        // Check for suspiciously short descriptions
+        if desc.len() < 10 && !ctx.tools.is_empty() {
+            findings.push(
+                Finding::new(
+                    "MCP-SEC-042",
+                    Severity::Low,
+                    "Minimal Tool Description",
+                    format!(
+                        "Tool '{}' has a very short description ({}chars). \
+                         Minimal descriptions make it harder to detect changes in tool behavior.",
+                        tool.name,
+                        desc.len()
+                    ),
+                )
+                .with_location(FindingLocation::tool(&tool.name))
+                .with_evidence(Evidence::observation(
+                    "Short description length",
+                    format!("Description: \"{}\"", desc),
+                ))
+                .with_remediation(
+                    "Provide detailed, specific descriptions for all tools. \
+                     This helps users and security scanners detect behavioral changes.",
+                )
+                .with_cwe("494"),
+            );
+        }
+
+        // Check for dynamic/remote code patterns
+        let dynamic_patterns = [
+            "eval",
+            "exec",
+            "remote",
+            "download",
+            "fetch_code",
+            "load_plugin",
+            "dynamic",
+            "runtime",
+            "inject",
+        ];
+
+        for pattern in &dynamic_patterns {
+            if name_lower.contains(pattern) || desc_lower.contains(pattern) {
+                findings.push(
+                    Finding::new(
+                        "MCP-SEC-042",
+                        Severity::Medium,
+                        "Dynamic Code Loading Capability",
+                        format!(
+                            "Tool '{}' appears to support dynamic code loading ('{}' pattern). \
+                             This could enable rug pull attacks by loading malicious code after trust is established.",
+                            tool.name, pattern
+                        ),
+                    )
+                    .with_location(FindingLocation::tool(&tool.name))
+                    .with_evidence(Evidence::observation(
+                        format!("Pattern detected: {}", pattern),
+                        "Dynamic code loading capability",
+                    ))
+                    .with_remediation(
+                        "Avoid dynamic code loading from remote sources. \
+                         If necessary, implement code signing and integrity verification.",
+                    )
+                    .with_cwe("494")
+                    .with_reference(Reference::mcp_advisory("MCP-Security-Advisory-2025-04")),
+                );
+                break;
+            }
+        }
+
+        // Check for self-modification capabilities
+        let self_mod_patterns = [
+            "update_tool",
+            "modify_tool",
+            "change_schema",
+            "alter_definition",
+            "reconfigure",
+            "self_update",
+        ];
+
+        for pattern in &self_mod_patterns {
+            if name_lower.contains(pattern) || desc_lower.contains(pattern) {
+                findings.push(
+                    Finding::new(
+                        "MCP-SEC-042",
+                        Severity::High,
+                        "Self-Modification Capability",
+                        format!(
+                            "Tool '{}' appears to support self-modification ('{}' pattern). \
+                             This is a high-risk capability that could enable rug pull attacks.",
+                            tool.name, pattern
+                        ),
+                    )
+                    .with_location(FindingLocation::tool(&tool.name))
+                    .with_evidence(Evidence::observation(
+                        format!("Self-modification pattern: {}", pattern),
+                        "Tool can modify its own definition",
+                    ))
+                    .with_remediation(
+                        "Remove self-modification capabilities. Tool definitions should be static \
+                         and only changeable through controlled deployment processes.",
+                    )
+                    .with_cwe("494")
+                    .with_reference(Reference::mcp_advisory("MCP-Security-Advisory-2025-04")),
+                );
+                break;
+            }
+        }
+    }
+
+    findings
 }
 
 // Helper functions for schema analysis
@@ -3554,9 +3681,9 @@ mod tests {
         assert_eq!(results.total_findings(), 0);
     }
 
-    // Test run_advanced_security_checks aggregate method
-    #[test]
-    fn engine_run_advanced_security_checks() {
+    // Test run_advanced_security_checks aggregate method (now async with parallel execution)
+    #[tokio::test]
+    async fn engine_run_advanced_security_checks() {
         let config = ScanConfig::default();
         let engine = ScanEngine::new(config);
 
@@ -3568,13 +3695,15 @@ mod tests {
         ));
 
         let mut results = ScanResults::new("test", ScanProfile::Standard);
-        engine.run_advanced_security_checks(&ctx, &mut results);
+        engine
+            .run_advanced_security_checks(&ctx, &mut results)
+            .await;
 
         assert!(results.total_checks >= 1);
     }
 
-    #[test]
-    fn engine_run_advanced_security_checks_clean() {
+    #[tokio::test]
+    async fn engine_run_advanced_security_checks_clean() {
         let config = ScanConfig::default();
         let engine = ScanEngine::new(config);
 
@@ -3586,7 +3715,9 @@ mod tests {
         ));
 
         let mut results = ScanResults::new("test", ScanProfile::Standard);
-        engine.run_advanced_security_checks(&ctx, &mut results);
+        engine
+            .run_advanced_security_checks(&ctx, &mut results)
+            .await;
 
         assert_eq!(results.total_findings(), 0);
     }
