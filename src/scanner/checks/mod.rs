@@ -1,10 +1,14 @@
 //! Security Check Modules
 //!
 //! Individual security check implementations organized by category.
-//! These modules provide a modular structure for security checks,
-//! allowing future migration of checks from engine.rs.
+//! These modules provide modular, trait-based security checks with comprehensive tests.
+//! Used internally by scanner and available for library consumers.
+//!
+//! Public library API - traits enable custom check implementations.
+//! Scanner uses inline checks; traits exist for extensibility and testing.
 
-#![allow(dead_code)] // Modules prepared for future migration
+// Public API not consumed by CLI - available for library consumers.
+#![allow(dead_code)]
 
 pub mod auth;
 pub mod data;

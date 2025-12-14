@@ -14,7 +14,6 @@ mod engine;
 mod finding;
 mod helpers;
 pub mod multi_server;
-mod results;
 pub mod rules;
 pub mod streaming;
 

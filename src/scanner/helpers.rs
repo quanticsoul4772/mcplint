@@ -1,9 +1,12 @@
 //! Schema Analysis Helpers
 //!
 //! Helper functions for analyzing JSON Schema structures in tool definitions.
-//! These functions are prepared for future migration from engine.rs.
+//! Used by scanner/checks/ modules for security analysis.
+//!
+//! Public library API - helpers for building custom security checks.
 
-#![allow(dead_code)] // Prepared for future migration
+// Public API not consumed by CLI - available for library consumers.
+#![allow(dead_code)]
 
 /// Check if a schema has string parameters
 pub fn has_string_parameters(schema: &serde_json::Value) -> bool {
