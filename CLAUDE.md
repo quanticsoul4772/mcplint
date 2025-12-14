@@ -191,9 +191,18 @@ Key crates:
 ## Test Coverage
 
 Current statistics:
-- **5,000+ tests** across lib (2,420), bin (2,563), and integration test suites
+- **3,068 unique tests** (2,965 unit + 103 integration)
 - Integration tests use live MCP servers (filesystem, memory)
-- Run time: ~65 seconds for full suite
+- Run time: ~80 seconds for full suite
+
+Test breakdown:
+| Suite | Tests |
+|-------|-------|
+| Unit tests (lib.rs) | 2,965 |
+| ai_integration | 26 |
+| cache_integration | 13 |
+| interactive_tests | 30 |
+| server_integration | 34 |
 
 Key module coverage:
 - scanner/engine.rs: 93.8%
@@ -204,9 +213,11 @@ Key module coverage:
 - fuzzer/session.rs: comprehensive unit tests
 - baseline/store.rs: comprehensive unit tests
 
-Run coverage:
+Run tests:
 ```bash
-cargo tarpaulin --lib --test server_integration --out Stdout
+cargo test                        # Run all tests
+cargo test -- --test-threads=1    # Sequential execution
+cargo test scanner::              # Run scanner module tests only
 ```
 
 ## v0.2.0 CLI Features
@@ -248,3 +259,227 @@ Features:
 - Combined SARIF output for CI/CD
 - Aggregated statistics and severity counts
 - Per-server timeout configuration
+
+## Public API Reference
+
+MCPLint exposes a library API for programmatic use. Key public types:
+
+### Core Engines
+
+```rust
+// Scanner - Security vulnerability detection
+use mcplint::{ScanEngine, ScanConfig, ScanResults, Finding, Severity};
+
+let engine = ScanEngine::new(config);
+let results: ScanResults = engine.scan(&tools).await?;
+for finding in results.findings {
+    println!("{}: {}", finding.severity, finding.title);
+}
+
+// Validator - Protocol compliance checking
+use mcplint::{ValidationEngine, ValidationConfig, ValidationResults};
+
+let engine = ValidationEngine::new(config);
+let results: ValidationResults = engine.validate(&client).await?;
+
+// Fuzzer - Coverage-guided fuzzing
+use mcplint::fuzzer::{FuzzEngine, FuzzSession, FuzzResults, FuzzProfile};
+
+let session = FuzzSession::new(config).await?;
+let results: FuzzResults = session.run().await?;
+```
+
+### AI Explanation
+
+```rust
+use mcplint::ai::{AiConfig, ExplainEngine, AiProvider, AudienceLevel};
+
+let config = AiConfig {
+    provider: AiProvider::Ollama,
+    model: Some("llama3.2".to_string()),
+    audience: AudienceLevel::Intermediate,
+    ..Default::default()
+};
+let engine = ExplainEngine::new(config, cache).await?;
+let explanation = engine.explain(&finding).await?;
+```
+
+### Caching
+
+```rust
+use mcplint::cache::{CacheManager, CacheConfig, CacheBackend};
+
+// Memory cache
+let cache = CacheManager::memory();
+
+// Filesystem cache (persistent)
+let config = CacheConfig::default();
+let cache = CacheManager::new(config).await?;
+
+// Store/retrieve
+cache.set_schema("server-hash", &tools).await?;
+let cached: Option<Vec<Tool>> = cache.get_schema("server-hash").await?;
+```
+
+### Baseline Comparison
+
+```rust
+use mcplint::baseline::{Baseline, DiffEngine, DiffResult};
+
+let baseline = Baseline::load("baseline.json")?;
+let diff: DiffResult = DiffEngine::compare(&baseline, &current_findings);
+println!("New: {}, Fixed: {}", diff.new.len(), diff.fixed.len());
+```
+
+### Fingerprinting
+
+```rust
+use mcplint::fingerprinting::{FingerprintHasher, FingerprintComparator, ToolFingerprint};
+
+let fingerprint: ToolFingerprint = FingerprintHasher::fingerprint(&tool)?;
+let diff = FingerprintComparator::compare(&old_fp, &new_fp);
+if diff.is_breaking() {
+    println!("Breaking change detected!");
+}
+```
+
+### Transport Layer
+
+```rust
+use mcplint::transport::{Transport, TransportType, StdioTransport, detect_transport_type};
+
+// Auto-detect transport
+let transport_type = detect_transport_type("http://localhost:8080/mcp");
+
+// Connect to server
+let mut transport = StdioTransport::spawn(
+    "node",
+    &["server.js".to_string()],
+    &env_vars,
+    TransportConfig::default()
+).await?;
+
+// Send request
+let response = transport.request("tools/list", None).await?;
+```
+
+### Scanner Profiles
+
+```rust
+use mcplint::scanner::ScanProfile;
+
+// Quick: Fast checks, ~5 seconds
+// Standard: Balanced (default), ~30 seconds
+// Full: Comprehensive, ~2 minutes
+// Enterprise: Maximum depth, ~5 minutes
+let profile = ScanProfile::Standard;
+```
+
+### Finding Severities
+
+```rust
+use mcplint::scanner::Severity;
+
+// Critical - Immediate exploitation risk
+// High - Significant security impact
+// Medium - Moderate risk
+// Low - Minor issues
+// Info - Informational findings
+match finding.severity {
+    Severity::Critical | Severity::High => panic!("Security issue!"),
+    _ => {}
+}
+```
+
+### Output Formats
+
+```rust
+use mcplint::cli::OutputFormat;
+use mcplint::reporter::{SarifReporter, JunitReporter, GitlabReporter};
+
+// Generate SARIF for GitHub Code Scanning
+let sarif = SarifReporter::new().generate(&results)?;
+
+// Generate JUnit for test runners
+let junit = JunitReporter::new().generate(&results)?;
+```
+
+## Architecture Deep Dive
+
+### Data Flow
+
+```
+User Command
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  CLI Layer (src/cli/)                                               │
+│  ├── commands/  - Subcommand implementations                        │
+│  ├── config.rs  - Configuration loading & validation                │
+│  └── interactive/ - TUI wizards for scan/fuzz/init/explain          │
+└─────────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Transport Layer (src/transport/)                                   │
+│  ├── stdio.rs         - Spawn & communicate with local servers      │
+│  ├── sse.rs           - SSE transport (MCP 2024-11 spec)           │
+│  └── streamable_http.rs - HTTP transport (MCP 2025 spec)           │
+└─────────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Engine Layer                                                        │
+│  ├── validator/  - Protocol compliance (56 rules)                   │
+│  ├── scanner/    - Security vulnerability detection (20+ rules)    │
+│  ├── fuzzer/     - Coverage-guided fuzzing with mutation strategies│
+│  └── ai/         - AI-powered vulnerability explanations            │
+└─────────────────────────────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  Support Layer                                                       │
+│  ├── cache/         - Multi-backend caching (memory/fs/redis)       │
+│  ├── baseline/      - Diff comparison for CI/CD                     │
+│  ├── fingerprinting/- Tool schema change detection                  │
+│  └── reporter/      - SARIF, JUnit, GitLab, HTML output             │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Module Responsibilities
+
+| Module | Purpose | Key Types |
+|--------|---------|-----------|
+| `validator` | MCP protocol compliance checking | `ValidationEngine`, `ValidationResults` |
+| `scanner` | Security vulnerability detection | `ScanEngine`, `Finding`, `Severity` |
+| `fuzzer` | Coverage-guided fuzzing | `FuzzSession`, `FuzzResults`, `FuzzCrash` |
+| `ai` | AI-powered explanations | `ExplainEngine`, `ExplanationResponse` |
+| `cache` | Multi-backend caching | `CacheManager`, `CacheConfig` |
+| `baseline` | Diff comparison | `Baseline`, `DiffEngine`, `DiffResult` |
+| `fingerprinting` | Schema change detection | `FingerprintHasher`, `ToolFingerprint` |
+| `transport` | Server communication | `Transport`, `StdioTransport` |
+| `reporter` | Output formatting | `SarifReporter`, `JunitReporter` |
+| `protocol` | MCP/JSON-RPC types | `Tool`, `Resource`, `JsonRpcMessage` |
+
+### Security Rule Categories
+
+| Prefix | Category | Example Rules |
+|--------|----------|---------------|
+| `SEC-INJ-*` | Injection | Command injection, SQL injection, path traversal |
+| `SEC-AUTH-*` | Authentication | Credential exposure, OAuth abuse |
+| `SEC-TRANS-*` | Transport | TLS/SSL security |
+| `SEC-PROTO-*` | Protocol | Tool poisoning, shadowing, rug pull |
+| `SEC-DATA-*` | Data | Data exposure, leakage |
+| `SEC-DOS-*` | Availability | Denial of service |
+
+### Validation Rule Categories
+
+| Prefix | Category | Count | Description |
+|--------|----------|-------|-------------|
+| `PROTO-*` | Protocol | 15 | JSON-RPC 2.0 and MCP protocol compliance |
+| `SCHEMA-*` | Schema | 5 | JSON Schema validation |
+| `SEQ-*` | Sequence | 3 | Method call ordering |
+| `TOOL-*` | Tool | 5 | Tool definition and invocation |
+| `RES-*` | Resource | 3 | Resource listing and access |
+| `SEC-*` | Security | 15 | Security vulnerability checks |
+| `EDGE-*` | Edge | 10 | Boundary conditions and edge cases |

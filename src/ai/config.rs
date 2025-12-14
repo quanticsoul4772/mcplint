@@ -785,4 +785,467 @@ temperature = 2.5
         let err = ConfigLoadError::MissingSection("[ai]".to_string());
         assert!(err.to_string().contains("[ai]"));
     }
+
+    // AiProvider tests
+    #[test]
+    fn ai_provider_as_str() {
+        assert_eq!(AiProvider::Anthropic.as_str(), "anthropic");
+        assert_eq!(AiProvider::OpenAI.as_str(), "openai");
+        assert_eq!(AiProvider::Ollama.as_str(), "ollama");
+    }
+
+    #[test]
+    fn ai_provider_default_model() {
+        assert_eq!(
+            AiProvider::Anthropic.default_model(),
+            "claude-sonnet-4-20250514"
+        );
+        assert_eq!(AiProvider::OpenAI.default_model(), "gpt-4o");
+        assert_eq!(AiProvider::Ollama.default_model(), "llama3.2");
+    }
+
+    #[test]
+    fn ai_provider_env_key_name() {
+        assert_eq!(AiProvider::Anthropic.env_key_name(), "ANTHROPIC_API_KEY");
+        assert_eq!(AiProvider::OpenAI.env_key_name(), "OPENAI_API_KEY");
+        assert_eq!(AiProvider::Ollama.env_key_name(), "OLLAMA_BASE_URL");
+    }
+
+    #[test]
+    fn ai_provider_display() {
+        assert_eq!(format!("{}", AiProvider::Anthropic), "anthropic");
+        assert_eq!(format!("{}", AiProvider::OpenAI), "openai");
+        assert_eq!(format!("{}", AiProvider::Ollama), "ollama");
+    }
+
+    #[test]
+    fn ai_provider_from_str_aliases() {
+        assert_eq!("claude".parse::<AiProvider>(), Ok(AiProvider::Anthropic));
+        assert_eq!("gpt".parse::<AiProvider>(), Ok(AiProvider::OpenAI));
+        assert_eq!("ollama".parse::<AiProvider>(), Ok(AiProvider::Ollama));
+    }
+
+    #[test]
+    fn ai_provider_default() {
+        assert_eq!(AiProvider::default(), AiProvider::Anthropic);
+    }
+
+    // AudienceLevel tests
+    #[test]
+    fn audience_level_as_str() {
+        assert_eq!(AudienceLevel::Beginner.as_str(), "beginner");
+        assert_eq!(AudienceLevel::Intermediate.as_str(), "intermediate");
+        assert_eq!(AudienceLevel::Expert.as_str(), "expert");
+    }
+
+    #[test]
+    fn audience_level_description() {
+        assert_eq!(
+            AudienceLevel::Beginner.description(),
+            "someone new to security concepts"
+        );
+        assert_eq!(
+            AudienceLevel::Intermediate.description(),
+            "a developer with some security knowledge"
+        );
+        assert_eq!(
+            AudienceLevel::Expert.description(),
+            "an experienced security professional"
+        );
+    }
+
+    #[test]
+    fn audience_level_display() {
+        assert_eq!(format!("{}", AudienceLevel::Beginner), "beginner");
+        assert_eq!(format!("{}", AudienceLevel::Intermediate), "intermediate");
+        assert_eq!(format!("{}", AudienceLevel::Expert), "expert");
+    }
+
+    #[test]
+    fn audience_level_from_str_aliases() {
+        assert_eq!(
+            "novice".parse::<AudienceLevel>(),
+            Ok(AudienceLevel::Beginner)
+        );
+        assert_eq!(
+            "medium".parse::<AudienceLevel>(),
+            Ok(AudienceLevel::Intermediate)
+        );
+        assert_eq!(
+            "advanced".parse::<AudienceLevel>(),
+            Ok(AudienceLevel::Expert)
+        );
+    }
+
+    #[test]
+    fn audience_level_default() {
+        assert_eq!(AudienceLevel::default(), AudienceLevel::Intermediate);
+    }
+
+    // AiConfig builder methods tests
+    #[test]
+    fn config_with_api_key() {
+        let config = AiConfig::default().with_api_key("test-key-123");
+        assert_eq!(config.api_key, Some("test-key-123".to_string()));
+    }
+
+    #[test]
+    fn config_with_ollama_url() {
+        let config = AiConfig::default().with_ollama_url("http://custom:8080");
+        assert_eq!(config.ollama_url, "http://custom:8080");
+    }
+
+    #[test]
+    fn config_with_cache_ttl() {
+        let config = AiConfig::default().with_cache_ttl(Duration::from_secs(3600));
+        assert_eq!(config.cache_ttl_secs, 3600);
+    }
+
+    #[test]
+    fn config_without_cache() {
+        let config = AiConfig::default().without_cache();
+        assert_eq!(config.cache_ttl_secs, 0);
+    }
+
+    #[test]
+    fn config_with_streaming() {
+        let config = AiConfig::default().with_streaming();
+        assert!(config.stream);
+    }
+
+    #[test]
+    fn config_cache_ttl() {
+        let config = AiConfig::default();
+        let ttl = config.cache_ttl();
+        assert_eq!(ttl, Duration::from_secs(7 * 24 * 60 * 60));
+    }
+
+    #[test]
+    fn config_timeout() {
+        let config = AiConfig::default();
+        let timeout = config.timeout();
+        assert_eq!(timeout, Duration::from_secs(120));
+    }
+
+    #[test]
+    fn config_has_api_key_with_key() {
+        let config = AiConfig::default().with_api_key("test-key");
+        assert!(config.has_api_key());
+    }
+
+    #[test]
+    fn config_has_api_key_ollama_without_key() {
+        let config = AiConfig::ollama();
+        assert!(config.has_api_key()); // Ollama doesn't need API key
+    }
+
+    #[test]
+    fn config_has_api_key_anthropic_without_key() {
+        let config = AiConfig::anthropic();
+        assert!(!config.has_api_key());
+    }
+
+    #[test]
+    fn config_temperature_clamp_high() {
+        let config = AiConfig::default().with_temperature(2.5);
+        assert_eq!(config.temperature, 1.0);
+    }
+
+    #[test]
+    fn config_temperature_clamp_low() {
+        let config = AiConfig::default().with_temperature(-0.5);
+        assert_eq!(config.temperature, 0.0);
+    }
+
+    #[test]
+    fn config_temperature_clamp_valid() {
+        let config = AiConfig::default().with_temperature(0.7);
+        assert_eq!(config.temperature, 0.7);
+    }
+
+    // Validation tests
+    #[test]
+    fn config_validate_zero_max_tokens() {
+        let mut config = AiConfig::ollama();
+        config.max_tokens = 0;
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("max_tokens"));
+    }
+
+    #[test]
+    fn config_validate_zero_timeout() {
+        let mut config = AiConfig::ollama();
+        config.timeout_secs = 0;
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("timeout_secs"));
+    }
+
+    #[test]
+    fn config_validate_openai_no_key() {
+        let config = AiConfig::openai();
+        let result = config.validate();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("OPENAI_API_KEY"));
+    }
+
+    // Preset config tests
+    #[test]
+    fn config_anthropic_preset() {
+        let config = AiConfig::anthropic();
+        assert_eq!(config.provider, AiProvider::Anthropic);
+        assert_eq!(config.model, "claude-sonnet-4-20250514");
+        assert_eq!(config.rate_limit_rpm, 50);
+        assert_eq!(config.rate_limit_tpm, 100_000);
+    }
+
+    #[test]
+    fn config_openai_preset() {
+        let config = AiConfig::openai();
+        assert_eq!(config.provider, AiProvider::OpenAI);
+        assert_eq!(config.model, "gpt-4o");
+        assert_eq!(config.rate_limit_rpm, 60);
+        assert_eq!(config.rate_limit_tpm, 150_000);
+    }
+
+    #[test]
+    fn config_ollama_preset() {
+        let config = AiConfig::ollama();
+        assert_eq!(config.provider, AiProvider::Ollama);
+        assert_eq!(config.model, "llama3.2");
+        assert_eq!(config.rate_limit_rpm, 1000);
+        assert_eq!(config.rate_limit_tpm, 1_000_000);
+    }
+
+    // AiConfigBuilder tests
+    #[test]
+    fn builder_new() {
+        let builder = AiConfigBuilder::new();
+        assert!(builder.provider.is_none());
+        assert!(builder.model.is_none());
+    }
+
+    #[test]
+    fn builder_default() {
+        let builder = AiConfigBuilder::default();
+        assert!(builder.provider.is_none());
+    }
+
+    #[test]
+    fn builder_provider() {
+        let config = AiConfigBuilder::new().provider(AiProvider::OpenAI).build();
+        assert_eq!(config.provider, AiProvider::OpenAI);
+        assert_eq!(config.model, "gpt-4o");
+    }
+
+    #[test]
+    fn builder_model() {
+        let config = AiConfigBuilder::new()
+            .provider(AiProvider::Anthropic)
+            .model("claude-opus-4")
+            .build();
+        assert_eq!(config.model, "claude-opus-4");
+    }
+
+    #[test]
+    fn builder_api_key() {
+        let config = AiConfigBuilder::new()
+            .provider(AiProvider::Anthropic)
+            .api_key("builder-test-key")
+            .build();
+        assert_eq!(config.api_key, Some("builder-test-key".to_string()));
+    }
+
+    #[test]
+    fn builder_base_url() {
+        let config = AiConfigBuilder::new()
+            .provider(AiProvider::Ollama)
+            .base_url("http://custom:9000")
+            .build();
+        assert_eq!(config.ollama_url, "http://custom:9000");
+    }
+
+    #[test]
+    fn builder_timeout() {
+        let config = AiConfigBuilder::new()
+            .provider(AiProvider::Anthropic)
+            .timeout(300)
+            .build();
+        assert_eq!(config.timeout_secs, 300);
+    }
+
+    #[test]
+    fn builder_max_tokens() {
+        let config = AiConfigBuilder::new()
+            .provider(AiProvider::OpenAI)
+            .max_tokens(4096)
+            .build();
+        assert_eq!(config.max_tokens, 4096);
+    }
+
+    #[test]
+    fn builder_temperature() {
+        let config = AiConfigBuilder::new()
+            .provider(AiProvider::Anthropic)
+            .temperature(0.8)
+            .build();
+        assert_eq!(config.temperature, 0.8);
+    }
+
+    #[test]
+    fn builder_temperature_clamp() {
+        let config = AiConfigBuilder::new()
+            .provider(AiProvider::Anthropic)
+            .temperature(1.5)
+            .build();
+        assert_eq!(config.temperature, 1.0);
+    }
+
+    #[test]
+    fn builder_chain_all() {
+        let config = AiConfigBuilder::new()
+            .provider(AiProvider::OpenAI)
+            .model("gpt-4-turbo")
+            .api_key("test-key")
+            .base_url("http://custom:8080")
+            .timeout(180)
+            .max_tokens(8192)
+            .temperature(0.6)
+            .build();
+
+        assert_eq!(config.provider, AiProvider::OpenAI);
+        assert_eq!(config.model, "gpt-4-turbo");
+        assert_eq!(config.api_key, Some("test-key".to_string()));
+        assert_eq!(config.ollama_url, "http://custom:8080");
+        assert_eq!(config.timeout_secs, 180);
+        assert_eq!(config.max_tokens, 8192);
+        assert_eq!(config.temperature, 0.6);
+    }
+
+    #[test]
+    fn builder_from_config() {
+        let config = AiConfig::builder().provider(AiProvider::Ollama).build();
+        assert_eq!(config.provider, AiProvider::Ollama);
+    }
+
+    #[test]
+    fn builder_defaults_to_anthropic() {
+        let config = AiConfigBuilder::new().build();
+        assert_eq!(config.provider, AiProvider::Anthropic);
+    }
+
+    // ExplanationContext tests
+    #[test]
+    fn explanation_context_default() {
+        let ctx = ExplanationContext::default();
+        assert_eq!(ctx.server_name, "Unknown Server");
+        assert!(ctx.tech_stack.is_empty());
+        assert_eq!(ctx.audience, AudienceLevel::Intermediate);
+        assert!(ctx.code_language.is_none());
+        assert!(ctx.include_education);
+        assert!(ctx.include_code_examples);
+    }
+
+    #[test]
+    fn explanation_context_new() {
+        let ctx = ExplanationContext::new("test-server");
+        assert_eq!(ctx.server_name, "test-server");
+    }
+
+    #[test]
+    fn explanation_context_with_audience() {
+        let ctx = ExplanationContext::new("server").with_audience(AudienceLevel::Expert);
+        assert_eq!(ctx.audience, AudienceLevel::Expert);
+    }
+
+    #[test]
+    fn explanation_context_with_tech_stack() {
+        let stack = vec!["Rust".to_string(), "Python".to_string()];
+        let ctx = ExplanationContext::new("server").with_tech_stack(stack.clone());
+        assert_eq!(ctx.tech_stack, stack);
+    }
+
+    #[test]
+    fn explanation_context_with_code_language() {
+        let ctx = ExplanationContext::new("server").with_code_language("rust");
+        assert_eq!(ctx.code_language, Some("rust".to_string()));
+    }
+
+    #[test]
+    fn explanation_context_without_education() {
+        let ctx = ExplanationContext::new("server").without_education();
+        assert!(!ctx.include_education);
+    }
+
+    #[test]
+    fn explanation_context_without_code_examples() {
+        let ctx = ExplanationContext::new("server").without_code_examples();
+        assert!(!ctx.include_code_examples);
+    }
+
+    #[test]
+    fn explanation_context_chain_all() {
+        let ctx = ExplanationContext::new("my-server")
+            .with_audience(AudienceLevel::Beginner)
+            .with_tech_stack(vec!["Rust".to_string()])
+            .with_code_language("python")
+            .without_education()
+            .without_code_examples();
+
+        assert_eq!(ctx.server_name, "my-server");
+        assert_eq!(ctx.audience, AudienceLevel::Beginner);
+        assert_eq!(ctx.tech_stack, vec!["Rust".to_string()]);
+        assert_eq!(ctx.code_language, Some("python".to_string()));
+        assert!(!ctx.include_education);
+        assert!(!ctx.include_code_examples);
+    }
+
+    // Edge cases and additional coverage
+    #[test]
+    fn config_load_api_key_from_env_when_already_set() {
+        let mut config = AiConfig::anthropic().with_api_key("existing-key");
+        config.load_api_key_from_env();
+        // Should not override existing key
+        assert_eq!(config.api_key, Some("existing-key".to_string()));
+    }
+
+    #[test]
+    fn parse_toml_provider_update_model() {
+        // When provider is set, model should update to provider's default
+        let toml_content = r#"
+[ai]
+provider = "openai"
+"#;
+        let config = AiConfig::parse_toml(toml_content).unwrap();
+        assert_eq!(config.provider, AiProvider::OpenAI);
+        assert_eq!(config.model, "gpt-4o"); // OpenAI default
+    }
+
+    #[test]
+    fn parse_toml_model_override() {
+        // Explicit model should override provider default
+        let toml_content = r#"
+[ai]
+provider = "anthropic"
+model = "custom-model"
+"#;
+        let config = AiConfig::parse_toml(toml_content).unwrap();
+        assert_eq!(config.model, "custom-model");
+    }
+
+    #[test]
+    fn config_with_provider_updates_model() {
+        let config = AiConfig::default().with_provider(AiProvider::OpenAI);
+        assert_eq!(config.provider, AiProvider::OpenAI);
+        assert_eq!(config.model, "gpt-4o");
+    }
+
+    #[test]
+    fn serialization_skips_api_key() {
+        let config = AiConfig::anthropic().with_api_key("secret-key");
+        let json = serde_json::to_string(&config).unwrap();
+        assert!(!json.contains("secret-key"));
+        assert!(!json.contains("api_key"));
+    }
 }

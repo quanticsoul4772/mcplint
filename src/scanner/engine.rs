@@ -3043,4 +3043,386 @@ mod tests {
         let results = ScanResults::new("test", ScanProfile::Standard);
         assert_eq!(results.profile, "standard");
     }
+
+    // NEW TESTS - Non-duplicate additions for increased coverage
+
+    // Additional helper function tests
+    #[test]
+    fn has_limit_parameters_size_variant() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "size": { "type": "integer" }
+            }
+        });
+        assert!(has_limit_parameters(&schema));
+    }
+
+    #[test]
+    fn has_path_parameters_filepath_variant() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "filepath": { "type": "string" }
+            }
+        });
+        assert!(has_path_parameters(&schema));
+    }
+
+    #[test]
+    fn has_url_parameters_href_variant() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "href": { "type": "string" }
+            }
+        });
+        assert!(has_url_parameters(&schema));
+    }
+
+    // Additional command injection patterns not yet covered
+    #[test]
+    fn engine_check_command_injection_run_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "run_script",
+            None,
+            make_string_schema(),
+        ));
+
+        let finding = engine.check_command_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn engine_check_command_injection_system_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "system_call",
+            None,
+            make_string_schema(),
+        ));
+
+        let finding = engine.check_command_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn engine_check_command_injection_spawn_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "spawn_process",
+            None,
+            make_string_schema(),
+        ));
+
+        let finding = engine.check_command_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn engine_check_command_injection_popen_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "popen_call",
+            None,
+            make_string_schema(),
+        ));
+
+        let finding = engine.check_command_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    // Additional SQL injection patterns
+    #[test]
+    fn engine_check_sql_injection_sqlite_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "sqlite_query",
+            None,
+            make_string_schema(),
+        ));
+
+        let finding = engine.check_sql_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn engine_check_sql_injection_mongodb_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "mongodb_find",
+            None,
+            make_string_schema(),
+        ));
+
+        let finding = engine.check_sql_injection(&ctx);
+        assert!(finding.is_some());
+    }
+
+    // Additional path traversal patterns
+    #[test]
+    fn engine_check_path_traversal_load_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "load_file",
+            None,
+            make_path_schema(),
+        ));
+
+        let finding = engine.check_path_traversal(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn engine_check_path_traversal_save_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "save_data",
+            None,
+            make_path_schema(),
+        ));
+
+        let finding = engine.check_path_traversal(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn engine_check_path_traversal_open_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "open_file",
+            None,
+            make_path_schema(),
+        ));
+
+        let finding = engine.check_path_traversal(&ctx);
+        assert!(finding.is_some());
+    }
+
+    // Additional credential exposure patterns
+    #[test]
+    fn engine_check_credential_exposure_secret_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "auth_handler",
+            Some("Handles secret credentials and logs them"),
+            make_empty_schema(),
+        ));
+
+        let finding = engine.check_credential_exposure(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn engine_check_credential_exposure_apikey_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "key_manager",
+            Some("Manages apikey and enables logging"),
+            make_empty_schema(),
+        ));
+
+        let finding = engine.check_credential_exposure(&ctx);
+        assert!(finding.is_some());
+    }
+
+    // Additional sensitive data exposure patterns
+    #[test]
+    fn engine_check_sensitive_data_exposure_account_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "get_account_details",
+            None,
+            make_empty_schema(),
+        ));
+
+        let finding = engine.check_sensitive_data_exposure(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn engine_check_sensitive_data_exposure_config_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "read_config",
+            None,
+            make_empty_schema(),
+        ));
+
+        let finding = engine.check_sensitive_data_exposure(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn engine_check_sensitive_data_exposure_environment_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "list_environment",
+            None,
+            make_empty_schema(),
+        ));
+
+        let finding = engine.check_sensitive_data_exposure(&ctx);
+        assert!(finding.is_some());
+    }
+
+    // Additional resource consumption patterns
+    #[test]
+    fn engine_check_resource_consumption_upload_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "upload_files",
+            None,
+            make_empty_schema(),
+        ));
+
+        let finding = engine.check_resource_consumption(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn engine_check_resource_consumption_stream_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "stream_data",
+            None,
+            make_empty_schema(),
+        ));
+
+        let finding = engine.check_resource_consumption(&ctx);
+        assert!(finding.is_some());
+    }
+
+    #[test]
+    fn engine_check_resource_consumption_all_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "download_all",
+            None,
+            make_empty_schema(),
+        ));
+
+        let finding = engine.check_resource_consumption(&ctx);
+        assert!(finding.is_some());
+    }
+
+    // Rug pull additional patterns
+    #[test]
+    fn engine_check_rug_pull_download_keyword() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let mut ctx = ServerContext::for_test("test");
+        ctx.tools.push(make_tool(
+            "download_plugin",
+            Some("Downloads plugins at runtime"),
+            make_empty_schema(),
+        ));
+
+        let findings = engine.check_rug_pull_indicators(&ctx);
+        assert!(findings.iter().any(|f| f.title == "Dynamic Code Loading Capability"));
+    }
+
+    // ScanConfig tests
+    #[test]
+    fn scan_config_with_profile_enterprise() {
+        let config = ScanConfig::default().with_profile(ScanProfile::Enterprise);
+        let engine = ScanEngine::new(config);
+
+        // Enterprise profile should include security checks
+        assert!(engine.should_run("MCP-INJ-001", "injection"));
+    }
+
+    #[test]
+    fn scan_config_timeout_default() {
+        let config = ScanConfig::default();
+        assert!(config.timeout_secs > 0);
+    }
+
+    // Edge case tests
+    #[test]
+    fn scan_results_mixed_severities() {
+        let mut results = ScanResults::new("test", ScanProfile::Standard);
+        results.add_finding(Finding::new("TEST-001", Severity::Low, "Test", "Test"));
+        results.add_finding(Finding::new("TEST-002", Severity::Info, "Test", "Test"));
+
+        assert_eq!(results.summary.low, 1);
+        assert_eq!(results.summary.info, 1);
+        assert!(!results.has_critical_or_high());
+    }
+
+    #[test]
+    fn has_string_parameters_mixed_types() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "count": { "type": "integer" },
+                "name": { "type": "string" }
+            }
+        });
+        assert!(has_string_parameters(&schema));
+    }
+
+    #[test]
+    fn engine_check_rug_pull_no_tools_context() {
+        let config = ScanConfig::default();
+        let engine = ScanEngine::new(config);
+
+        let ctx = ServerContext::for_test("test");
+
+        let findings = engine.check_rug_pull_indicators(&ctx);
+        assert!(findings.is_empty());
+    }
 }

@@ -1211,4 +1211,182 @@ mod tests {
 
         assert_eq!(summary, "No changes detected");
     }
+
+    #[test]
+    fn test_changetype_description_change_text() {
+        let change = ChangeType::DescriptionChanged {
+            old: "old description".to_string(),
+            new: "new description".to_string(),
+        };
+        assert_eq!(change.description(), "Tool description changed");
+    }
+
+    #[test]
+    fn test_changetype_tool_removed_description() {
+        let change = ChangeType::ToolRemoved {
+            tool_name: "removed_tool".to_string(),
+        };
+        assert!(change.description().contains("removed_tool"));
+        assert!(change.description().contains("removed"));
+    }
+
+    #[test]
+    fn test_recommendations_for_breaking_type_change() {
+        let changes = vec![ChangeType::TypeChanged {
+            param: "count".to_string(),
+            old_type: "string".to_string(),
+            new_type: "number".to_string(),
+        }];
+        let recommendations =
+            FingerprintComparator::generate_recommendations(&changes, ChangeSeverity::Breaking);
+
+        assert!(!recommendations.is_empty());
+        assert!(recommendations.iter().any(|r| r.contains("CRITICAL")));
+        assert!(recommendations
+            .iter()
+            .any(|r| r.contains("count") && r.contains("string") && r.contains("number")));
+    }
+
+    #[test]
+    fn test_recommendations_for_breaking_parameter_removed() {
+        let changes = vec![ChangeType::ParameterRemoved {
+            name: "required_field".to_string(),
+            param_type: "string".to_string(),
+            required: true,
+        }];
+        let recommendations =
+            FingerprintComparator::generate_recommendations(&changes, ChangeSeverity::Breaking);
+
+        assert!(!recommendations.is_empty());
+        assert!(recommendations
+            .iter()
+            .any(|r| r.contains("required_field") && r.contains("will break")));
+    }
+
+    #[test]
+    fn test_recommendations_for_required_changed_to_true() {
+        let changes = vec![ChangeType::RequiredChanged {
+            param: "optional_param".to_string(),
+            now_required: true,
+        }];
+        let recommendations =
+            FingerprintComparator::generate_recommendations(&changes, ChangeSeverity::Major);
+
+        assert!(!recommendations.is_empty());
+        assert!(recommendations.iter().any(|r| r.contains("optional_param")
+            && r.contains("now required")
+            && r.contains("all clients provide")));
+    }
+
+    #[test]
+    fn test_recommendations_multiple_specific_changes() {
+        let changes = vec![
+            ChangeType::ParameterRemoved {
+                name: "old_param".to_string(),
+                param_type: "string".to_string(),
+                required: true,
+            },
+            ChangeType::TypeChanged {
+                param: "changed_param".to_string(),
+                old_type: "integer".to_string(),
+                new_type: "string".to_string(),
+            },
+            ChangeType::RequiredChanged {
+                param: "now_required_param".to_string(),
+                now_required: true,
+            },
+        ];
+        let recommendations =
+            FingerprintComparator::generate_recommendations(&changes, ChangeSeverity::Breaking);
+
+        // Should have recommendations for all three changes
+        assert!(recommendations.len() >= 3);
+        assert!(recommendations.iter().any(|r| r.contains("old_param")));
+        assert!(recommendations.iter().any(|r| r.contains("changed_param")));
+        assert!(recommendations
+            .iter()
+            .any(|r| r.contains("now_required_param")));
+    }
+
+    #[test]
+    fn test_severity_parse_case_insensitive() {
+        assert_eq!(
+            ChangeSeverity::parse("BREAKING"),
+            Some(ChangeSeverity::Breaking)
+        );
+        assert_eq!(ChangeSeverity::parse("None"), Some(ChangeSeverity::None));
+        assert_eq!(
+            ChangeSeverity::parse("Patch"),
+            Some(ChangeSeverity::Patch)
+        );
+        assert_eq!(
+            ChangeSeverity::parse("MiNoR"),
+            Some(ChangeSeverity::Minor)
+        );
+    }
+
+    #[test]
+    fn test_changetype_is_breaking_optional_parameter_removed() {
+        let change = ChangeType::ParameterRemoved {
+            name: "optional_param".to_string(),
+            param_type: "string".to_string(),
+            required: false,
+        };
+        assert!(!change.is_breaking());
+    }
+
+    #[test]
+    fn test_changetype_is_breaking_required_changed_to_false() {
+        let change = ChangeType::RequiredChanged {
+            param: "param".to_string(),
+            now_required: false,
+        };
+        assert!(!change.is_breaking());
+    }
+
+    #[test]
+    fn test_all_severity_indicators() {
+        assert_eq!(ChangeSeverity::None.indicator(), "✓");
+        assert_eq!(ChangeSeverity::Patch.indicator(), "~");
+        assert_eq!(ChangeSeverity::Minor.indicator(), "+");
+        assert_eq!(ChangeSeverity::Major.indicator(), "!");
+        assert_eq!(ChangeSeverity::Breaking.indicator(), "✗");
+    }
+
+    #[test]
+    fn test_all_severity_as_str() {
+        assert_eq!(ChangeSeverity::None.as_str(), "none");
+        assert_eq!(ChangeSeverity::Patch.as_str(), "patch");
+        assert_eq!(ChangeSeverity::Minor.as_str(), "minor");
+        assert_eq!(ChangeSeverity::Major.as_str(), "major");
+        assert_eq!(ChangeSeverity::Breaking.as_str(), "breaking");
+    }
+
+    #[test]
+    fn test_summary_edge_cases() {
+        // Test with single breaking change
+        let changes = vec![ChangeType::ToolRemoved {
+            tool_name: "tool".to_string(),
+        }];
+        let summary = FingerprintComparator::generate_summary(&changes, ChangeSeverity::Breaking);
+        assert!(summary.contains("1 change"));
+        assert!(summary.contains("1 breaking"));
+
+        // Test with multiple changes, some breaking
+        let changes = vec![
+            ChangeType::ParameterRemoved {
+                name: "x".to_string(),
+                param_type: "string".to_string(),
+                required: true,
+            },
+            ChangeType::ParameterAdded {
+                name: "y".to_string(),
+                param_type: "number".to_string(),
+                required: false,
+            },
+        ];
+        let summary = FingerprintComparator::generate_summary(&changes, ChangeSeverity::Breaking);
+        assert!(summary.contains("2 change"));
+        assert!(summary.contains("1 breaking"));
+    }
 }
