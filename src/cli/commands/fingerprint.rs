@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use colored::Colorize;
 use tracing::{debug, info};
 
@@ -136,7 +136,8 @@ pub async fn run_generate(
     // Save to file if requested
     if let Some(path) = output {
         let content = serde_json::to_string_pretty(&fingerprints)?;
-        std::fs::write(path, content)?;
+        std::fs::write(path, content)
+            .with_context(|| format!("Failed to write fingerprint to {}", path.display()))?;
         println!();
         println!("{} {}", "Saved to:".green(), path.display());
     }

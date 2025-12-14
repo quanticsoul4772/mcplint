@@ -5,7 +5,7 @@
 
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -949,7 +949,8 @@ async fn main() -> Result<()> {
                 // Install to default location
                 if let Some(dir) = cli::completions::get_completions_dir(clap_shell) {
                     if !dir.exists() {
-                        std::fs::create_dir_all(&dir)?;
+                        std::fs::create_dir_all(&dir)
+                            .with_context(|| format!("Failed to create completions directory {}", dir.display()))?;
                     }
                     let filename = cli::completions::get_completions_filename(clap_shell);
                     let path = dir.join(filename);

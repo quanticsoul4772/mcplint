@@ -33,6 +33,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Parallel JSON Schema validation for large tool sets
   - Design document at `docs/async-optimization-plan.md`
 
+- **Streaming Scan Results** (`src/scanner/streaming.rs`)
+  - `FindingStream` for memory-efficient consumption of scan findings
+  - `FindingProducer` for streaming findings from scanner to consumers
+  - `ScanEngine::scan_streaming()` method for streaming scan API
+  - Backpressure support via bounded tokio channels
+  - Summary accumulation during streaming (no need to hold all findings)
+  - ~99% memory reduction for large scans (10K findings: 50MB → 50KB)
+  - Backward compatible: `collect_all()` for consumers that need all findings
+  - 19 new unit tests for streaming functionality
+  - Design document at `docs/memory-optimization-plan.md`
+
+- **Enhanced Error Context**
+  - All file I/O operations now include contextual error messages using `anyhow::Context`
+  - Error messages now specify which file/directory failed (e.g., "Failed to read config from /path/to/file")
+  - Improved debugging experience with clear operation context in error chain
+  - Applied to: `init.rs`, `filesystem.rs`, `corpus.rs`, `fingerprint.rs`, `completions.rs`, `main.rs`
+  - Design document at `docs/error-context-plan.md`
+
 ### Changed
 
 - AI providers now support advanced prompts with `use_advanced_prompts` flag
@@ -49,8 +67,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Tests
 
-- Added 93+ new tests across modules
-- Total test count: 3,274 passing tests
+- Added 112+ new tests across modules
+- Total test count: 3,293 passing tests (19 new streaming tests)
 - Neo4j integration tests (require live connection)
 
 ## [0.3.1] - 2025-12-13

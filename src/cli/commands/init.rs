@@ -2,7 +2,7 @@
 
 use crate::cli::interactive::InitWizardResult;
 use crate::scanner::ScanProfile;
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use colored::Colorize;
 use serde::Serialize;
 use std::fs;
@@ -287,7 +287,8 @@ pub fn run_with_config(
         DEFAULT_CONFIG.to_string()
     };
 
-    fs::write(path, &config_content)?;
+    fs::write(path, &config_content)
+        .with_context(|| format!("Failed to write config to {}", path.display()))?;
 
     println!("{}", "✓ Configuration file created".green());
     println!("  Location: {}", output.yellow());
@@ -360,7 +361,8 @@ pub fn create_github_actions_workflow() -> Result<()> {
     use std::path::Path;
 
     let workflow_dir = Path::new(".github/workflows");
-    fs::create_dir_all(workflow_dir)?;
+    fs::create_dir_all(workflow_dir)
+        .with_context(|| format!("Failed to create workflow directory {}", workflow_dir.display()))?;
 
     let workflow_path = workflow_dir.join("mcplint.yml");
 
@@ -407,7 +409,8 @@ jobs:
       #     sarif_file: mcplint-results.sarif
 "#;
 
-    fs::write(&workflow_path, workflow_content)?;
+    fs::write(&workflow_path, workflow_content)
+        .with_context(|| format!("Failed to write workflow to {}", workflow_path.display()))?;
 
     println!(
         "  {} GitHub Actions workflow: {}",
@@ -426,9 +429,10 @@ pub fn create_gitignore_entry() -> Result<()> {
     let entry = "\n# MCPLint cache directory\n.mcplint-cache/\n";
 
     if gitignore_path.exists() {
-        let content = fs::read_to_string(gitignore_path)?;
+        let content = fs::read_to_string(gitignore_path).context("Failed to read .gitignore")?;
         if !content.contains(".mcplint-cache") {
-            fs::write(gitignore_path, format!("{}{}", content, entry))?;
+            fs::write(gitignore_path, format!("{}{}", content, entry))
+                .context("Failed to update .gitignore")?;
             println!(
                 "  {} Added {} to .gitignore",
                 "✓".green(),
@@ -438,7 +442,7 @@ pub fn create_gitignore_entry() -> Result<()> {
             println!("  {} .mcplint-cache/ already in .gitignore", "✓".green());
         }
     } else {
-        fs::write(gitignore_path, entry.trim_start())?;
+        fs::write(gitignore_path, entry.trim_start()).context("Failed to create .gitignore")?;
         println!(
             "  {} Created .gitignore with {}",
             "✓".green(),
