@@ -21,7 +21,10 @@
 
 pub mod config;
 pub mod engine;
+#[cfg(feature = "neo4j")]
+pub mod neo4j_kb;
 pub mod prompt;
+pub mod prompt_templates;
 pub mod provider;
 pub mod rate_limit;
 pub mod response;
@@ -32,8 +35,16 @@ pub mod streaming;
 pub use config::{AiConfig, AiProvider as AiProviderType, AudienceLevel, ExplanationContext};
 #[allow(unused_imports)]
 pub use engine::{EngineStats, ExplainEngine};
+#[cfg(feature = "neo4j")]
+#[allow(unused_imports)]
+pub use neo4j_kb::{
+    CveRecord, CweKnowledge, EmbeddingProvider, Neo4jConfig, SecurityKnowledgeGraph,
+    SimilarFinding, VoyageEmbedder,
+};
 #[allow(unused_imports)]
 pub use prompt::PromptBuilder;
+#[allow(unused_imports)]
+pub use prompt_templates::{AdvancedPromptBuilder, FewShotExample, VulnCategory};
 #[allow(unused_imports)]
 pub use provider::{AiProvider, MockProvider};
 #[allow(unused_imports)]
