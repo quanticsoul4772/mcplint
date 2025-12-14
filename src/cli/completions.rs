@@ -31,8 +31,10 @@ pub fn save_completions(
     shell: Shell,
     cmd: &mut Command,
     path: &std::path::Path,
-) -> std::io::Result<()> {
-    let mut file = std::fs::File::create(path)?;
+) -> anyhow::Result<()> {
+    use anyhow::Context;
+    let mut file = std::fs::File::create(path)
+        .with_context(|| format!("Failed to create completions file {}", path.display()))?;
     generate_completions(shell, cmd, &mut file);
     Ok(())
 }

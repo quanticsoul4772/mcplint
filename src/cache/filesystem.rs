@@ -47,7 +47,9 @@ impl FilesystemCache {
         // Create category subdirectories
         for category in CacheCategory::all() {
             let category_path = base_path.join(category.to_string());
-            fs::create_dir_all(&category_path).await?;
+            fs::create_dir_all(&category_path)
+                .await
+                .with_context(|| format!("Failed to create cache category directory: {}", category))?;
         }
 
         Ok(Self {
@@ -69,9 +71,13 @@ impl FilesystemCache {
             return Ok(None);
         }
 
-        let mut file = fs::File::open(path).await?;
+        let mut file = fs::File::open(path)
+            .await
+            .with_context(|| format!("Failed to open cache file {}", path.display()))?;
         let mut contents = Vec::new();
-        file.read_to_end(&mut contents).await?;
+        file.read_to_end(&mut contents)
+            .await
+            .with_context(|| format!("Failed to read cache file {}", path.display()))?;
 
         let entry: CacheEntry = serde_json::from_slice(&contents)?;
 
@@ -89,14 +95,22 @@ impl FilesystemCache {
     async fn write_entry(&self, path: &PathBuf, entry: &CacheEntry) -> Result<()> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).await?;
+            fs::create_dir_all(parent)
+                .await
+                .with_context(|| format!("Failed to create cache parent directory {}", parent.display()))?;
         }
 
         let contents = serde_json::to_vec_pretty(entry)?;
 
-        let mut file = fs::File::create(path).await?;
-        file.write_all(&contents).await?;
-        file.sync_all().await?;
+        let mut file = fs::File::create(path)
+            .await
+            .with_context(|| format!("Failed to create cache file {}", path.display()))?;
+        file.write_all(&contents)
+            .await
+            .with_context(|| format!("Failed to write cache file {}", path.display()))?;
+        file.sync_all()
+            .await
+            .with_context(|| format!("Failed to sync cache file {}", path.display()))?;
 
         Ok(())
     }
@@ -110,7 +124,9 @@ impl FilesystemCache {
         }
 
         let mut files = Vec::new();
-        let mut entries = fs::read_dir(&category_path).await?;
+        let mut entries = fs::read_dir(&category_path)
+            .await
+            .with_context(|| format!("Failed to list cache directory {}", category_path.display()))?;
 
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
@@ -185,7 +201,9 @@ impl Cache for FilesystemCache {
             if let Ok(metadata) = fs::metadata(&path).await {
                 self.stats.record_remove(metadata.len());
             }
-            fs::remove_file(&path).await?;
+            fs::remove_file(&path)
+                .await
+                .with_context(|| format!("Failed to remove cache file {}", path.display()))?;
         }
 
         Ok(())
