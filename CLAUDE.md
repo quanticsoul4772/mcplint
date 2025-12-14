@@ -66,6 +66,8 @@ src/
       multi_scan.rs    # Multi-server scanning
   ai/                  # AI provider integration
     engine.rs          # ExplainEngine
+    prompt_templates.rs # Advanced prompt engineering (few-shot, CoT)
+    neo4j_kb.rs        # Neo4j knowledge graph (optional feature)
     provider/          # Provider implementations
       anthropic.rs     # Claude API
       openai.rs        # GPT API
@@ -168,6 +170,13 @@ OPENAI_API_KEY        # For GPT models
 OLLAMA_BASE_URL       # For local Ollama (default: http://localhost:11434)
 MCPLINT_CACHE_DIR     # Cache directory
 MCPLINT_CACHE_BACKEND # Backend: filesystem, memory, redis
+
+# Neo4j Knowledge Graph (optional, requires --features neo4j)
+NEO4J_URI             # Neo4j connection URI (e.g., neo4j+s://xxx.databases.neo4j.io)
+NEO4J_USERNAME        # Database username
+NEO4J_PASSWORD        # Database password
+NEO4J_DATABASE        # Database name (default: neo4j)
+VOYAGE_API_KEY        # Voyage AI API key for embeddings
 ```
 
 ## Exit Codes
@@ -187,6 +196,7 @@ Key crates:
 - serde/serde_json: Serialization
 - reqwest: HTTP client
 - tracing: Logging
+- neo4rs: Neo4j graph database (optional, `--features neo4j`)
 
 ## Test Coverage
 
@@ -302,6 +312,45 @@ let config = AiConfig {
 };
 let engine = ExplainEngine::new(config, cache).await?;
 let explanation = engine.explain(&finding).await?;
+```
+
+### Advanced Prompt Engineering
+
+```rust
+use mcplint::ai::{AdvancedPromptBuilder, VulnCategory, FewShotExample};
+
+// Build prompts with chain-of-thought reasoning and few-shot examples
+let builder = AdvancedPromptBuilder::new()
+    .with_finding(finding.clone())
+    .with_chain_of_thought(true)
+    .with_confidence_scoring(true);
+
+let (system_prompt, user_prompt) = builder.build_prompts();
+
+// Categories: Injection, Authentication, Cryptographic, DataExposure,
+//             Deserialization, Dos, ProtocolViolation, Generic
+```
+
+### Neo4j Knowledge Graph (optional)
+
+```rust
+#[cfg(feature = "neo4j")]
+use mcplint::ai::{
+    Neo4jConfig, SecurityKnowledgeGraph, VoyageEmbedder, EmbeddingProvider,
+    SimilarFinding, CweKnowledge,
+};
+
+// Connect to Neo4j with vector search for similar vulnerabilities
+let config = Neo4jConfig::from_env()?;
+let embedder = Arc::new(VoyageEmbedder::new(api_key, "voyage-code-2", 1536));
+let kg = SecurityKnowledgeGraph::new(config, embedder).await?;
+
+// Store and search findings
+kg.store_finding(&finding, "my-server").await?;
+let similar = kg.find_similar_vulnerabilities(&finding, 5, 0.7).await?;
+
+// Retrieve CWE knowledge
+let cwe = kg.get_cwe_knowledge("CWE-78").await?;
 ```
 
 ### Caching
@@ -454,6 +503,8 @@ User Command
 | `scanner` | Security vulnerability detection | `ScanEngine`, `Finding`, `Severity` |
 | `fuzzer` | Coverage-guided fuzzing | `FuzzSession`, `FuzzResults`, `FuzzCrash` |
 | `ai` | AI-powered explanations | `ExplainEngine`, `ExplanationResponse` |
+| `ai::prompt_templates` | Advanced prompt engineering | `AdvancedPromptBuilder`, `VulnCategory`, `FewShotExample` |
+| `ai::neo4j_kb` | Neo4j knowledge graph (optional) | `SecurityKnowledgeGraph`, `VoyageEmbedder` |
 | `cache` | Multi-backend caching | `CacheManager`, `CacheConfig` |
 | `baseline` | Diff comparison | `Baseline`, `DiffEngine`, `DiffResult` |
 | `fingerprinting` | Schema change detection | `FingerprintHasher`, `ToolFingerprint` |
