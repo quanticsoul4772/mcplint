@@ -238,7 +238,7 @@ jobs:
         shell: pwsh
 
       - name: Run remaining tests
-        run: cargo test --verbose -- --skip test_ollama_explain_finding --skip test_all_providers_explain_same_finding
+        run: cargo test --verbose -- --skip test_ollama_explain_finding --skip test_all_providers_explain_same_finding --skip test_openai_explain_finding
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
