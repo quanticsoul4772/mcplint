@@ -48,3 +48,13 @@ neo4j.env
 # AI API keys
 *.key
 keys/
+
+# Internal planning/implementation docs (may contain secrets)
+*_integration.md
+*_roadmap.md
+*_detection.md
+*_prompts.md
+*_Technical_Plan.md
+*Strategy*.md
+*Integration Plan*.md
+claude_code_prompt.md
