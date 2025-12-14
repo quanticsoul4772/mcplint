@@ -224,9 +224,9 @@ impl CorpusManager {
         // Load crashes (for analysis, not re-execution)
         let crashes_dir = path.join("crashes");
         if crashes_dir.exists() {
-            for entry in fs::read_dir(&crashes_dir)
-                .with_context(|| format!("Failed to read crashes directory {}", crashes_dir.display()))?
-            {
+            for entry in fs::read_dir(&crashes_dir).with_context(|| {
+                format!("Failed to read crashes directory {}", crashes_dir.display())
+            })? {
                 let entry = entry?;
                 let file_path = entry.path();
                 if file_path.extension().is_some_and(|e| e == "json") {
@@ -242,9 +242,9 @@ impl CorpusManager {
         // Load hangs
         let hangs_dir = path.join("hangs");
         if hangs_dir.exists() {
-            for entry in fs::read_dir(&hangs_dir)
-                .with_context(|| format!("Failed to read hangs directory {}", hangs_dir.display()))?
-            {
+            for entry in fs::read_dir(&hangs_dir).with_context(|| {
+                format!("Failed to read hangs directory {}", hangs_dir.display())
+            })? {
                 let entry = entry?;
                 let file_path = entry.path();
                 if file_path.extension().is_some_and(|e| e == "json") {
@@ -260,9 +260,12 @@ impl CorpusManager {
         // Load interesting inputs (add to fuzzing corpus)
         let interesting_dir = path.join("interesting");
         if interesting_dir.exists() {
-            for entry in fs::read_dir(&interesting_dir)
-                .with_context(|| format!("Failed to read interesting directory {}", interesting_dir.display()))?
-            {
+            for entry in fs::read_dir(&interesting_dir).with_context(|| {
+                format!(
+                    "Failed to read interesting directory {}",
+                    interesting_dir.display()
+                )
+            })? {
                 let entry = entry?;
                 let file_path = entry.path();
                 if file_path.extension().is_some_and(|e| e == "json") {
@@ -302,8 +305,9 @@ impl CorpusManager {
     pub fn save_seeds(&self) -> Result<()> {
         if let Some(base) = &self.base_path {
             let seeds_dir = base.join("seeds");
-            fs::create_dir_all(&seeds_dir)
-                .with_context(|| format!("Failed to create seeds directory {}", seeds_dir.display()))?;
+            fs::create_dir_all(&seeds_dir).with_context(|| {
+                format!("Failed to create seeds directory {}", seeds_dir.display())
+            })?;
 
             for (i, seed) in self.seeds.iter().enumerate() {
                 let filename = format!("seed_{:04}.json", i);
@@ -351,8 +355,12 @@ impl CorpusManager {
         // Save to disk if path is set
         if let Some(base) = &self.base_path {
             let crashes_dir = base.join("crashes");
-            fs::create_dir_all(&crashes_dir)
-                .with_context(|| format!("Failed to create crashes directory {}", crashes_dir.display()))?;
+            fs::create_dir_all(&crashes_dir).with_context(|| {
+                format!(
+                    "Failed to create crashes directory {}",
+                    crashes_dir.display()
+                )
+            })?;
 
             let filename = format!("crash_{}_{}.json", record.crash_type, record.id);
             let filepath = crashes_dir.join(filename);
@@ -370,8 +378,9 @@ impl CorpusManager {
         // Save to disk if path is set
         if let Some(base) = &self.base_path {
             let hangs_dir = base.join("hangs");
-            fs::create_dir_all(&hangs_dir)
-                .with_context(|| format!("Failed to create hangs directory {}", hangs_dir.display()))?;
+            fs::create_dir_all(&hangs_dir).with_context(|| {
+                format!("Failed to create hangs directory {}", hangs_dir.display())
+            })?;
 
             let filename = format!("hang_{}.json", record.id);
             let filepath = hangs_dir.join(filename);
@@ -395,14 +404,19 @@ impl CorpusManager {
         // Save to disk if path is set
         if let Some(base) = &self.base_path {
             let interesting_dir = base.join("interesting");
-            fs::create_dir_all(&interesting_dir)
-                .with_context(|| format!("Failed to create interesting directory {}", interesting_dir.display()))?;
+            fs::create_dir_all(&interesting_dir).with_context(|| {
+                format!(
+                    "Failed to create interesting directory {}",
+                    interesting_dir.display()
+                )
+            })?;
 
             let filename = format!("interesting_{}.json", record.id);
             let filepath = interesting_dir.join(filename);
             let json = serde_json::to_string_pretty(&record)?;
-            fs::write(&filepath, json)
-                .with_context(|| format!("Failed to write interesting input {}", filepath.display()))?;
+            fs::write(&filepath, json).with_context(|| {
+                format!("Failed to write interesting input {}", filepath.display())
+            })?;
         }
 
         self.interesting.push(record);

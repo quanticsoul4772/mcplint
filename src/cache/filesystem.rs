@@ -47,9 +47,9 @@ impl FilesystemCache {
         // Create category subdirectories
         for category in CacheCategory::all() {
             let category_path = base_path.join(category.to_string());
-            fs::create_dir_all(&category_path)
-                .await
-                .with_context(|| format!("Failed to create cache category directory: {}", category))?;
+            fs::create_dir_all(&category_path).await.with_context(|| {
+                format!("Failed to create cache category directory: {}", category)
+            })?;
         }
 
         Ok(Self {
@@ -95,9 +95,12 @@ impl FilesystemCache {
     async fn write_entry(&self, path: &PathBuf, entry: &CacheEntry) -> Result<()> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .await
-                .with_context(|| format!("Failed to create cache parent directory {}", parent.display()))?;
+            fs::create_dir_all(parent).await.with_context(|| {
+                format!(
+                    "Failed to create cache parent directory {}",
+                    parent.display()
+                )
+            })?;
         }
 
         let contents = serde_json::to_vec_pretty(entry)?;
@@ -124,9 +127,9 @@ impl FilesystemCache {
         }
 
         let mut files = Vec::new();
-        let mut entries = fs::read_dir(&category_path)
-            .await
-            .with_context(|| format!("Failed to list cache directory {}", category_path.display()))?;
+        let mut entries = fs::read_dir(&category_path).await.with_context(|| {
+            format!("Failed to list cache directory {}", category_path.display())
+        })?;
 
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();

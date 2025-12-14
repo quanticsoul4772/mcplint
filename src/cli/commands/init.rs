@@ -361,8 +361,12 @@ pub fn create_github_actions_workflow() -> Result<()> {
     use std::path::Path;
 
     let workflow_dir = Path::new(".github/workflows");
-    fs::create_dir_all(workflow_dir)
-        .with_context(|| format!("Failed to create workflow directory {}", workflow_dir.display()))?;
+    fs::create_dir_all(workflow_dir).with_context(|| {
+        format!(
+            "Failed to create workflow directory {}",
+            workflow_dir.display()
+        )
+    })?;
 
     let workflow_path = workflow_dir.join("mcplint.yml");
 
