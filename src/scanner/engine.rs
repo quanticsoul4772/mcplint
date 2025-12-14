@@ -21,6 +21,7 @@ use super::rules::{
     OAuthAbuseDetector, SchemaPoisoningDetector, ToolInjectionDetector, ToolShadowingDetector,
     UnicodeHiddenDetector,
 };
+use super::streaming::{streaming_channel, FindingProducer, FindingStream};
 
 /// Results from a security scan
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -174,6 +175,142 @@ impl ScanEngine {
 
         results.duration_ms = start.elapsed().as_millis() as u64;
         Ok(results)
+    }
+
+    /// Run a streaming security scan against the specified server
+    ///
+    /// Returns a `FindingStream` that yields findings as they're discovered,
+    /// enabling memory-efficient processing of large scans.
+    ///
+    /// # Arguments
+    ///
+    /// * `target` - Server command or path
+    /// * `args` - Arguments to pass to the server
+    /// * `transport_type` - Optional transport type override
+    /// * `buffer_size` - Channel buffer size (default: 100)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut stream = engine.scan_streaming("server", &[], None, 100).await?;
+    ///
+    /// // Process findings as they arrive
+    /// while let Some(finding) = stream.next().await {
+    ///     println!("{}: {}", finding.severity, finding.title);
+    /// }
+    ///
+    /// // Get final summary
+    /// let summary = stream.into_summary().await;
+    /// ```
+    pub async fn scan_streaming(
+        &self,
+        target: &str,
+        args: &[String],
+        transport_type: Option<TransportType>,
+        buffer_size: usize,
+    ) -> Result<FindingStream> {
+        let (producer, stream) = streaming_channel(buffer_size);
+
+        // Clone what we need for the spawned task
+        let config = self.config.clone();
+        let target = target.to_string();
+        let args = args.to_vec();
+
+        // Spawn the scan task
+        tokio::spawn(async move {
+            let engine = ScanEngine::new(config);
+            if let Err(e) = engine
+                .scan_to_producer(&target, &args, transport_type, producer)
+                .await
+            {
+                tracing::error!("Streaming scan error: {}", e);
+            }
+            // Producer dropped here, signals end of stream
+        });
+
+        Ok(stream)
+    }
+
+    /// Internal: Run scan sending findings to producer
+    async fn scan_to_producer(
+        &self,
+        target: &str,
+        args: &[String],
+        transport_type: Option<TransportType>,
+        producer: FindingProducer,
+    ) -> Result<()> {
+        // Connect to server
+        let transport =
+            transport_type.unwrap_or_else(|| crate::transport::detect_transport_type(target));
+
+        let transport_config = TransportConfig {
+            timeout_secs: self.config.timeout_secs,
+            ..Default::default()
+        };
+
+        tracing::info!(
+            "Streaming scan: Connecting to server: {} via {:?}",
+            target,
+            transport
+        );
+        let transport_box =
+            connect_with_type(target, args, &HashMap::new(), transport_config, transport)
+                .await
+                .context("Failed to connect to server")?;
+
+        // Create and initialize client
+        let client_info = Implementation::new("mcplint-scanner", env!("CARGO_PKG_VERSION"));
+        let mut client = McpClient::new(transport_box, client_info);
+        client.mark_connected();
+
+        let init_result = client.initialize().await?;
+
+        // Build server context
+        let mut ctx = ServerContext::new(
+            &init_result.server_info.name,
+            &init_result.server_info.version,
+            &init_result.protocol_version,
+            init_result.capabilities.clone(),
+        )
+        .with_transport(transport.to_string())
+        .with_target(target);
+
+        // Collect tools, resources, prompts
+        if init_result.capabilities.has_tools() {
+            if let Ok(tools) = client.list_tools().await {
+                ctx = ctx.with_tools(tools);
+            }
+        }
+
+        if init_result.capabilities.has_resources() {
+            if let Ok(resources) = client.list_resources().await {
+                ctx = ctx.with_resources(resources);
+            }
+        }
+
+        if init_result.capabilities.has_prompts() {
+            if let Ok(prompts) = client.list_prompts().await {
+                ctx = ctx.with_prompts(prompts);
+            }
+        }
+
+        // Run security checks, streaming findings
+        self.run_injection_checks_streaming(&ctx, &mut client, &producer)
+            .await;
+        self.run_auth_checks_streaming(&ctx, &producer).await;
+        self.run_transport_checks_streaming(&ctx, &producer).await;
+        self.run_protocol_checks_streaming(&ctx, &producer).await;
+        self.run_data_checks_streaming(&ctx, &producer).await;
+        self.run_dos_checks_streaming(&ctx, &producer).await;
+
+        // Run M6 advanced security checks (parallelized, streaming)
+        self.run_advanced_security_checks_streaming(&ctx, &producer)
+            .await;
+
+        // Cleanup
+        let _ = client.close().await;
+
+        Ok(())
     }
 
     /// MCP-INJ-001 to MCP-INJ-004: Injection vulnerability checks
@@ -985,6 +1122,187 @@ impl ScanEngine {
         }
 
         findings
+    }
+
+    // ========================================================================
+    // Streaming Check Methods
+    // ========================================================================
+
+    /// Streaming version of injection checks
+    async fn run_injection_checks_streaming(
+        &self,
+        ctx: &ServerContext,
+        client: &mut McpClient,
+        producer: &FindingProducer,
+    ) {
+        // MCP-INJ-001: Command injection via tool arguments
+        if self.should_run("MCP-INJ-001", "injection") {
+            if let Some(finding) = self.check_command_injection(ctx) {
+                let _ = producer.send(finding).await;
+            }
+        }
+
+        // MCP-INJ-002: SQL injection in database tools
+        if self.should_run("MCP-INJ-002", "injection") {
+            if let Some(finding) = self.check_sql_injection(ctx) {
+                let _ = producer.send(finding).await;
+            }
+        }
+
+        // MCP-INJ-003: Path traversal
+        if self.should_run("MCP-INJ-003", "injection") {
+            if let Some(finding) = self.check_path_traversal(ctx) {
+                let _ = producer.send(finding).await;
+            }
+        }
+
+        // MCP-INJ-004: SSRF
+        if self.should_run("MCP-INJ-004", "injection") {
+            if let Some(finding) = self.check_ssrf(ctx, client).await {
+                let _ = producer.send(finding).await;
+            }
+        }
+    }
+
+    /// Streaming version of auth checks
+    async fn run_auth_checks_streaming(&self, ctx: &ServerContext, producer: &FindingProducer) {
+        // MCP-AUTH-001: Missing authentication
+        if self.should_run("MCP-AUTH-001", "auth") {
+            if let Some(finding) = self.check_missing_auth(ctx) {
+                let _ = producer.send(finding).await;
+            }
+        }
+
+        // MCP-AUTH-002: Weak token validation (requires runtime testing)
+
+        // MCP-AUTH-003: Credential exposure
+        if self.should_run("MCP-AUTH-003", "auth") {
+            if let Some(finding) = self.check_credential_exposure(ctx) {
+                let _ = producer.send(finding).await;
+            }
+        }
+    }
+
+    /// Streaming version of transport checks
+    async fn run_transport_checks_streaming(
+        &self,
+        ctx: &ServerContext,
+        producer: &FindingProducer,
+    ) {
+        // MCP-TRANS-001: Unencrypted HTTP
+        if self.should_run("MCP-TRANS-001", "transport") {
+            if let Some(finding) = self.check_unencrypted_transport(ctx) {
+                let _ = producer.send(finding).await;
+            }
+        }
+
+        // MCP-TRANS-002: TLS validation (requires runtime TLS inspection)
+    }
+
+    /// Streaming version of protocol checks
+    async fn run_protocol_checks_streaming(&self, ctx: &ServerContext, producer: &FindingProducer) {
+        // MCP-PROTO-001: Tool poisoning
+        if self.should_run("MCP-PROTO-001", "protocol") {
+            for finding in self.check_tool_poisoning(ctx) {
+                let _ = producer.send(finding).await;
+            }
+        }
+
+        // MCP-PROTO-002: Invalid JSON-RPC (covered by M1 validator)
+        // MCP-PROTO-003: Error handling (covered by M1 validator)
+    }
+
+    /// Streaming version of data checks
+    async fn run_data_checks_streaming(&self, ctx: &ServerContext, producer: &FindingProducer) {
+        // MCP-DATA-001: Sensitive data exposure
+        if self.should_run("MCP-DATA-001", "data") {
+            if let Some(finding) = self.check_sensitive_data_exposure(ctx) {
+                let _ = producer.send(finding).await;
+            }
+        }
+
+        // MCP-DATA-002: Excessive data exposure (requires runtime analysis)
+    }
+
+    /// Streaming version of DoS checks
+    async fn run_dos_checks_streaming(&self, ctx: &ServerContext, producer: &FindingProducer) {
+        // MCP-DOS-001: Resource consumption
+        if self.should_run("MCP-DOS-001", "dos") {
+            if let Some(finding) = self.check_resource_consumption(ctx) {
+                let _ = producer.send(finding).await;
+            }
+        }
+
+        // MCP-DOS-002: Rate limiting (requires runtime testing)
+    }
+
+    /// Streaming version of advanced security checks (parallelized)
+    async fn run_advanced_security_checks_streaming(
+        &self,
+        ctx: &ServerContext,
+        producer: &FindingProducer,
+    ) {
+        // Build list of checks to run based on config (use owned Strings for 'static)
+        let mut checks_to_run: Vec<(String, String)> = Vec::new();
+
+        if self.should_run("MCP-SEC-040", "injection") {
+            checks_to_run.push(("MCP-SEC-040".to_string(), "injection".to_string()));
+        }
+        if self.should_run("MCP-SEC-041", "protocol") {
+            checks_to_run.push(("MCP-SEC-041".to_string(), "protocol".to_string()));
+        }
+        if self.should_run("MCP-SEC-042", "protocol") {
+            checks_to_run.push(("MCP-SEC-042".to_string(), "rug_pull".to_string()));
+        }
+        if self.should_run("MCP-SEC-043", "auth") {
+            checks_to_run.push(("MCP-SEC-043".to_string(), "auth".to_string()));
+        }
+        if self.should_run("MCP-SEC-044", "injection") {
+            checks_to_run.push(("MCP-SEC-044".to_string(), "unicode".to_string()));
+        }
+        if self.should_run("MCP-SEC-045", "injection") {
+            checks_to_run.push(("MCP-SEC-045".to_string(), "schema".to_string()));
+        }
+
+        if checks_to_run.is_empty() {
+            return;
+        }
+
+        // Use Arc to share context across parallel tasks
+        let ctx = Arc::new(ctx.clone());
+        let concurrency = num_cpus::get().min(checks_to_run.len()).max(1);
+
+        // Run all detectors in parallel
+        let all_findings: Vec<Vec<Finding>> = stream::iter(checks_to_run)
+            .map(|(rule_id, check_type)| {
+                let ctx = Arc::clone(&ctx);
+                async move {
+                    match check_type.as_str() {
+                        "injection" if rule_id == "MCP-SEC-040" => {
+                            ToolInjectionDetector::new().check_tools(&ctx.tools)
+                        }
+                        "protocol" if rule_id == "MCP-SEC-041" => {
+                            let server_name = Some(ctx.server_name.as_str());
+                            ToolShadowingDetector::new().check_tools(&ctx.tools, server_name)
+                        }
+                        "rug_pull" => check_rug_pull_indicators_standalone(&ctx),
+                        "auth" => OAuthAbuseDetector::new().check_tools(&ctx.tools),
+                        "unicode" => UnicodeHiddenDetector::new().check_tools(&ctx.tools),
+                        "schema" => SchemaPoisoningDetector::new().check_tools(&ctx.tools),
+                        _ => Vec::new(),
+                    }
+                }
+            })
+            .buffer_unordered(concurrency)
+            .collect()
+            .await;
+
+        // Stream all findings to producer
+        for findings in all_findings {
+            for finding in findings {
+                let _ = producer.send(finding).await;
+            }
+        }
     }
 }
 
