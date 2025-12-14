@@ -461,9 +461,8 @@ mod tests {
         let dir = get_completions_dir(Shell::Bash);
 
         // Restore original
-        match original {
-            Some(val) => std::env::set_var("XDG_DATA_HOME", val),
-            None => {}
+        if let Some(val) = original {
+            std::env::set_var("XDG_DATA_HOME", val);
         }
 
         // Should fallback to home directory
@@ -500,9 +499,8 @@ mod tests {
         let dir = get_completions_dir(Shell::Zsh);
 
         // Restore original
-        match original {
-            Some(val) => std::env::set_var("FPATH", val),
-            None => {}
+        if let Some(val) = original {
+            std::env::set_var("FPATH", val);
         }
 
         // Should fallback to ~/.zfunc
@@ -536,9 +534,8 @@ mod tests {
         let dir = get_completions_dir(Shell::Fish);
 
         // Restore original
-        match original {
-            Some(val) => std::env::set_var("XDG_CONFIG_HOME", val),
-            None => {}
+        if let Some(val) = original {
+            std::env::set_var("XDG_CONFIG_HOME", val);
         }
 
         // Should fallback to ~/.config/fish/completions
@@ -583,9 +580,8 @@ mod tests {
         let dir = get_completions_dir(Shell::Elvish);
 
         // Restore original
-        match original {
-            Some(val) => std::env::set_var("XDG_CONFIG_HOME", val),
-            None => {}
+        if let Some(val) = original {
+            std::env::set_var("XDG_CONFIG_HOME", val);
         }
 
         // Should fallback to ~/.config/elvish/lib
@@ -821,7 +817,7 @@ mod tests {
 
         // Convert to string and verify it's valid bash
         let output = String::from_utf8_lossy(&buffer);
-        assert!(output.len() > 0);
+        assert!(!output.is_empty());
     }
 
     #[test]

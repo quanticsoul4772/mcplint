@@ -77,13 +77,13 @@ impl VulnCategory {
     /// Get few-shot examples for this category
     pub fn few_shot_examples(&self) -> &'static [FewShotExample] {
         match self {
-            Self::Injection => &INJECTION_EXAMPLES,
-            Self::Authentication => &AUTH_EXAMPLES,
-            Self::Cryptographic => &CRYPTO_EXAMPLES,
-            Self::DataExposure => &DATA_EXPOSURE_EXAMPLES,
-            Self::Deserialization => &DESER_EXAMPLES,
-            Self::Dos => &DOS_EXAMPLES,
-            Self::ProtocolViolation => &PROTOCOL_EXAMPLES,
+            Self::Injection => INJECTION_EXAMPLES,
+            Self::Authentication => AUTH_EXAMPLES,
+            Self::Cryptographic => CRYPTO_EXAMPLES,
+            Self::DataExposure => DATA_EXPOSURE_EXAMPLES,
+            Self::Deserialization => DESER_EXAMPLES,
+            Self::Dos => DOS_EXAMPLES,
+            Self::ProtocolViolation => PROTOCOL_EXAMPLES,
             Self::Generic => &[],
         }
     }
@@ -520,7 +520,7 @@ impl AdvancedPromptBuilder {
                     evidence.description, evidence.data
                 ));
             }
-            prompt.push_str("\n");
+            prompt.push('\n');
         }
 
         // Add CWE references if present
