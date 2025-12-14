@@ -12,6 +12,7 @@ use crate::scanner::Finding;
 
 use super::super::config::ExplanationContext;
 use super::super::prompt::{PromptBuilder, SYSTEM_PROMPT};
+use super::super::prompt_templates::AdvancedPromptBuilder;
 use super::super::response::{
     CodeExample, EducationalContext, ExplanationMetadata, ExplanationResponse, Likelihood,
     RemediationGuide, ResourceCategory, ResourceLink, VulnerabilityExplanation, WeaknessInfo,
@@ -26,6 +27,8 @@ pub struct OpenAiProvider {
     temperature: f32,
     timeout: Duration,
     client: reqwest::Client,
+    /// Whether to use advanced prompts with few-shot examples and chain-of-thought
+    use_advanced_prompts: bool,
 }
 
 impl OpenAiProvider {
@@ -51,6 +54,30 @@ impl OpenAiProvider {
             temperature,
             timeout,
             client,
+            use_advanced_prompts: false, // Disabled by default - advanced prompts need schema alignment
+        }
+    }
+
+    /// Enable or disable advanced prompts with few-shot examples
+    pub fn with_advanced_prompts(mut self, enabled: bool) -> Self {
+        self.use_advanced_prompts = enabled;
+        self
+    }
+
+    /// Build prompts for a finding, using advanced prompts if enabled
+    fn build_prompts(&self, finding: &Finding, context: &ExplanationContext) -> (String, String) {
+        if self.use_advanced_prompts {
+            let builder = AdvancedPromptBuilder::new()
+                .with_finding(finding.clone())
+                .with_chain_of_thought(true)
+                .with_confidence_scoring(true);
+            builder.build_prompts()
+        } else {
+            let user_prompt = PromptBuilder::new()
+                .with_finding(finding.clone())
+                .with_context(context.clone())
+                .build_finding_prompt();
+            (SYSTEM_PROMPT.to_string(), user_prompt)
         }
     }
 
@@ -207,19 +234,17 @@ impl AiProvider for OpenAiProvider {
     ) -> Result<ExplanationResponse> {
         let start = Instant::now();
 
-        let prompt = PromptBuilder::new()
-            .with_finding(finding.clone())
-            .with_context(context.clone())
-            .build_finding_prompt();
+        // Use advanced prompts with few-shot examples if enabled
+        let (system_prompt, user_prompt) = self.build_prompts(finding, context);
 
         let messages = vec![
             ChatMessage {
                 role: "system".to_string(),
-                content: SYSTEM_PROMPT.to_string(),
+                content: system_prompt,
             },
             ChatMessage {
                 role: "user".to_string(),
-                content: prompt,
+                content: user_prompt,
             },
         ];
 
