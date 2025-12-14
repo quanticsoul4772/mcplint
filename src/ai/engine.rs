@@ -876,8 +876,8 @@ mod tests {
         for i in 0..5 {
             finding = finding.with_evidence(Evidence::new(
                 EvidenceKind::Observation,
-                &format!("Evidence data {}", i),
-                &format!("Description {}", i),
+                format!("Evidence data {}", i),
+                format!("Description {}", i),
             ));
         }
 
@@ -1019,11 +1019,15 @@ mod tests {
         let engine = ExplainEngine::new(config).unwrap();
         let finding = sample_finding();
 
-        let mut context1 = ExplanationContext::default();
-        context1.audience = AudienceLevel::Beginner;
+        let context1 = ExplanationContext {
+            audience: AudienceLevel::Beginner,
+            ..Default::default()
+        };
 
-        let mut context2 = ExplanationContext::default();
-        context2.audience = AudienceLevel::Expert;
+        let context2 = ExplanationContext {
+            audience: AudienceLevel::Expert,
+            ..Default::default()
+        };
 
         let key1 = engine.cache_key(&finding, &context1);
         let key2 = engine.cache_key(&finding, &context2);
@@ -1185,8 +1189,10 @@ mod tests {
         let provider = Arc::new(MockProvider::new()) as Arc<dyn AiProvider>;
         let rate_limiter = Arc::new(RateLimiter::new(1000, 100000));
 
-        let mut default_context = ExplanationContext::default();
-        default_context.audience = AudienceLevel::Expert;
+        let default_context = ExplanationContext {
+            audience: AudienceLevel::Expert,
+            ..Default::default()
+        };
 
         let engine = ExplainEngine {
             provider,

@@ -1370,7 +1370,7 @@ mod tests {
 
     #[test]
     fn test_default_detector() {
-        let detector = UnicodeHiddenDetector::default();
+        let detector = UnicodeHiddenDetector;
         assert!(detector.detect_suspicious_unicode("normal").is_empty());
     }
 

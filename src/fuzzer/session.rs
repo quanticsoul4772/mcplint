@@ -2588,7 +2588,7 @@ mod tests {
         use crate::protocol::mcp::Tool;
         let c = FuzzConfig::default();
         let mut s = FuzzSession::new("t", &[], c);
-        s.engine.cache_tools(&vec![Tool {
+        s.engine.cache_tools(&[Tool {
             name: "t".into(),
             description: None,
             input_schema: serde_json::json!({}),
