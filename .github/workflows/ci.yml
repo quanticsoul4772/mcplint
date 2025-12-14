@@ -206,7 +206,7 @@ jobs:
           }
           echo ""
           echo "Model loaded - running AI integration tests while model is in memory..."
-          cargo test --test ai_integration --test-threads=1
+          cargo test --test ai_integration -- --test-threads=1
           echo "AI integration tests passed!"
 
       - name: Re-warm and run Ollama tests FIRST (Windows)
@@ -229,7 +229,7 @@ jobs:
           $body = '{"model": "llama3.2", "prompt": "Ready", "stream": false}'
           Invoke-WebRequest -Uri "http://localhost:11434/api/generate" -Method POST -Body $body -ContentType "application/json" -TimeoutSec 300
           Write-Host "Model loaded - running AI integration tests while model is in memory..."
-          cargo test --test ai_integration --test-threads=1
+          cargo test --test ai_integration -- --test-threads=1
           Write-Host "AI integration tests passed!"
         shell: pwsh
 

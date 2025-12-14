@@ -8,7 +8,7 @@
 //! - GitLab Code Quality (GitLab MR integration)
 //! - HTML (rich visual reports)
 
-#![allow(dead_code)] // Generic reporter types for future use
+// Reporter module - generates output in various formats for CI integration
 
 pub mod gitlab;
 pub mod html;
@@ -23,6 +23,8 @@ pub use junit::generate_junit;
 use serde::Serialize;
 
 /// Trait for types that can be reported in multiple formats
+/// Public API - available for library consumers to implement custom reporters.
+#[allow(dead_code)]
 pub trait Reportable {
     fn to_text(&self) -> String;
     fn to_json(&self) -> anyhow::Result<String>;
@@ -30,6 +32,8 @@ pub trait Reportable {
 }
 
 /// Generic report wrapper with metadata
+/// Public API - library consumers can use this for custom report formatting.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct Report<T: Serialize> {
     pub tool: String,
@@ -38,6 +42,7 @@ pub struct Report<T: Serialize> {
     pub data: T,
 }
 
+#[allow(dead_code)]
 impl<T: Serialize> Report<T> {
     pub fn new(data: T) -> Self {
         Self {
