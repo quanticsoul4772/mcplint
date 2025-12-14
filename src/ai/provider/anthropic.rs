@@ -13,6 +13,7 @@ use crate::scanner::Finding;
 
 use super::super::config::ExplanationContext;
 use super::super::prompt::{PromptBuilder, SYSTEM_PROMPT};
+use super::super::prompt_templates::AdvancedPromptBuilder;
 use super::super::response::{
     CodeExample, EducationalContext, ExplanationMetadata, ExplanationResponse, Likelihood,
     RemediationGuide, ResourceCategory, ResourceLink, VulnerabilityExplanation, WeaknessInfo,
@@ -28,6 +29,8 @@ pub struct AnthropicProvider {
     temperature: f32,
     timeout: Duration,
     client: reqwest::Client,
+    /// Whether to use advanced prompts with few-shot examples and chain-of-thought
+    use_advanced_prompts: bool,
 }
 
 impl AnthropicProvider {
@@ -54,16 +57,44 @@ impl AnthropicProvider {
             temperature,
             timeout,
             client,
+            use_advanced_prompts: false, // Disabled by default - advanced prompts need schema alignment
+        }
+    }
+
+    /// Enable or disable advanced prompts with few-shot examples
+    pub fn with_advanced_prompts(mut self, enabled: bool) -> Self {
+        self.use_advanced_prompts = enabled;
+        self
+    }
+
+    /// Build prompts for a finding, using advanced prompts if enabled
+    fn build_prompts(&self, finding: &Finding, context: &ExplanationContext) -> (String, String) {
+        if self.use_advanced_prompts {
+            let builder = AdvancedPromptBuilder::new()
+                .with_finding(finding.clone())
+                .with_chain_of_thought(true)
+                .with_confidence_scoring(true);
+            builder.build_prompts()
+        } else {
+            let user_prompt = PromptBuilder::new()
+                .with_finding(finding.clone())
+                .with_context(context.clone())
+                .build_finding_prompt();
+            (SYSTEM_PROMPT.to_string(), user_prompt)
         }
     }
 
     /// Make a request to the Anthropic API
-    async fn make_request(&self, messages: Vec<Message>) -> Result<ApiResponse> {
+    async fn make_request(
+        &self,
+        system_prompt: &str,
+        messages: Vec<Message>,
+    ) -> Result<ApiResponse> {
         let request = ApiRequest {
             model: self.model.clone(),
             max_tokens: self.max_tokens,
             temperature: Some(self.temperature),
-            system: Some(SYSTEM_PROMPT.to_string()),
+            system: Some(system_prompt.to_string()),
             messages,
         };
 
@@ -107,6 +138,7 @@ impl AnthropicProvider {
     /// Make a streaming request to the Anthropic API
     async fn make_streaming_request(
         &self,
+        system_prompt: &str,
         messages: Vec<Message>,
         sender: ChunkSender,
     ) -> Result<(String, u32)> {
@@ -114,7 +146,7 @@ impl AnthropicProvider {
             model: self.model.clone(),
             max_tokens: self.max_tokens,
             temperature: Some(self.temperature),
-            system: Some(SYSTEM_PROMPT.to_string()),
+            system: Some(system_prompt.to_string()),
             messages,
             stream: true,
         };
@@ -340,17 +372,15 @@ impl AiProvider for AnthropicProvider {
     ) -> Result<ExplanationResponse> {
         let start = Instant::now();
 
-        let prompt = PromptBuilder::new()
-            .with_finding(finding.clone())
-            .with_context(context.clone())
-            .build_finding_prompt();
+        // Use advanced prompts with few-shot examples if enabled
+        let (system_prompt, user_prompt) = self.build_prompts(finding, context);
 
         let messages = vec![Message {
             role: "user".to_string(),
-            content: prompt,
+            content: user_prompt,
         }];
 
-        let response = self.make_request(messages).await?;
+        let response = self.make_request(&system_prompt, messages).await?;
 
         let response_text = response
             .content
@@ -372,17 +402,17 @@ impl AiProvider for AnthropicProvider {
     ) -> Result<ExplanationResponse> {
         let start = Instant::now();
 
-        let prompt = PromptBuilder::new()
-            .with_finding(finding.clone())
-            .with_context(context.clone())
-            .build_finding_prompt();
+        // Use advanced prompts with few-shot examples if enabled
+        let (system_prompt, user_prompt) = self.build_prompts(finding, context);
 
         let messages = vec![Message {
             role: "user".to_string(),
-            content: prompt,
+            content: user_prompt,
         }];
 
-        let (response_text, tokens_used) = self.make_streaming_request(messages, sender).await?;
+        let (response_text, tokens_used) = self
+            .make_streaming_request(&system_prompt, messages, sender)
+            .await?;
 
         let response_time_ms = start.elapsed().as_millis() as u64;
 
@@ -413,7 +443,8 @@ impl AiProvider for AnthropicProvider {
             content: prompt,
         }];
 
-        let response = self.make_request(messages).await?;
+        // Use standard system prompt for followups
+        let response = self.make_request(SYSTEM_PROMPT, messages).await?;
 
         Ok(response
             .content
