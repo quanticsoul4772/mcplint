@@ -1,9 +1,10 @@
 # MCPLint
 
 [![Crates.io](https://img.shields.io/crates/v/mcplint.svg)](https://crates.io/crates/mcplint)
-[![Rust](https://img.shields.io/badge/rust-1.75%2B-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/quanticsoul4772/mcplint/actions/workflows/ci.yml/badge.svg)](https://github.com/quanticsoul4772/mcplint/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-3066%20passing-brightgreen.svg)](https://github.com/quanticsoul4772/mcplint)
 
 Security testing tool for Model Context Protocol (MCP) servers.
 
@@ -15,6 +16,8 @@ Security testing tool for Model Context Protocol (MCP) servers.
 - **Coverage-guided fuzzing** - find crashes and edge cases
 - **Tool fingerprinting** - detect schema changes and breaking API updates
 - **AI-powered explanations** - understand findings with remediation guidance
+- **Advanced prompt engineering** - chain-of-thought reasoning with few-shot examples
+- **Neo4j knowledge graph** - vector similarity search for related vulnerabilities (optional)
 - **Watch mode** - differential display showing new/fixed issues
 - **Shell completions** - bash, zsh, fish, PowerShell, elvish
 - **CI/CD integration** - SARIF, JUnit, GitLab output formats
@@ -98,10 +101,20 @@ cargo install mcplint
 # From source
 cargo install --path .
 
+# With optional Neo4j knowledge graph support
+cargo install mcplint --features neo4j
+
 # Or build manually
 cargo build --release
 ./target/release/mcplint --help
 ```
+
+### Optional Features
+
+| Feature | Description | Install |
+|---------|-------------|---------|
+| `neo4j` | Neo4j knowledge graph for vulnerability similarity search | `--features neo4j` |
+| `redis` | Redis distributed cache backend | `--features redis` |
 
 ## Quick Start
 
