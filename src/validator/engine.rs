@@ -5742,5 +5742,257 @@ mod tests {
 
             assert!(validate_json_schema(&schema).is_ok());
         }
+
+        // Additional comprehensive tests for validator engine
+
+        #[test]
+        fn validation_config_with_multiple_skips() {
+            let config = ValidationConfig {
+                timeout_secs: 90,
+                skip_categories: vec![ValidationCategory::Security, ValidationCategory::Edge],
+                skip_rules: vec![ValidationRuleId::Proto001, ValidationRuleId::Schema001],
+                strict_mode: true,
+            };
+
+            assert_eq!(config.timeout_secs, 90);
+            assert_eq!(config.skip_categories.len(), 2);
+            assert_eq!(config.skip_rules.len(), 2);
+            assert!(config.strict_mode);
+        }
+
+        #[test]
+        fn validation_result_info_severity() {
+            let rule = make_test_rule();
+            let result = ValidationResult {
+                rule_id: rule.id.to_string(),
+                rule_name: rule.name.clone(),
+                category: rule.category.to_string(),
+                severity: ValidationSeverity::Info,
+                message: Some("Info message".to_string()),
+                details: vec![],
+                duration_ms: 5,
+            };
+
+            assert_eq!(result.severity, ValidationSeverity::Info);
+            assert_eq!(result.message, Some("Info message".to_string()));
+        }
+
+        #[test]
+        fn validation_results_only_warnings() {
+            let mut results = ValidationResults::new("warnings-only");
+            let rule = make_test_rule();
+
+            results.add_result(ValidationResult::warning(&rule, "Warn 1", 10));
+            results.add_result(ValidationResult::warning(&rule, "Warn 2", 15));
+            results.add_result(ValidationResult::warning(&rule, "Warn 3", 20));
+
+            assert_eq!(results.passed, 0);
+            assert_eq!(results.failed, 0);
+            assert_eq!(results.warnings, 3);
+            assert!(!results.has_failures());
+        }
+
+        #[test]
+        fn validation_results_skip_not_affecting_counts() {
+            let mut results = ValidationResults::new("skip-test");
+            let rule = make_test_rule();
+
+            results.add_result(ValidationResult::skip(&rule, "Skipped 1"));
+            results.add_result(ValidationResult::skip(&rule, "Skipped 2"));
+            results.add_result(ValidationResult::pass(&rule, 10));
+
+            assert_eq!(results.passed, 1);
+            assert_eq!(results.failed, 0);
+            assert_eq!(results.warnings, 0);
+            assert_eq!(results.results.len(), 3);
+        }
+
+        #[test]
+        fn validate_json_schema_with_const() {
+            let schema = serde_json::json!({
+                "type": "string",
+                "const": "specific_value"
+            });
+
+            assert!(validate_json_schema(&schema).is_ok());
+        }
+
+        #[test]
+        fn validate_json_schema_with_not() {
+            let schema = serde_json::json!({
+                "not": {
+                    "type": "null"
+                }
+            });
+
+            assert!(validate_json_schema(&schema).is_ok());
+        }
+
+        #[test]
+        fn validate_json_schema_with_contains() {
+            let schema = serde_json::json!({
+                "type": "array",
+                "contains": {
+                    "type": "string"
+                }
+            });
+
+            assert!(validate_json_schema(&schema).is_ok());
+        }
+
+        #[test]
+        fn validate_json_schema_with_min_max_items() {
+            let schema = serde_json::json!({
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 10,
+                "items": { "type": "string" }
+            });
+
+            assert!(validate_json_schema(&schema).is_ok());
+        }
+
+        #[test]
+        fn validate_json_schema_with_unique_items() {
+            let schema = serde_json::json!({
+                "type": "array",
+                "uniqueItems": true,
+                "items": { "type": "integer" }
+            });
+
+            assert!(validate_json_schema(&schema).is_ok());
+        }
+
+        #[test]
+        fn validate_json_schema_with_min_max_length() {
+            let schema = serde_json::json!({
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+            });
+
+            assert!(validate_json_schema(&schema).is_ok());
+        }
+
+        #[test]
+        fn validate_json_schema_with_min_max_properties() {
+            let schema = serde_json::json!({
+                "type": "object",
+                "minProperties": 1,
+                "maxProperties": 5
+            });
+
+            assert!(validate_json_schema(&schema).is_ok());
+        }
+
+        #[test]
+        fn validate_json_schema_with_multiple_of() {
+            let schema = serde_json::json!({
+                "type": "integer",
+                "multipleOf": 5
+            });
+
+            assert!(validate_json_schema(&schema).is_ok());
+        }
+
+        #[test]
+        fn validate_json_schema_null_type() {
+            let schema = serde_json::json!({
+                "type": "null"
+            });
+
+            assert!(validate_json_schema(&schema).is_ok());
+        }
+
+        #[test]
+        fn validate_json_schema_multiple_types() {
+            let schema = serde_json::json!({
+                "type": ["string", "number"]
+            });
+
+            assert!(validate_json_schema(&schema).is_ok());
+        }
+
+        #[test]
+        fn validate_json_schema_format_email() {
+            let schema = serde_json::json!({
+                "type": "string",
+                "format": "email"
+            });
+
+            assert!(validate_json_schema(&schema).is_ok());
+        }
+
+        #[test]
+        fn validation_result_category_preservation() {
+            let rule = ValidationRule {
+                id: ValidationRuleId::Sec001,
+                name: "Security Test".to_string(),
+                description: "Test".to_string(),
+                category: ValidationCategory::Security,
+                remediation: "Fix it".to_string(),
+            };
+
+            let result = ValidationResult::pass(&rule, 100);
+            assert_eq!(result.category, "security");
+        }
+
+        #[test]
+        fn validation_result_long_message() {
+            let rule = make_test_rule();
+            let long_message = "A".repeat(500);
+            let result = ValidationResult::fail(&rule, &long_message, 50);
+
+            assert_eq!(result.message, Some(long_message));
+        }
+
+        #[test]
+        fn validation_result_many_details() {
+            let rule = make_test_rule();
+            let details: Vec<String> = (0..50).map(|i| format!("Detail {}", i)).collect();
+            let result = ValidationResult::pass(&rule, 10).with_details(details.clone());
+
+            assert_eq!(result.details.len(), 50);
+            assert_eq!(result.details[0], "Detail 0");
+            assert_eq!(result.details[49], "Detail 49");
+        }
+
+        #[test]
+        fn validation_results_empty_server_name() {
+            let results = ValidationResults::new("");
+            assert_eq!(results.server, "");
+        }
+
+        #[test]
+        fn validation_result_zero_duration() {
+            let rule = make_test_rule();
+            let result = ValidationResult::skip(&rule, "Skipped");
+            assert_eq!(result.duration_ms, 0);
+        }
+
+        #[test]
+        fn validation_result_very_long_duration() {
+            let rule = make_test_rule();
+            let result = ValidationResult::pass(&rule, 999999);
+            assert_eq!(result.duration_ms, 999999);
+        }
+
+        #[test]
+        fn validation_results_large_result_set() {
+            let mut results = ValidationResults::new("large-test");
+            let rule = make_test_rule();
+
+            for i in 0..100 {
+                if i % 2 == 0 {
+                    results.add_result(ValidationResult::pass(&rule, 1));
+                } else {
+                    results.add_result(ValidationResult::fail(&rule, "Error", 1));
+                }
+            }
+
+            assert_eq!(results.results.len(), 100);
+            assert_eq!(results.passed, 50);
+            assert_eq!(results.failed, 50);
+        }
     }
 }

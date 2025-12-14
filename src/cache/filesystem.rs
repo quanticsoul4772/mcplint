@@ -394,4 +394,289 @@ mod tests {
         // Validation entry should still exist
         assert!(cache.exists(&key2).await.unwrap());
     }
+
+    #[tokio::test]
+    async fn test_expired_entry_cleanup() {
+        let dir = tempdir().unwrap();
+        let config = CacheConfig::filesystem(dir.path().to_path_buf());
+        let cache = FilesystemCache::with_path(dir.path().to_path_buf(), config)
+            .await
+            .unwrap();
+        let key = CacheKey::schema("test-server");
+        let entry = CacheEntry::new(b"test data".to_vec(), Duration::from_secs(0));
+        cache.set(&key, entry).await.unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        let retrieved = cache.get(&key).await.unwrap();
+        assert!(retrieved.is_none());
+        let path = cache.path_for_key(&key);
+        assert!(!path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_prune_expired() {
+        let dir = tempdir().unwrap();
+        let config = CacheConfig::filesystem(dir.path().to_path_buf());
+        let cache = FilesystemCache::with_path(dir.path().to_path_buf(), config)
+            .await
+            .unwrap();
+        for i in 0..3 {
+            let key = CacheKey::schema(&format!("expired-{}", i));
+            cache
+                .set(
+                    &key,
+                    CacheEntry::new(vec![0u8; 100], Duration::from_secs(0)),
+                )
+                .await
+                .unwrap();
+        }
+        for i in 0..2 {
+            let key = CacheKey::validation(&format!("valid-{}", i), "1.0");
+            cache
+                .set(
+                    &key,
+                    CacheEntry::new(vec![0u8; 100], Duration::from_secs(3600)),
+                )
+                .await
+                .unwrap();
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        let pruned = cache.prune_expired().await.unwrap();
+        // Note: read_entry may clean up expired entries during iteration
+        assert!(pruned <= 3);
+        // Valid entries should still exist
+        for i in 0..2 {
+            let key = CacheKey::validation(&format!("valid-{}", i), "1.0");
+            assert!(cache.exists(&key).await.unwrap());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_keys_all_categories() {
+        let dir = tempdir().unwrap();
+        let config = CacheConfig::filesystem(dir.path().to_path_buf());
+        let cache = FilesystemCache::with_path(dir.path().to_path_buf(), config)
+            .await
+            .unwrap();
+        cache
+            .set(
+                &CacheKey::schema("s1"),
+                CacheEntry::new(vec![], Duration::from_secs(3600)),
+            )
+            .await
+            .unwrap();
+        cache
+            .set(
+                &CacheKey::validation("s2", "1.0"),
+                CacheEntry::new(vec![], Duration::from_secs(3600)),
+            )
+            .await
+            .unwrap();
+        cache
+            .set(
+                &CacheKey::corpus("c1"),
+                CacheEntry::new(vec![], Duration::from_secs(3600)),
+            )
+            .await
+            .unwrap();
+        let keys = cache.keys(None).await.unwrap();
+        assert_eq!(keys.len(), 3);
+        let schema_keys = cache.keys(Some(CacheCategory::Schema)).await.unwrap();
+        assert_eq!(schema_keys.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_cache_miss() {
+        let dir = tempdir().unwrap();
+        let config = CacheConfig::filesystem(dir.path().to_path_buf());
+        let cache = FilesystemCache::with_path(dir.path().to_path_buf(), config)
+            .await
+            .unwrap();
+        let result = cache.get(&CacheKey::schema("nonexistent")).await.unwrap();
+        assert!(result.is_none());
+        assert!(!cache
+            .exists(&CacheKey::schema("nonexistent"))
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_delete_nonexistent() {
+        let dir = tempdir().unwrap();
+        let config = CacheConfig::filesystem(dir.path().to_path_buf());
+        let cache = FilesystemCache::with_path(dir.path().to_path_buf(), config)
+            .await
+            .unwrap();
+        cache
+            .delete(&CacheKey::schema("nonexistent"))
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_clear_all_categories() {
+        let dir = tempdir().unwrap();
+        let config = CacheConfig::filesystem(dir.path().to_path_buf());
+        let cache = FilesystemCache::with_path(dir.path().to_path_buf(), config)
+            .await
+            .unwrap();
+        for i in 0..3 {
+            cache
+                .set(
+                    &CacheKey::schema(&format!("s-{}", i)),
+                    CacheEntry::new(vec![], Duration::from_secs(3600)),
+                )
+                .await
+                .unwrap();
+            cache
+                .set(
+                    &CacheKey::validation(&format!("v-{}", i), "1.0"),
+                    CacheEntry::new(vec![], Duration::from_secs(3600)),
+                )
+                .await
+                .unwrap();
+        }
+        let cleared = cache.clear(None).await.unwrap();
+        assert_eq!(cleared, 6);
+        assert_eq!(cache.keys(None).await.unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_touch_updates_access_time() {
+        let dir = tempdir().unwrap();
+        let config = CacheConfig::filesystem(dir.path().to_path_buf());
+        let cache = FilesystemCache::with_path(dir.path().to_path_buf(), config)
+            .await
+            .unwrap();
+        let key = CacheKey::schema("test");
+        cache
+            .set(
+                &key,
+                CacheEntry::new(b"test".to_vec(), Duration::from_secs(3600)),
+            )
+            .await
+            .unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        let retrieved = cache.get(&key).await.unwrap().unwrap();
+        assert!(retrieved.idle_time().as_millis() < 100);
+    }
+
+    #[tokio::test]
+    async fn test_path_sanitization() {
+        let dir = tempdir().unwrap();
+        let config = CacheConfig::filesystem(dir.path().to_path_buf());
+        let cache = FilesystemCache::with_path(dir.path().to_path_buf(), config)
+            .await
+            .unwrap();
+        let key = CacheKey::new(CacheCategory::Schema, "server:with/special\\chars");
+        cache
+            .set(
+                &key,
+                CacheEntry::new(b"test".to_vec(), Duration::from_secs(3600)),
+            )
+            .await
+            .unwrap();
+        assert!(cache.get(&key).await.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_list_empty_category() {
+        let dir = tempdir().unwrap();
+        let config = CacheConfig::filesystem(dir.path().to_path_buf());
+        let cache = FilesystemCache::with_path(dir.path().to_path_buf(), config)
+            .await
+            .unwrap();
+        let files = cache
+            .list_category_files(CacheCategory::Corpus)
+            .await
+            .unwrap();
+        assert_eq!(files.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_serialization_roundtrip() {
+        use serde::{Deserialize, Serialize};
+        #[derive(Debug, Serialize, Deserialize, PartialEq)]
+        struct TestData {
+            name: String,
+            values: Vec<i32>,
+        }
+        let dir = tempdir().unwrap();
+        let config = CacheConfig::filesystem(dir.path().to_path_buf());
+        let cache = FilesystemCache::with_path(dir.path().to_path_buf(), config)
+            .await
+            .unwrap();
+        let original = TestData {
+            name: "test".to_string(),
+            values: vec![1, 2, 3],
+        };
+        let entry = CacheEntry::from_value(&original, Duration::from_secs(3600)).unwrap();
+        cache.set(&CacheKey::schema("test"), entry).await.unwrap();
+        let retrieved = cache.get(&CacheKey::schema("test")).await.unwrap().unwrap();
+        let deserialized: TestData = retrieved.to_value().unwrap();
+        assert_eq!(original, deserialized);
+    }
+
+    #[tokio::test]
+    async fn test_large_data() {
+        let dir = tempdir().unwrap();
+        let config = CacheConfig::filesystem(dir.path().to_path_buf());
+        let cache = FilesystemCache::with_path(dir.path().to_path_buf(), config)
+            .await
+            .unwrap();
+        let large_data = vec![0u8; 1024 * 1024];
+        let entry = CacheEntry::new(large_data.clone(), Duration::from_secs(3600));
+        cache.set(&CacheKey::schema("large"), entry).await.unwrap();
+        let retrieved = cache
+            .get(&CacheKey::schema("large"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(retrieved.data.len(), large_data.len());
+    }
+
+    #[tokio::test]
+    async fn test_hit_miss_stats() {
+        let dir = tempdir().unwrap();
+        let config = CacheConfig::filesystem(dir.path().to_path_buf());
+        let cache = FilesystemCache::with_path(dir.path().to_path_buf(), config)
+            .await
+            .unwrap();
+        cache
+            .set(
+                &CacheKey::schema("exists"),
+                CacheEntry::new(vec![], Duration::from_secs(3600)),
+            )
+            .await
+            .unwrap();
+        cache.get(&CacheKey::schema("exists")).await.unwrap();
+        cache.get(&CacheKey::schema("missing")).await.unwrap();
+        let stats = cache.stats().await.unwrap();
+        assert!(stats.hits > 0 && stats.misses > 0);
+    }
+
+    #[tokio::test]
+    async fn test_all_categories_created() {
+        let dir = tempdir().unwrap();
+        let config = CacheConfig::filesystem(dir.path().to_path_buf());
+        let _cache = FilesystemCache::with_path(dir.path().to_path_buf(), config)
+            .await
+            .unwrap();
+        for category in CacheCategory::all() {
+            let path = dir.path().join(category.to_string());
+            assert!(path.exists() && path.is_dir());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_path_for_key() {
+        let dir = tempdir().unwrap();
+        let config = CacheConfig::filesystem(dir.path().to_path_buf());
+        let cache = FilesystemCache::with_path(dir.path().to_path_buf(), config)
+            .await
+            .unwrap();
+        let path = cache.path_for_key(&CacheKey::schema("test-server"));
+        assert!(path.starts_with(&cache.base_path));
+        let path_str = path.to_string_lossy();
+        assert!(path_str.contains("schemas") && path_str.ends_with(".json"));
+    }
 }

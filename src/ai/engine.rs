@@ -740,4 +740,476 @@ mod tests {
         assert!(result.is_ok());
         assert!(result.unwrap());
     }
+
+    // Additional comprehensive tests for increased coverage
+
+    #[test]
+    fn engine_stats_clone_trait() {
+        let stats = EngineStats {
+            total_explanations: 10,
+            cache_hits: 5,
+            cache_misses: 5,
+            api_calls: 5,
+            tokens_used: 1000,
+            total_response_time_ms: 5000,
+        };
+
+        let cloned = stats.clone();
+        assert_eq!(cloned.total_explanations, 10);
+        assert_eq!(cloned.cache_hits, 5);
+        assert_eq!(cloned.cache_misses, 5);
+        assert_eq!(cloned.api_calls, 5);
+        assert_eq!(cloned.tokens_used, 1000);
+        assert_eq!(cloned.total_response_time_ms, 5000);
+    }
+
+    #[test]
+    fn engine_stats_debug_trait() {
+        let stats = EngineStats {
+            total_explanations: 1,
+            cache_hits: 2,
+            cache_misses: 3,
+            api_calls: 4,
+            tokens_used: 5,
+            total_response_time_ms: 6,
+        };
+
+        let debug_str = format!("{:?}", stats);
+        assert!(debug_str.contains("total_explanations"));
+        assert!(debug_str.contains("cache_hits"));
+    }
+
+    #[test]
+    fn engine_stats_cache_hit_rate_precision() {
+        let stats = EngineStats {
+            cache_hits: 1,
+            cache_misses: 2,
+            ..Default::default()
+        };
+        let rate = stats.cache_hit_rate();
+        assert!((rate - 33.333333333333).abs() < 0.0001);
+    }
+
+    #[test]
+    fn engine_stats_avg_response_single_call() {
+        let stats = EngineStats {
+            api_calls: 1,
+            total_response_time_ms: 500,
+            ..Default::default()
+        };
+        assert_eq!(stats.avg_response_time_ms(), 500);
+    }
+
+    #[test]
+    fn engine_stats_avg_response_multiple_calls() {
+        let stats = EngineStats {
+            api_calls: 4,
+            total_response_time_ms: 1000,
+            ..Default::default()
+        };
+        assert_eq!(stats.avg_response_time_ms(), 250);
+    }
+
+    #[test]
+    fn engine_stats_cache_rate_with_only_hits() {
+        let stats = EngineStats {
+            cache_hits: 100,
+            cache_misses: 0,
+            ..Default::default()
+        };
+        assert_eq!(stats.cache_hit_rate(), 100.0);
+    }
+
+    #[test]
+    fn engine_stats_cache_rate_with_only_misses() {
+        let stats = EngineStats {
+            cache_hits: 0,
+            cache_misses: 50,
+            ..Default::default()
+        };
+        assert_eq!(stats.cache_hit_rate(), 0.0);
+    }
+
+    #[test]
+    fn engine_stats_large_values() {
+        let stats = EngineStats {
+            total_explanations: u64::MAX / 2,
+            cache_hits: 1000000,
+            cache_misses: 1000000,
+            api_calls: 500000,
+            tokens_used: u64::MAX / 4,
+            total_response_time_ms: 10000000,
+        };
+
+        assert_eq!(stats.cache_hit_rate(), 50.0);
+        assert_eq!(stats.avg_response_time_ms(), 20);
+    }
+
+    #[test]
+    fn token_estimation_empty_finding() {
+        let finding = Finding::new("ID", Severity::Info, "", "");
+        let tokens = estimate_tokens(&finding);
+        assert!(tokens >= 2500);
+    }
+
+    #[test]
+    fn token_estimation_minimum_value() {
+        let minimal_finding = Finding::new("", Severity::Info, "", "");
+        let tokens = estimate_tokens(&minimal_finding);
+        assert_eq!(tokens, 2500);
+    }
+
+    #[test]
+    fn token_estimation_char_to_token_ratio() {
+        let text_1000_chars = "a".repeat(1000);
+        let finding = Finding::new("ID", Severity::Medium, &text_1000_chars, &text_1000_chars);
+
+        let tokens = estimate_tokens(&finding);
+        assert_eq!(tokens, 3000);
+    }
+
+    #[test]
+    fn token_estimation_with_multiple_evidence() {
+        use crate::scanner::{Evidence, EvidenceKind};
+
+        let mut finding = sample_finding();
+        for i in 0..5 {
+            finding = finding.with_evidence(Evidence::new(
+                EvidenceKind::Observation,
+                &format!("Evidence data {}", i),
+                &format!("Description {}", i),
+            ));
+        }
+
+        let tokens = estimate_tokens(&finding);
+        let base_tokens = estimate_tokens(&sample_finding());
+        assert!(tokens > base_tokens);
+    }
+
+    #[test]
+    fn token_estimation_with_very_long_evidence() {
+        use crate::scanner::{Evidence, EvidenceKind};
+
+        let long_data = "x".repeat(10000);
+        let finding = sample_finding().with_evidence(Evidence::new(
+            EvidenceKind::Observation,
+            &long_data,
+            "Long evidence",
+        ));
+
+        let tokens = estimate_tokens(&finding);
+        let base_tokens = estimate_tokens(&sample_finding());
+        assert!(tokens > base_tokens + 2000);
+    }
+
+    #[tokio::test]
+    async fn engine_creation_with_anthropic() {
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Anthropic)
+            .model("claude-3-5-sonnet-20241022")
+            .build();
+
+        let result = ExplainEngine::new(config);
+        if let Err(e) = result {
+            assert!(e.to_string().contains("API key") || e.to_string().contains("ANTHROPIC"));
+        }
+    }
+
+    #[tokio::test]
+    async fn engine_creation_with_openai() {
+        let config = AiConfig::builder()
+            .provider(AiProviderType::OpenAI)
+            .model("gpt-4")
+            .build();
+
+        let result = ExplainEngine::new(config);
+        if let Err(e) = result {
+            assert!(e.to_string().contains("API key") || e.to_string().contains("OPENAI"));
+        }
+    }
+
+    #[tokio::test]
+    async fn engine_provider_and_model_getters() {
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("custom-model-name")
+            .build();
+
+        let engine = ExplainEngine::new(config).unwrap();
+        assert_eq!(engine.provider_name(), "Ollama");
+        assert_eq!(engine.model_name(), "custom-model-name");
+    }
+
+    #[tokio::test]
+    async fn engine_without_cache() {
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("llama3.2")
+            .build();
+
+        let engine = ExplainEngine::new(config).unwrap();
+        assert!(engine.cache.is_none());
+    }
+
+    #[tokio::test]
+    async fn engine_with_all_builder_methods() {
+        use crate::cache::{CacheBackend, CacheConfig};
+
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("llama3.2")
+            .build();
+
+        let cache_config = CacheConfig {
+            backend: CacheBackend::Memory,
+            schema_ttl_secs: 3600,
+            result_ttl_secs: 86400,
+            validation_ttl_secs: 3600,
+            corpus_persist: false,
+            max_size_bytes: None,
+            enabled: true,
+        };
+        let cache_manager = Arc::new(CacheManager::new(cache_config).await.unwrap());
+        let custom_context = ExplanationContext::default();
+        let custom_rate_limiter = Arc::new(RateLimiter::new(200, 20000));
+
+        let engine = ExplainEngine::new(config)
+            .unwrap()
+            .with_cache(Arc::clone(&cache_manager))
+            .with_default_context(custom_context.clone())
+            .with_rate_limiter(Arc::clone(&custom_rate_limiter));
+
+        assert!(engine.cache.is_some());
+        let stats = engine.rate_limit_stats().await;
+        assert_eq!(stats.requests_limit, 200);
+    }
+
+    #[test]
+    fn cache_key_differs_for_different_models() {
+        let config1 = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("llama3.2")
+            .build();
+        let config2 = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("mistral")
+            .build();
+
+        let engine1 = ExplainEngine::new(config1).unwrap();
+        let engine2 = ExplainEngine::new(config2).unwrap();
+
+        let finding = sample_finding();
+        let context = ExplanationContext::default();
+
+        let key1 = engine1.cache_key(&finding, &context);
+        let key2 = engine2.cache_key(&finding, &context);
+
+        assert_ne!(key1, key2);
+    }
+
+    #[test]
+    fn cache_key_differs_for_different_audience() {
+        use crate::ai::config::AudienceLevel;
+
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("llama3.2")
+            .build();
+
+        let engine = ExplainEngine::new(config).unwrap();
+        let finding = sample_finding();
+
+        let mut context1 = ExplanationContext::default();
+        context1.audience = AudienceLevel::Beginner;
+
+        let mut context2 = ExplanationContext::default();
+        context2.audience = AudienceLevel::Expert;
+
+        let key1 = engine.cache_key(&finding, &context1);
+        let key2 = engine.cache_key(&finding, &context2);
+
+        assert_ne!(key1, key2);
+    }
+
+    #[test]
+    fn cache_key_includes_rule_id() {
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("llama3.2")
+            .build();
+
+        let engine = ExplainEngine::new(config).unwrap();
+        let finding = sample_finding();
+        let context = ExplanationContext::default();
+
+        let key = engine.cache_key(&finding, &context);
+        assert!(key.to_string().contains(&finding.rule_id));
+    }
+
+    #[test]
+    fn cache_key_format_contains_all_components() {
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("llama3.2")
+            .build();
+
+        let engine = ExplainEngine::new(config).unwrap();
+        let finding = Finding::new(
+            "TEST-RULE-123",
+            Severity::Critical,
+            "Test Title",
+            "Test Description",
+        );
+        let context = ExplanationContext::default();
+
+        let key = engine.cache_key(&finding, &context);
+        let key_str = key.to_string();
+
+        assert!(key_str.contains(PROMPT_VERSION));
+        assert!(key_str.contains("llama3.2"));
+        assert!(key_str.contains(&finding.id));
+        assert!(key_str.contains("TEST-RULE-123"));
+    }
+
+    #[test]
+    fn cache_key_consistency() {
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("llama3.2")
+            .build();
+
+        let engine = ExplainEngine::new(config).unwrap();
+        let finding = sample_finding();
+        let context = ExplanationContext::default();
+
+        let key1 = engine.cache_key(&finding, &context);
+        let key2 = engine.cache_key(&finding, &context);
+        assert_eq!(key1, key2);
+    }
+
+    #[tokio::test]
+    async fn explain_batch_empty() {
+        let provider = Arc::new(MockProvider::new()) as Arc<dyn AiProvider>;
+        let rate_limiter = Arc::new(RateLimiter::new(1000, 100000));
+
+        let engine = ExplainEngine {
+            provider,
+            cache: None,
+            rate_limiter,
+            default_context: ExplanationContext::default(),
+            stats: Arc::new(RwLock::new(EngineStats::default())),
+        };
+
+        let findings = vec![];
+        let result = engine.explain_batch(&findings, None).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().len(), 0);
+    }
+
+    #[tokio::test]
+    async fn explain_batch_single_item() {
+        let provider = Arc::new(MockProvider::new()) as Arc<dyn AiProvider>;
+        let rate_limiter = Arc::new(RateLimiter::new(1000, 100000));
+
+        let engine = ExplainEngine {
+            provider,
+            cache: None,
+            rate_limiter,
+            default_context: ExplanationContext::default(),
+            stats: Arc::new(RwLock::new(EngineStats::default())),
+        };
+
+        let finding = sample_finding();
+        let findings = vec![finding.clone()];
+
+        let result = engine.explain_batch(&findings, None).await;
+        assert!(result.is_ok());
+
+        let responses = result.unwrap();
+        assert_eq!(responses.len(), 1);
+        assert_eq!(responses[0].finding_id, finding.id);
+    }
+
+    #[tokio::test]
+    async fn explain_batch_with_custom_context() {
+        let provider = Arc::new(MockProvider::new()) as Arc<dyn AiProvider>;
+        let rate_limiter = Arc::new(RateLimiter::new(1000, 100000));
+
+        let engine = ExplainEngine {
+            provider,
+            cache: None,
+            rate_limiter,
+            default_context: ExplanationContext::default(),
+            stats: Arc::new(RwLock::new(EngineStats::default())),
+        };
+
+        let finding = sample_finding();
+        let findings = vec![finding];
+        let custom_context = ExplanationContext::default();
+
+        let result = engine.explain_batch(&findings, Some(&custom_context)).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn explain_batch_stats_tracking() {
+        let provider = Arc::new(MockProvider::new()) as Arc<dyn AiProvider>;
+        let rate_limiter = Arc::new(RateLimiter::new(1000, 100000));
+
+        let engine = ExplainEngine {
+            provider,
+            cache: None,
+            rate_limiter,
+            default_context: ExplanationContext::default(),
+            stats: Arc::new(RwLock::new(EngineStats::default())),
+        };
+
+        let findings = vec![
+            Finding::new("R1", Severity::High, "F1", "D1"),
+            Finding::new("R2", Severity::Medium, "F2", "D2"),
+            Finding::new("R3", Severity::Low, "F3", "D3"),
+        ];
+
+        let result = engine.explain_batch(&findings, None).await;
+        assert!(result.is_ok());
+
+        let stats = engine.stats().await;
+        assert_eq!(stats.total_explanations, 3);
+        assert_eq!(stats.api_calls, 3);
+    }
+
+    #[tokio::test]
+    async fn explain_uses_default_context() {
+        use crate::ai::config::AudienceLevel;
+
+        let provider = Arc::new(MockProvider::new()) as Arc<dyn AiProvider>;
+        let rate_limiter = Arc::new(RateLimiter::new(1000, 100000));
+
+        let mut default_context = ExplanationContext::default();
+        default_context.audience = AudienceLevel::Expert;
+
+        let engine = ExplainEngine {
+            provider,
+            cache: None,
+            rate_limiter,
+            default_context,
+            stats: Arc::new(RwLock::new(EngineStats::default())),
+        };
+
+        let finding = sample_finding();
+        let result = engine.explain(&finding).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn rate_limit_would_not_exceed_small_tokens() {
+        let config = AiConfig::builder()
+            .provider(AiProviderType::Ollama)
+            .model("llama3.2")
+            .build();
+
+        let engine = ExplainEngine::new(config).unwrap();
+        let would_exceed = engine.would_exceed_rate_limit(10).await;
+        assert!(!would_exceed);
+    }
 }
