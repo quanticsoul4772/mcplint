@@ -4,7 +4,7 @@
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/quanticsoul4772/mcplint/actions/workflows/ci.yml/badge.svg)](https://github.com/quanticsoul4772/mcplint/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-3066%20passing-brightgreen.svg)](https://github.com/quanticsoul4772/mcplint)
+[![Tests](https://img.shields.io/badge/tests-3274%20passing-brightgreen.svg)](https://github.com/quanticsoul4772/mcplint)
 
 Security testing tool for Model Context Protocol (MCP) servers.
 
