@@ -58,3 +58,12 @@ keys/
 *Strategy*.md
 *Integration Plan*.md
 claude_code_prompt.md
+
+# Local MCP configuration
+.mcp.json
+
+# Claude docs (internal working documents)
+claudedocs/
+
+# Windows special files
+nul
