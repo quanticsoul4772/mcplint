@@ -8,8 +8,6 @@
 //!
 //! Requires the `neo4j` feature to be enabled.
 
-#![cfg(feature = "neo4j")]
-
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use neo4rs::{Graph, Query};

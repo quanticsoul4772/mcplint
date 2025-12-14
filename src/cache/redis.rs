@@ -3,8 +3,6 @@
 //! Implements caching using Redis for distributed environments.
 //! This module is only available when the `redis` feature is enabled.
 
-#![cfg(feature = "redis")]
-
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use redis::aio::MultiplexedConnection;
@@ -240,8 +238,10 @@ impl Cache for RedisCache {
             let pattern = self.category_pattern(*category);
             let keys = self.scan_keys(&pattern).await?;
 
-            let mut cat_stats = CategoryStats::default();
-            cat_stats.entries = keys.len() as u64;
+            let mut cat_stats = CategoryStats {
+                entries: keys.len() as u64,
+                ..Default::default()
+            };
 
             // Sum up sizes (approximate - we'd need to fetch each entry)
             for key in &keys {
