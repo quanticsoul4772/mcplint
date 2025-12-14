@@ -16,8 +16,14 @@
 //! 4. File-based: Local file paths → Stdio
 //! 5. NPM packages (starts with "@") → Stdio
 //! 6. Default: Stdio
+//!
+//! Public library API - Transport trait and implementations available for library consumers.
+//! CLI commands use StdioTransport directly; trait abstraction exists for testing and extensibility.
 
-#![allow(dead_code)] // Transport layer will be used in M1 (Protocol Validator)
+// Transport layer used by validator, scanner, and fuzzer commands.
+// Some transport internals are pub(crate) for flexibility.
+// Public API not fully consumed by CLI - available for library consumers.
+#![allow(dead_code)]
 
 pub mod mock;
 pub mod sse;
