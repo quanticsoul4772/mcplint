@@ -1540,4 +1540,65 @@ mod tests {
             Err(e) => panic!("Unexpected error: {}", e),
         }
     }
+
+    #[test]
+    fn fuzzer_error_execution_limit_display() {
+        let err = FuzzerError::ExecutionLimitExceeded(5000);
+        assert_eq!(
+            format!("{}", err),
+            "Execution limit exceeded: 5000 iterations"
+        );
+    }
+
+    #[test]
+    fn fuzzer_error_corpus_limit_display() {
+        let err = FuzzerError::CorpusLimitExceeded(10000);
+        assert_eq!(
+            format!("{}", err),
+            "Corpus size limit exceeded: 10000 entries"
+        );
+    }
+
+    #[test]
+    fn fuzzer_error_restart_limit_display() {
+        let err = FuzzerError::RestartLimitExceeded(15);
+        assert_eq!(format!("{}", err), "Restart limit exceeded: 15 attempts");
+    }
+
+    #[test]
+    fn fuzzer_error_platform_not_supported_display() {
+        let err = FuzzerError::PlatformNotSupported;
+        assert_eq!(
+            format!("{}", err),
+            "Memory monitoring not supported on this platform"
+        );
+    }
+
+    #[test]
+    fn monitor_check_specific_memory_not_exceeded() {
+        let limits = ResourceLimits::default().with_max_memory(1024 * 1024 * 1024 * 100);
+        let monitor = ResourceMonitor::new(limits);
+        let stats = FuzzStats::default();
+        assert!(!monitor.check_specific(&stats, LimitType::Memory));
+    }
+
+    #[test]
+    fn usage_summary_percentage_clamping() {
+        let summary = UsageSummary {
+            elapsed: Duration::from_secs(120),
+            max_time: Some(Duration::from_secs(60)),
+            memory_used: Some(1024 * 1024 * 1024),
+            max_memory: Some(512 * 1024 * 1024),
+            executions: 2000,
+            max_executions: Some(1000),
+            corpus_size: 5000,
+            max_corpus_size: Some(1000),
+            restarts: 2,
+            max_restarts: Some(10),
+        };
+        assert_eq!(summary.time_usage().unwrap(), 1.0);
+        assert_eq!(summary.memory_usage().unwrap(), 1.0);
+        assert_eq!(summary.execution_usage().unwrap(), 1.0);
+        assert_eq!(summary.corpus_usage().unwrap(), 1.0);
+    }
 }

@@ -699,4 +699,222 @@ mod tests {
             panic!("Expected error response");
         }
     }
+
+    #[test]
+    fn detect_process_exit_non_standard_panic() {
+        let detector = CrashDetector::new(5000);
+        // Non-zero exit code that isn't one of the special ones (139, 134, 137)
+        let response = FuzzResponse::process_exit(1);
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Crash(CrashInfo {
+                crash_type: CrashType::Panic,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn extract_stack_trace_with_at_pattern() {
+        let detector = CrashDetector::new(5000);
+        // Test stack trace extraction with "at " pattern and .rs: file reference
+        let response = FuzzResponse::error(
+            -32603,
+            "assertion failed: x > 0\nat main.rs:42:5 in function foo",
+        );
+
+        let analysis = detector.analyze(&response);
+        if let CrashAnalysis::Crash(info) = analysis {
+            assert_eq!(info.crash_type, CrashType::AssertionFailure);
+            assert!(info.stack_trace.is_some());
+            let trace = info.stack_trace.unwrap();
+            assert!(trace.contains("at main.rs:42:5"));
+        } else {
+            panic!("Expected Crash analysis");
+        }
+    }
+
+    #[test]
+    fn analyze_success_with_error_code_field() {
+        let detector = CrashDetector::new(5000);
+        // Test success response with "errorCode" field (not just "error")
+        let response = FuzzResponse::success(serde_json::json!({
+            "errorCode": 404,
+            "status": "failed"
+        }));
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Interesting(InterestingReason::UnexpectedSuccess)
+        ));
+    }
+
+    #[test]
+    fn analyze_success_with_stack_backtrace() {
+        let detector = CrashDetector::new(5000);
+        // Test success response with "stack backtrace" in message
+        let response = FuzzResponse::success(serde_json::json!({
+            "message": "stack backtrace:\n  0: foo\n  1: bar"
+        }));
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Interesting(InterestingReason::ProtocolViolation)
+        ));
+    }
+
+    #[test]
+    fn analyze_success_with_error_prefix() {
+        let detector = CrashDetector::new(5000);
+        // Test success response with "Error:" prefix in message
+        let response = FuzzResponse::success(serde_json::json!({
+            "message": "Error: something went wrong"
+        }));
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(
+            analysis,
+            CrashAnalysis::Interesting(InterestingReason::ProtocolViolation)
+        ));
+    }
+
+    #[test]
+    fn detect_reserved_error_code_range_server_error() {
+        let detector = CrashDetector::new(5000);
+        // Test error code in reserved range -32099 to -32000 (Server error)
+        let response = FuzzResponse::error(-32050, "Server error");
+
+        let analysis = detector.analyze(&response);
+        // Reserved codes in this range are not interesting
+        assert!(matches!(analysis, CrashAnalysis::None));
+    }
+
+    #[test]
+    fn detect_reserved_error_code_range_jsonrpc() {
+        let detector = CrashDetector::new(5000);
+        // Test error code in reserved range -32768 to -32600 (JSON-RPC reserved)
+        let response = FuzzResponse::error(-32650, "Reserved error");
+
+        let analysis = detector.analyze(&response);
+        // Reserved codes in this range are not interesting
+        assert!(matches!(analysis, CrashAnalysis::None));
+    }
+
+    #[test]
+    fn detect_short_internal_error() {
+        let detector = CrashDetector::new(5000);
+        // Short internal error message (<=100 chars) should not be interesting
+        let response = FuzzResponse::error(-32603, "Internal error");
+
+        let analysis = detector.analyze(&response);
+        assert!(matches!(analysis, CrashAnalysis::None));
+    }
+
+    #[test]
+    fn detect_panic_panicked_at_variant() {
+        let detector = CrashDetector::new(5000);
+        // Test "panicked at" variant specifically
+        let response = FuzzResponse::error(-32603, "panicked at 'index out of bounds'");
+
+        let analysis = detector.analyze(&response);
+        assert!(analysis.is_crash());
+        if let CrashAnalysis::Crash(info) = analysis {
+            assert_eq!(info.crash_type, CrashType::Panic);
+        }
+    }
+
+    #[test]
+    fn detect_oom_allocation_variant() {
+        let detector = CrashDetector::new(5000);
+        // Test "allocation" variant specifically
+        let response = FuzzResponse::error(-32603, "allocation failed");
+
+        let analysis = detector.analyze(&response);
+        assert!(analysis.is_crash());
+        if let CrashAnalysis::Crash(info) = analysis {
+            assert_eq!(info.crash_type, CrashType::OutOfMemory);
+        }
+    }
+
+    #[test]
+    fn detect_oom_memory_exhausted_variant() {
+        let detector = CrashDetector::new(5000);
+        // Test "memory exhausted" variant
+        let response = FuzzResponse::error(-32603, "memory exhausted");
+
+        let analysis = detector.analyze(&response);
+        assert!(analysis.is_crash());
+        if let CrashAnalysis::Crash(info) = analysis {
+            assert_eq!(info.crash_type, CrashType::OutOfMemory);
+        }
+    }
+
+    #[test]
+    fn detect_oom_variant() {
+        let detector = CrashDetector::new(5000);
+        // Test "OOM" variant
+        let response = FuzzResponse::error(-32603, "OOM killer activated");
+
+        let analysis = detector.analyze(&response);
+        assert!(analysis.is_crash());
+        if let CrashAnalysis::Crash(info) = analysis {
+            assert_eq!(info.crash_type, CrashType::OutOfMemory);
+        }
+    }
+
+    #[test]
+    fn detect_assertion_assert_variant() {
+        let detector = CrashDetector::new(5000);
+        // Test "assert!" variant
+        let response = FuzzResponse::error(-32603, "assert! failed in module");
+
+        let analysis = detector.analyze(&response);
+        assert!(analysis.is_crash());
+        if let CrashAnalysis::Crash(info) = analysis {
+            assert_eq!(info.crash_type, CrashType::AssertionFailure);
+        }
+    }
+
+    #[test]
+    fn detect_assertion_debug_assert_variant() {
+        let detector = CrashDetector::new(5000);
+        // Test "debug_assert" variant
+        let response = FuzzResponse::error(-32603, "debug_assert triggered");
+
+        let analysis = detector.analyze(&response);
+        assert!(analysis.is_crash());
+        if let CrashAnalysis::Crash(info) = analysis {
+            assert_eq!(info.crash_type, CrashType::AssertionFailure);
+        }
+    }
+
+    #[test]
+    fn detect_segfault_invalid_memory_variant() {
+        let detector = CrashDetector::new(5000);
+        // Test "invalid memory" variant
+        let response = FuzzResponse::error(-32603, "invalid memory reference");
+
+        let analysis = detector.analyze(&response);
+        assert!(analysis.is_crash());
+        if let CrashAnalysis::Crash(info) = analysis {
+            assert_eq!(info.crash_type, CrashType::Segfault);
+        }
+    }
+
+    #[test]
+    fn detect_segfault_segmentation_fault_variant() {
+        let detector = CrashDetector::new(5000);
+        // Test "segmentation fault" variant
+        let response = FuzzResponse::error(-32603, "segmentation fault occurred");
+
+        let analysis = detector.analyze(&response);
+        assert!(analysis.is_crash());
+        if let CrashAnalysis::Crash(info) = analysis {
+            assert_eq!(info.crash_type, CrashType::Segfault);
+        }
+    }
 }

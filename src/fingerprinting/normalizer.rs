@@ -1620,4 +1620,143 @@ mod tests {
         assert_eq!(SchemaNormalizer::canonicalize_type("Number"), "number");
         assert_eq!(SchemaNormalizer::canonicalize_type("BOOLEAN"), "boolean");
     }
+
+    #[test]
+    fn test_additional_properties_invalid_types() {
+        let schema = json!({"type": "object", "additionalProperties": 123});
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+        assert!(!normalized.canonical_json.contains("additionalProperties"));
+    }
+
+    #[test]
+    fn test_full_description_object_value() {
+        let schema = json!({"type": "object", "description": {"nested": "object"}});
+        let normalized = SchemaNormalizer::normalize_full(&schema);
+        assert!(normalized.canonical_json.contains("description"));
+    }
+
+    #[test]
+    fn test_full_enum_non_array() {
+        let schema = json!({"type": "string", "enum": "not_array"});
+        let normalized = SchemaNormalizer::normalize_full(&schema);
+        assert!(normalized.canonical_json.contains("enum"));
+    }
+
+    #[test]
+    fn test_normalize_type_passthrough() {
+        assert_eq!(
+            SchemaNormalizer::normalize_type(&json!(false)),
+            json!(false)
+        );
+        assert_eq!(SchemaNormalizer::normalize_type(&json!(null)), json!(null));
+        assert_eq!(SchemaNormalizer::normalize_type(&json!(123)), json!(123));
+    }
+
+    #[test]
+    fn test_full_required_non_array() {
+        let schema = json!({"type": "object", "required": "string"});
+        let normalized = SchemaNormalizer::normalize_full(&schema);
+        assert!(normalized.canonical_json.contains("required"));
+    }
+
+    #[test]
+    fn test_normalize_type_array_with_mixed_values() {
+        let type_val = json!(["string", 123, null, "integer"]);
+        let result = SchemaNormalizer::normalize_type(&type_val);
+        assert!(result.as_str().unwrap().contains("integer|string"));
+    }
+
+    #[test]
+    fn test_full_normalization_primitives() {
+        assert_eq!(
+            SchemaNormalizer::normalize_full(&json!(42)).canonical_json,
+            "42"
+        );
+        assert_eq!(
+            SchemaNormalizer::normalize_full(&json!(true)).canonical_json,
+            "true"
+        );
+        assert_eq!(
+            SchemaNormalizer::normalize_full(&json!(null)).canonical_json,
+            "null"
+        );
+    }
+
+    #[test]
+    fn test_semantic_primitives() {
+        assert_eq!(
+            SchemaNormalizer::normalize_semantic(&json!(42)).canonical_json,
+            "42"
+        );
+        assert_eq!(
+            SchemaNormalizer::normalize_semantic(&json!("text")).canonical_json,
+            "\"text\""
+        );
+    }
+
+    #[test]
+    fn test_full_normalization_nested_arrays() {
+        let schema = json!([[{"deep": "value"}]]);
+        let normalized = SchemaNormalizer::normalize_full(&schema);
+        assert!(normalized.canonical_json.contains("deep"));
+        assert!(normalized.metadata.max_depth >= 2);
+    }
+
+    #[test]
+    fn test_extract_type_edge_cases() {
+        let schema_with_allof = json!({"allOf": [{"type": "string"}]});
+        let normalized = SchemaNormalizer::normalize_semantic(&schema_with_allof);
+        assert!(normalized.canonical_json.contains("allOf"));
+    }
+
+    #[test]
+    fn test_full_title_normalization() {
+        let schema = json!({"title": "  Multiple   Spaces  "});
+        let normalized = SchemaNormalizer::normalize_full(&schema);
+        assert!(normalized.canonical_json.contains("multiple spaces"));
+    }
+
+    #[test]
+    fn test_additional_properties_null() {
+        let schema = json!({"type": "object", "additionalProperties": null});
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+        assert!(!normalized.canonical_json.contains("additionalProperties"));
+    }
+
+    #[test]
+    fn test_required_all_non_strings() {
+        let schema = json!({"type": "object", "required": [1, 2, 3]});
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+        assert_eq!(normalized.metadata.required.len(), 0);
+    }
+
+    #[test]
+    fn test_semantic_array_objects() {
+        let schema = json!([{"field": "value1"}, {"field": "value2"}]);
+        let normalized = SchemaNormalizer::normalize_semantic(&schema);
+        assert!(!normalized.canonical_json.is_empty());
+        assert!(normalized.metadata.max_depth >= 1);
+    }
+
+    #[test]
+    fn test_normalize_empty_type_array() {
+        let type_val = json!([]);
+        let result = SchemaNormalizer::normalize_type(&type_val);
+        assert_eq!(result, Value::String("".to_string()));
+    }
+
+    #[test]
+    fn test_full_all_fields() {
+        let schema = json!({
+            "description": "Test",
+            "title": "Title",
+            "type": "object",
+            "required": ["a"],
+            "enum": [1, 2],
+            "properties": {"a": {"type": "string"}}
+        });
+        let normalized = SchemaNormalizer::normalize_full(&schema);
+        assert!(normalized.canonical_json.contains("properties"));
+        assert_eq!(normalized.metadata.property_count, 1);
+    }
 }
