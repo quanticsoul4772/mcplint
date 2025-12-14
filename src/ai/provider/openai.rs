@@ -250,11 +250,18 @@ impl AiProvider for OpenAiProvider {
 
         let response = self.make_request(messages).await?;
 
-        let response_text = response
-            .choices
-            .first()
-            .map(|c| c.message.content.as_str())
-            .unwrap_or("");
+        // Check if response was truncated due to max_tokens
+        let choice = response.choices.first();
+        if let Some(c) = choice {
+            if c.finish_reason.as_deref() == Some("length") {
+                return Err(AiProviderError::ParseError {
+                    message: "Response truncated due to max_tokens limit. Increase max_tokens or simplify the prompt.".to_string(),
+                }
+                .into());
+            }
+        }
+
+        let response_text = choice.map(|c| c.message.content.as_str()).unwrap_or("");
 
         let tokens_used = response.usage.map(|u| u.total_tokens).unwrap_or(0);
         let response_time_ms = start.elapsed().as_millis() as u64;
@@ -368,6 +375,8 @@ struct ChatResponse {
 #[derive(Deserialize)]
 struct Choice {
     message: ChatMessage,
+    #[serde(default)]
+    finish_reason: Option<String>,
 }
 
 #[derive(Deserialize)]

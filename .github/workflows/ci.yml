@@ -205,11 +205,9 @@ jobs:
             exit 1
           }
           echo ""
-          echo "Model loaded - running Ollama tests IMMEDIATELY while model is in memory..."
-          # Run both Ollama-specific tests that need the model loaded
-          cargo test --test ai_integration -- test_ollama_explain_finding --test-threads=1
-          cargo test --test ai_integration -- test_all_providers_explain_same_finding --test-threads=1
-          echo "Ollama tests passed!"
+          echo "Model loaded - running AI integration tests while model is in memory..."
+          cargo test --test ai_integration --test-threads=1
+          echo "AI integration tests passed!"
 
       - name: Re-warm and run Ollama tests FIRST (Windows)
         if: runner.os == 'Windows'
@@ -230,15 +228,13 @@ jobs:
           Write-Host "Re-warming llama3.2 model..."
           $body = '{"model": "llama3.2", "prompt": "Ready", "stream": false}'
           Invoke-WebRequest -Uri "http://localhost:11434/api/generate" -Method POST -Body $body -ContentType "application/json" -TimeoutSec 300
-          Write-Host "Model loaded - running Ollama tests IMMEDIATELY while model is in memory..."
-          # Run both Ollama-specific tests that need the model loaded
-          cargo test --test ai_integration -- test_ollama_explain_finding --test-threads=1
-          cargo test --test ai_integration -- test_all_providers_explain_same_finding --test-threads=1
-          Write-Host "Ollama tests passed!"
+          Write-Host "Model loaded - running AI integration tests while model is in memory..."
+          cargo test --test ai_integration --test-threads=1
+          Write-Host "AI integration tests passed!"
         shell: pwsh
 
-      - name: Run remaining tests
-        run: cargo test --verbose -- --skip test_ollama_explain_finding --skip test_all_providers_explain_same_finding --skip test_openai_explain_finding
+      - name: Run remaining tests (excluding ai_integration which already ran)
+        run: cargo test --verbose --lib --bins --test server_integration --test cache_integration --test interactive_tests
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
