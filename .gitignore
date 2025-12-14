@@ -36,3 +36,15 @@ build_*.txt
 
 # Windows special files
 nul
+
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+
+# Neo4j credentials
+neo4j.env
+
+# AI API keys
+*.key
+keys/

@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 use crate::scanner::Finding;
 
 use super::super::config::ExplanationContext;
-#[allow(unused_imports)]
 use super::super::prompt::PromptBuilder;
+use super::super::prompt_templates::AdvancedPromptBuilder;
 use super::super::response::{
     CodeExample, EducationalContext, ExplanationMetadata, ExplanationResponse, Likelihood,
     RemediationGuide, ResourceCategory, ResourceLink, VulnerabilityExplanation, WeaknessInfo,
@@ -29,6 +29,9 @@ pub struct OllamaProvider {
     model: String,
     timeout: Duration,
     client: reqwest::Client,
+    /// Whether to use advanced prompts with few-shot examples
+    /// Disabled by default for Ollama as local models perform better with shorter prompts
+    use_advanced_prompts: bool,
 }
 
 impl OllamaProvider {
@@ -44,6 +47,40 @@ impl OllamaProvider {
             model,
             timeout,
             client,
+            use_advanced_prompts: false, // Disabled by default for local models
+        }
+    }
+
+    /// Enable or disable advanced prompts with few-shot examples
+    /// Note: Advanced prompts create longer context which may cause timeouts on CPU inference
+    pub fn with_advanced_prompts(mut self, enabled: bool) -> Self {
+        self.use_advanced_prompts = enabled;
+        self
+    }
+
+    /// Build prompts for a finding, using advanced prompts if enabled
+    #[allow(dead_code)]
+    fn build_prompts(&self, finding: &Finding, _context: &ExplanationContext) -> (String, String) {
+        if self.use_advanced_prompts {
+            let builder = AdvancedPromptBuilder::new()
+                .with_finding(finding.clone())
+                .with_chain_of_thought(true)
+                .with_confidence_scoring(true);
+            builder.build_prompts()
+        } else {
+            // Use simplified prompt for local models
+            let system_prompt = OLLAMA_SYSTEM_PROMPT.to_string();
+            let user_prompt = format!(
+                r#"Analyze this security vulnerability and respond with JSON:
+
+Rule: {} | Severity: {} | {}
+Description: {}
+
+Respond with this JSON structure:
+{{"explanation":{{"summary":"brief summary","technical_details":"details","attack_scenario":"how to exploit","impact":"what happens","likelihood":"low|medium|high"}},"remediation":{{"immediate_actions":["step1"],"permanent_fix":"fix description"}}}}"#,
+                finding.rule_id, finding.severity, finding.title, finding.description
+            );
+            (system_prompt, user_prompt)
         }
     }
 
