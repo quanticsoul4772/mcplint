@@ -145,7 +145,11 @@ impl ResourceLimits {
             .parse()
             .map_err(|_| ParseError::InvalidNumber(num_str.to_string()))?;
 
-        Ok(Duration::from_millis(num * multiplier))
+        let millis = num
+            .checked_mul(multiplier)
+            .ok_or_else(|| ParseError::Overflow(s.clone()))?;
+
+        Ok(Duration::from_millis(millis))
     }
 
     /// Parse byte size from human-readable string (e.g., "512MB", "1G", "100K")
@@ -178,7 +182,8 @@ impl ResourceLimits {
             .parse()
             .map_err(|_| ParseError::InvalidNumber(num_str.to_string()))?;
 
-        Ok(num * multiplier)
+        num.checked_mul(multiplier)
+            .ok_or_else(|| ParseError::Overflow(s.clone()))
     }
 }
 
@@ -191,6 +196,8 @@ pub enum ParseError {
     InvalidNumber(String),
     /// Unknown unit
     UnknownUnit(String),
+    /// Value overflows u64 once the unit multiplier is applied
+    Overflow(String),
 }
 
 impl std::fmt::Display for ParseError {
@@ -199,6 +206,7 @@ impl std::fmt::Display for ParseError {
             ParseError::Empty => write!(f, "empty value"),
             ParseError::InvalidNumber(s) => write!(f, "invalid number: '{}'", s),
             ParseError::UnknownUnit(s) => write!(f, "unknown unit: '{}'", s),
+            ParseError::Overflow(s) => write!(f, "value out of range: '{}'", s),
         }
     }
 }
@@ -1600,5 +1608,42 @@ mod tests {
         assert_eq!(summary.memory_usage().unwrap(), 1.0);
         assert_eq!(summary.execution_usage().unwrap(), 1.0);
         assert_eq!(summary.corpus_usage().unwrap(), 1.0);
+    }
+}
+
+#[cfg(test)]
+mod overflow_regression {
+    use super::*;
+
+    #[test]
+    fn parse_duration_rejects_overflow() {
+        assert!(matches!(
+            ResourceLimits::parse_duration("300000000000000h"),
+            Err(ParseError::Overflow(_))
+        ));
+        assert!(matches!(
+            ResourceLimits::parse_duration("18446744073709551d"),
+            Err(ParseError::Overflow(_))
+        ));
+    }
+
+    #[test]
+    fn parse_bytes_rejects_overflow() {
+        assert!(matches!(
+            ResourceLimits::parse_bytes("17179869184GB"),
+            Err(ParseError::Overflow(_))
+        ));
+    }
+
+    #[test]
+    fn valid_values_still_parse() {
+        assert_eq!(
+            ResourceLimits::parse_duration("5m").unwrap().as_millis(),
+            300_000
+        );
+        assert_eq!(
+            ResourceLimits::parse_bytes("512MB").unwrap(),
+            512 * 1024 * 1024
+        );
     }
 }
