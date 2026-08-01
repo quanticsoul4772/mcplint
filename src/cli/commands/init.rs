@@ -62,7 +62,7 @@ min_severity = "warning"
 provider = "ollama"
 
 # Model to use (provider-specific)
-# anthropic: claude-sonnet-4-20250514, claude-3-opus-20240229
+# anthropic: claude-sonnet-5, claude-opus-5
 # openai: gpt-4o, gpt-4-turbo
 # ollama: llama3.2, codellama, mistral
 model = "llama3.2"
