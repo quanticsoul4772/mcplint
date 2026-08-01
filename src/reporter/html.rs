@@ -548,7 +548,7 @@ fn generate_findings_html(results: &ScanResults) -> String {
 
     // Sort findings by severity (critical first)
     let mut sorted_findings = results.findings.clone();
-    sorted_findings.sort_by(|a, b| b.severity.cmp(&a.severity));
+    sorted_findings.sort_by_key(|b| std::cmp::Reverse(b.severity));
 
     sorted_findings
         .iter()

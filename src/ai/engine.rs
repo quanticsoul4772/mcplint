@@ -64,11 +64,9 @@ impl EngineStats {
 
     /// Calculate average response time
     pub fn avg_response_time_ms(&self) -> u64 {
-        if self.api_calls == 0 {
-            0
-        } else {
-            self.total_response_time_ms / self.api_calls
-        }
+        self.total_response_time_ms
+            .checked_div(self.api_calls)
+            .unwrap_or(0)
     }
 }
 
