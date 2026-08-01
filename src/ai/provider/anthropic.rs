@@ -93,7 +93,8 @@ impl AnthropicProvider {
         let request = ApiRequest {
             model: self.model.clone(),
             max_tokens: self.max_tokens,
-            temperature: Some(self.temperature),
+            // Current Claude models reject `temperature` with a 400.
+            temperature: None,
             system: Some(system_prompt.to_string()),
             messages,
         };
@@ -145,7 +146,8 @@ impl AnthropicProvider {
         let request = StreamingApiRequest {
             model: self.model.clone(),
             max_tokens: self.max_tokens,
-            temperature: Some(self.temperature),
+            // Current Claude models reject `temperature` with a 400.
+            temperature: None,
             system: Some(system_prompt.to_string()),
             messages,
             stream: true,
@@ -384,8 +386,9 @@ impl AiProvider for AnthropicProvider {
 
         let response_text = response
             .content
-            .first()
-            .map(|c| c.text.as_str())
+            .iter()
+            .find(|c| c.block_type == "text")
+            .and_then(|c| c.text.as_deref())
             .unwrap_or("");
 
         let tokens_used = response.usage.output_tokens + response.usage.input_tokens;
@@ -448,8 +451,9 @@ impl AiProvider for AnthropicProvider {
 
         Ok(response
             .content
-            .first()
-            .map(|c| c.text.clone())
+            .iter()
+            .find(|c| c.block_type == "text")
+            .and_then(|c| c.text.clone())
             .unwrap_or_default())
     }
 
@@ -463,7 +467,7 @@ impl AiProvider for AnthropicProvider {
         let request = ApiRequest {
             model: self.model.clone(),
             max_tokens: 10,
-            temperature: Some(0.0),
+            temperature: None,
             system: None,
             messages,
         };
@@ -631,7 +635,10 @@ struct ApiResponse {
 
 #[derive(Deserialize)]
 struct ContentBlock {
-    text: String,
+    #[serde(rename = "type")]
+    block_type: String,
+    #[serde(default)]
+    text: Option<String>,
 }
 
 #[derive(Deserialize)]

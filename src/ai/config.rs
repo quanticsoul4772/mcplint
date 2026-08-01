@@ -30,7 +30,7 @@ impl AiProvider {
 
     pub fn default_model(&self) -> &'static str {
         match self {
-            AiProvider::Anthropic => "claude-sonnet-4-20250514",
+            AiProvider::Anthropic => "claude-sonnet-5",
             AiProvider::OpenAI => "gpt-4o",
             AiProvider::Ollama => "llama3.2",
         }
@@ -168,7 +168,7 @@ impl AiConfig {
     pub fn anthropic() -> Self {
         Self {
             provider: AiProvider::Anthropic,
-            model: "claude-sonnet-4-20250514".to_string(),
+            model: "claude-sonnet-5".to_string(),
             ..Default::default()
         }
     }
@@ -685,11 +685,11 @@ rate_limit_tpm = 50000
         let toml_content = r#"
 [ai]
 provider = "anthropic"
-model = "claude-sonnet-4-20250514"
+model = "claude-sonnet-5"
 "#;
         let config = AiConfig::parse_toml(toml_content).unwrap();
         assert_eq!(config.provider, AiProvider::Anthropic);
-        assert_eq!(config.model, "claude-sonnet-4-20250514");
+        assert_eq!(config.model, "claude-sonnet-5");
         assert_eq!(config.max_tokens, 16384);
     }
 
@@ -796,10 +796,7 @@ temperature = 2.5
 
     #[test]
     fn ai_provider_default_model() {
-        assert_eq!(
-            AiProvider::Anthropic.default_model(),
-            "claude-sonnet-4-20250514"
-        );
+        assert_eq!(AiProvider::Anthropic.default_model(), "claude-sonnet-5");
         assert_eq!(AiProvider::OpenAI.default_model(), "gpt-4o");
         assert_eq!(AiProvider::Ollama.default_model(), "llama3.2");
     }
@@ -995,7 +992,7 @@ temperature = 2.5
     fn config_anthropic_preset() {
         let config = AiConfig::anthropic();
         assert_eq!(config.provider, AiProvider::Anthropic);
-        assert_eq!(config.model, "claude-sonnet-4-20250514");
+        assert_eq!(config.model, "claude-sonnet-5");
         assert_eq!(config.rate_limit_rpm, 50);
         assert_eq!(config.rate_limit_tpm, 100_000);
     }

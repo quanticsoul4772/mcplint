@@ -363,7 +363,7 @@ mod tests {
         drop(producer); // Signal end of stream
 
         let mut count = 0;
-        while let Some(_) = stream.next().await {
+        while stream.next().await.is_some() {
             count += 1;
         }
         assert_eq!(count, 3);
@@ -371,7 +371,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_streaming_summary_accumulation() {
-        let (producer, mut stream) = streaming_channel(10);
+        let (producer, stream) = streaming_channel(10);
 
         producer
             .send(create_test_finding("TEST-001", Severity::Critical))
@@ -657,7 +657,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_producer_clone() {
-        let (producer, mut stream) = streaming_channel(10);
+        let (producer, stream) = streaming_channel(10);
         let producer2 = producer.clone();
 
         producer
@@ -693,7 +693,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_all_severity_levels() {
-        let (producer, mut stream) = streaming_channel(10);
+        let (producer, stream) = streaming_channel(10);
 
         producer
             .send(create_test_finding("CRIT", Severity::Critical))
