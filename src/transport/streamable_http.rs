@@ -158,7 +158,7 @@ impl Transport for StreamableHttpTransport {
         // For notifications and pure sends, we expect 202 Accepted or similar
         if !response.status().is_success() {
             let status = response.status();
-            let body = response.text().await.unwrap_or_default();
+            let body = super::read_body_capped_lossy(response).await;
             anyhow::bail!("HTTP error {}: {}", status, body);
         }
 
@@ -192,7 +192,7 @@ impl Transport for StreamableHttpTransport {
 
         if !response.status().is_success() {
             let status = response.status();
-            let body = response.text().await.unwrap_or_default();
+            let body = super::read_body_capped_lossy(response).await;
             anyhow::bail!("HTTP error {}: {}", status, body);
         }
 
@@ -208,7 +208,9 @@ impl Transport for StreamableHttpTransport {
 
         if content_type.starts_with("text/event-stream") {
             // Parse SSE stream
-            let text = response.text().await.context("Failed to read SSE body")?;
+            let text = super::read_body_capped(response)
+                .await
+                .context("Failed to read SSE body")?;
             self.parse_sse_response(&text).await
         } else {
             // Direct JSON response
@@ -239,7 +241,7 @@ impl Transport for StreamableHttpTransport {
         // Notifications should return 202 Accepted (or 200 OK)
         if !response.status().is_success() {
             let status = response.status();
-            let body = response.text().await.unwrap_or_default();
+            let body = super::read_body_capped_lossy(response).await;
             anyhow::bail!("HTTP error {}: {}", status, body);
         }
 
