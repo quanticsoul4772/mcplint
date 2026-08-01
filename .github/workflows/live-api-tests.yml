@@ -1,0 +1,39 @@
+name: Live API Tests
+
+# The #[ignore]d tests in tests/ai_integration.rs call paid third-party APIs
+# (Anthropic, OpenAI). Their outcome depends on credential validity and account
+# quota, neither of which any commit controls, so they do not gate the per-push
+# build. They run here instead: on a schedule, and on demand.
+#
+# A failure here means "a provider is unreachable, out of quota, or the contract
+# changed" — investigate, but it does not block merging.
+
+on:
+  schedule:
+    # 06:00 UTC daily, offset off the hour to avoid the scheduler clump.
+    - cron: "23 6 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  live-api:
+    name: Live API tests (paid providers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run ignored live-API tests
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: cargo test --test ai_integration -- --ignored --test-threads=1
