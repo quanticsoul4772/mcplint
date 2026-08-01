@@ -329,15 +329,9 @@ impl RedisCache {
             .into_iter()
             .map(|opt| {
                 opt.and_then(|bytes| {
-                    serde_json::from_slice(&bytes)
+                    serde_json::from_slice::<CacheEntry>(&bytes)
                         .ok()
-                        .and_then(|entry: CacheEntry| {
-                            if entry.is_expired() {
-                                None
-                            } else {
-                                Some(entry)
-                            }
-                        })
+                        .filter(|entry| !entry.is_expired())
                 })
             })
             .collect();
