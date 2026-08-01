@@ -14,7 +14,6 @@ categories = ["command-line-utilities", "development-tools::testing"]
 
 [dependencies]
 # MCP SDK
-rmcp = { version = "0.9", features = ["client", "transport-io"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
