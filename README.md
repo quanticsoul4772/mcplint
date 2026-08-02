@@ -25,6 +25,80 @@ Security testing tool for Model Context Protocol (MCP) servers.
 - **Config file support** - reads Claude Desktop config to find servers
 - **Interactive mode** - guided wizards for scan, fuzz, and init commands
 
+## Installation
+
+```bash
+# From crates.io
+cargo install mcplint
+
+# From source
+cargo install --path .
+
+# With optional Neo4j knowledge graph support
+cargo install mcplint --features neo4j
+
+# Or build manually
+cargo build --release
+./target/release/mcplint --help
+```
+
+### Optional Features
+
+| Feature | Description | Install |
+|---------|-------------|---------|
+| `neo4j` | Neo4j knowledge graph for vulnerability similarity search | `--features neo4j` |
+| `redis` | Redis distributed cache backend | `--features redis` |
+
+## Quick Start
+
+```bash
+# List servers from Claude Desktop config
+mcplint servers
+
+# Validate a server
+mcplint validate <server>
+
+# Security scan
+mcplint scan <server>
+
+# Scan all servers in parallel
+mcplint multi-scan --all
+
+# Watch mode with differential display
+mcplint watch <server>
+```
+
+## Example Output
+
+```
+$ mcplint scan filesystem-server
+
+═══════════════════════════════════════════
+  Security Scan Results
+═══════════════════════════════════════════
+
+  Server: filesystem-server
+  Profile: standard
+  Checks: 5
+  Duration: 2340ms
+
+  2 vulnerabilities found:
+
+  [CRITICAL] Prompt Injection in Tool Description (TOOL-INJ-001)
+    Detected prompt injection pattern in tool schema description
+    Location: tool: dangerous_exec
+    Fix: Review tool description for instruction-override patterns and remove them
+
+  [HIGH] Tool Name Shadowing (SHADOW-001)
+    Tool name shadows a standard MCP tool
+    Location: tool: filesystem
+    Fix: Rename tool to avoid collision with standard MCP tools
+
+──────────────────────────────────────────────────────────────────────
+Summary: 1 critical, 1 high, 0 medium, 0 low, 0 info
+✖ Server has critical/high severity vulnerabilities!
+```
+
 ## Interactive Mode
 
 MCPLint includes interactive wizards that guide you through common operations when running in a terminal. Interactive mode automatically activates when:
@@ -92,49 +166,6 @@ mcplint explain
 
 Interactive mode is disabled in CI environments or when piping output. Use explicit arguments for non-interactive execution.
 
-## Installation
-
-```bash
-# From crates.io
-cargo install mcplint
-
-# From source
-cargo install --path .
-
-# With optional Neo4j knowledge graph support
-cargo install mcplint --features neo4j
-
-# Or build manually
-cargo build --release
-./target/release/mcplint --help
-```
-
-### Optional Features
-
-| Feature | Description | Install |
-|---------|-------------|---------|
-| `neo4j` | Neo4j knowledge graph for vulnerability similarity search | `--features neo4j` |
-| `redis` | Redis distributed cache backend | `--features redis` |
-
-## Quick Start
-
-```bash
-# List servers from Claude Desktop config
-mcplint servers
-
-# Validate a server
-mcplint validate <server>
-
-# Security scan
-mcplint scan <server>
-
-# Scan all servers in parallel
-mcplint multi-scan --all
-
-# Watch mode with differential display
-mcplint watch <server>
-```
-
 ## Commands
 
 ```bash
@@ -167,23 +198,24 @@ Check MCP server for protocol compliance. Runs 56 validation rules across protoc
 mcplint validate <server> [options]
 
 Options:
+  -F, --features <features>  Check specific protocol features only
   -t, --timeout <seconds>    Timeout for server operations [default: 30]
-  -f, --format <format>      Output format: text, json, sarif, junit, gitlab
   -c, --config <path>        Path to MCP config file
 ```
 
 ### scan
 
-Scan for security vulnerabilities.
+Scan for security vulnerabilities. Server is optional in interactive mode (launches a wizard).
 
 ```bash
-mcplint scan <server> [options]
+mcplint scan [<server>] [options]
 
 Options:
-  -p, --profile <profile>    Scan profile: quick, standard, full, enterprise
+  -p, --profile <profile>    Scan profile: quick, standard, full, enterprise [default: standard]
   -i, --include <rules>      Include specific rule categories
   -e, --exclude <rules>      Exclude specific rule categories
   -t, --timeout <seconds>    Timeout [default: 60]
+  -c, --config <path>        Path to MCP config file
   --baseline <path>          Compare against baseline file
   --save-baseline <path>     Save results as baseline
   --update-baseline          Update existing baseline
@@ -204,10 +236,10 @@ Options:
   -s, --servers <list>       Server names (comma-separated)
   --all                      Scan all configured servers
   -j, --concurrency <n>      Maximum concurrent scans [default: 4]
-  -p, --profile <profile>    Scan profile for all servers
+  -p, --profile <profile>    Scan profile for all servers [default: standard]
   -t, --timeout <seconds>    Timeout per server [default: 60]
+  -c, --config <path>        Path to MCP config file
   --fail-on <severities>     Fail only on specified severities
-  -f, --format <format>      Output format (sarif for CI/CD)
 
 # Examples
 mcplint multi-scan --all --profile standard
@@ -217,31 +249,36 @@ mcplint multi-scan --all --fail-on critical,high
 
 ### fuzz
 
-Coverage-guided fuzzing.
+Coverage-guided fuzzing. Server is optional in interactive mode (launches a wizard).
 
 ```bash
-mcplint fuzz <server> [options]
+mcplint fuzz [<server>] [options]
 
 Options:
+  -p, --profile <profile>    Fuzz profile: quick, standard, intensive, ci [default: standard]
   -d, --duration <seconds>   Duration to run [default: 300]
-  -c, --corpus <path>        Corpus directory
   -W, --workers <count>      Parallel workers [default: 4]
+  -c, --corpus <path>        Corpus directory
   --max-memory <size>        Memory limit (e.g., 512MB)
   --max-time <time>          Time limit (e.g., 5m)
 ```
 
 ### explain
 
-AI-powered explanations for security findings.
+AI-powered explanations for security findings. Server is optional in interactive mode (launches a wizard).
 
 ```bash
-mcplint explain <server> [options]
+mcplint explain [<server>] [options]
 
 Options:
   -P, --provider <provider>  AI provider: ollama, anthropic, openai [default: ollama]
   -m, --model <model>        Model to use
-  -a, --audience <level>     Audience: beginner, intermediate, expert
+  -a, --audience <level>     Audience: beginner, intermediate, expert [default: intermediate]
+  -s, --severity <severity>  Minimum severity to explain
   -n, --max-findings <n>     Max findings to explain
+  -i, --interactive          Interactive follow-up Q&A
+  -t, --timeout <seconds>    Timeout [default: 120]
+  --no-cache                 Disable response caching
 ```
 
 AI providers require environment variables:
@@ -260,7 +297,7 @@ mcplint fingerprint generate <server> [options]
 Options:
   -o, --output <path>        Save fingerprints to file
   -t, --timeout <seconds>    Timeout [default: 30]
-  -f, --format <format>      Output format: text, json
+  -c, --config <path>        Path to MCP config file
 
 # Compare against baseline
 mcplint fingerprint compare <server> --baseline <path> [options]
@@ -268,6 +305,7 @@ mcplint fingerprint compare <server> --baseline <path> [options]
 Options:
   -b, --baseline <path>      Baseline file for comparison (required)
   -t, --timeout <seconds>    Timeout [default: 30]
+  -c, --config <path>        Path to MCP config file
 ```
 
 Exit codes for compare:

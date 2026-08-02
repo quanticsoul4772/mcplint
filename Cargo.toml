@@ -13,8 +13,6 @@ keywords = ["mcp", "security", "fuzzing", "testing", "ai"]
 categories = ["command-line-utilities", "development-tools::testing"]
 
 [dependencies]
-# MCP SDK
-
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
