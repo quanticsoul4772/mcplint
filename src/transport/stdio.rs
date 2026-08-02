@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::time::timeout;
 
@@ -18,6 +18,15 @@ use crate::protocol::{
 };
 
 use super::{Transport, TransportConfig};
+
+/// Maximum bytes accepted for a single line from the server's stdout.
+///
+/// `read_line` grows its buffer until it sees a newline. A server that never
+/// sends one -- hostile, wedged, or mid-fuzz -- would otherwise allocate until
+/// the process dies, and the release profile's `panic = "abort"` turns that
+/// into a silent termination of the scan. The timeout bounds how long a read
+/// may take, not how much it may allocate.
+const MAX_LINE_BYTES: u64 = 16 * 1024 * 1024;
 
 /// Stdio transport for communicating with MCP servers via stdin/stdout
 pub struct StdioTransport {
@@ -92,11 +101,22 @@ impl StdioTransport {
     async fn read_line(&mut self) -> Result<String> {
         let mut line = String::new();
 
-        let read_result = timeout(self.timeout_duration(), self.stdout.read_line(&mut line)).await;
+        // Resolve the timeout before the mutable borrow of `stdout` begins.
+        let read_timeout = self.timeout_duration();
+        let mut limited = (&mut self.stdout).take(MAX_LINE_BYTES);
+        let read_result = timeout(read_timeout, limited.read_line(&mut line)).await;
 
         match read_result {
             Ok(Ok(0)) => anyhow::bail!("Server closed connection (EOF)"),
-            Ok(Ok(_)) => Ok(line),
+            Ok(Ok(n)) => {
+                if n as u64 == MAX_LINE_BYTES && !line.ends_with('\n') {
+                    anyhow::bail!(
+                        "Server sent more than {} bytes without a newline; refusing to buffer further",
+                        MAX_LINE_BYTES
+                    );
+                }
+                Ok(line)
+            }
             Ok(Err(e)) => Err(e).context("Failed to read from stdout"),
             Err(_) => anyhow::bail!("Read timeout after {} seconds", self.config.timeout_secs),
         }

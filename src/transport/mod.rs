@@ -285,6 +285,52 @@ pub async fn connect_http_with_fallback(
     Ok(Box::new(streamable))
 }
 
+/// Maximum bytes accepted from a remote server's HTTP response body.
+///
+/// `Response::text()` buffers the whole body with no bound, so a hostile or
+/// malfunctioning server could exhaust memory during a scan. Under the release
+/// profile's `panic = "abort"` an allocation failure terminates the process
+/// outright, meaning a server can silently kill its own audit.
+pub const MAX_BODY_BYTES: usize = 32 * 1024 * 1024;
+
+/// Compile-time guard: a zero cap would reject every response, and an
+/// oversized one would defeat the point of having a cap at all.
+const _: () = assert!(MAX_BODY_BYTES > 0 && MAX_BODY_BYTES <= 64 * 1024 * 1024);
+
+/// Read a response body, refusing to buffer more than [`MAX_BODY_BYTES`].
+///
+/// Checks `Content-Length` first when the server advertises one, then enforces
+/// the cap chunk by chunk so a lying or absent header cannot bypass it.
+pub async fn read_body_capped(mut response: reqwest::Response) -> anyhow::Result<String> {
+    if let Some(len) = response.content_length() {
+        if len > MAX_BODY_BYTES as u64 {
+            anyhow::bail!(
+                "Response body advertises {} bytes, over the {} byte limit",
+                len,
+                MAX_BODY_BYTES
+            );
+        }
+    }
+
+    let mut buf: Vec<u8> = Vec::new();
+    while let Some(chunk) =
+        anyhow::Context::context(response.chunk().await, "Failed to read response body")?
+    {
+        if buf.len() + chunk.len() > MAX_BODY_BYTES {
+            anyhow::bail!("Response body exceeded the {} byte limit", MAX_BODY_BYTES);
+        }
+        buf.extend_from_slice(&chunk);
+    }
+
+    Ok(String::from_utf8_lossy(&buf).into_owned())
+}
+
+/// Best-effort capped body read for error paths, where a failure to read the
+/// body should not mask the HTTP status being reported.
+pub async fn read_body_capped_lossy(response: reqwest::Response) -> String {
+    read_body_capped(response).await.unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -929,5 +975,38 @@ mod tests {
         );
         // Without :// it's not detected as URL, defaults to Stdio
         assert_eq!(detect_transport_type("http:"), TransportType::Stdio);
+    }
+}
+
+#[cfg(test)]
+mod bounded_reads {
+    use super::MAX_BODY_BYTES;
+
+    #[test]
+    fn no_transport_reads_a_body_without_the_cap() {
+        // Guards against a future edit reintroducing `response.text()`, which
+        // buffers without limit.
+        for (name, src) in [
+            ("sse.rs", include_str!("sse.rs")),
+            ("streamable_http.rs", include_str!("streamable_http.rs")),
+        ] {
+            assert!(
+                !src.contains("response.text()"),
+                "{name} reads a response body without the {MAX_BODY_BYTES} byte cap"
+            );
+        }
+    }
+
+    #[test]
+    fn stdio_line_read_is_bounded() {
+        let src = include_str!("stdio.rs");
+        assert!(
+            src.contains("MAX_LINE_BYTES"),
+            "stdio read_line must bound how much it buffers"
+        );
+        assert!(
+            src.contains(".take(MAX_LINE_BYTES)"),
+            "stdio read_line must apply the cap via take()"
+        );
     }
 }

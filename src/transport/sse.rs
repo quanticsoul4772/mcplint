@@ -64,7 +64,7 @@ impl Transport for SseTransport {
 
         if !response.status().is_success() {
             let status = response.status();
-            let body = response.text().await.unwrap_or_default();
+            let body = super::read_body_capped_lossy(response).await;
             anyhow::bail!("HTTP error {}: {}", status, body);
         }
 
@@ -93,7 +93,7 @@ impl Transport for SseTransport {
 
         if !response.status().is_success() {
             let status = response.status();
-            let body = response.text().await.unwrap_or_default();
+            let body = super::read_body_capped_lossy(response).await;
             anyhow::bail!("HTTP error {}: {}", status, body);
         }
 
@@ -119,7 +119,7 @@ impl Transport for SseTransport {
 
         if !response.status().is_success() {
             let status = response.status();
-            let body = response.text().await.unwrap_or_default();
+            let body = super::read_body_capped_lossy(response).await;
             anyhow::bail!("HTTP error {}: {}", status, body);
         }
 

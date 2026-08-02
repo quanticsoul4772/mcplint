@@ -115,7 +115,7 @@ impl std::str::FromStr for AudienceLevel {
 }
 
 /// AI provider configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AiConfig {
     /// Active provider
     pub provider: AiProvider,
@@ -142,6 +142,70 @@ pub struct AiConfig {
     pub rate_limit_rpm: u32,
     /// Rate limit: tokens per minute
     pub rate_limit_tpm: u32,
+}
+
+/// Hand-written so `api_key` is never printed.
+///
+/// `AiConfig` is passed through the engine and CLI layers, so a single
+/// `{:?}` in a log line, a panic message, or an error chain would put the
+/// key in CI output. `#[serde(skip_serializing)]` already covers the
+/// serialization path; this covers the formatting one.
+impl std::fmt::Debug for AiConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiConfig")
+            .field("provider", &self.provider)
+            .field("model", &self.model)
+            .field("api_key", &redacted(self.api_key.as_deref()))
+            .field("ollama_url", &self.ollama_url)
+            .field("max_tokens", &self.max_tokens)
+            .field("temperature", &self.temperature)
+            .field("cache_ttl_secs", &self.cache_ttl_secs)
+            .field("stream", &self.stream)
+            .field("timeout_secs", &self.timeout_secs)
+            .field("max_retries", &self.max_retries)
+            .field("rate_limit_rpm", &self.rate_limit_rpm)
+            .field("rate_limit_tpm", &self.rate_limit_tpm)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for AiConfigBuilder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AiConfigBuilder")
+            .field("provider", &self.provider)
+            .field("model", &self.model)
+            .field("api_key", &redacted(self.api_key.as_deref()))
+            .field("base_url", &self.base_url)
+            .field("timeout", &self.timeout)
+            .field("max_tokens", &self.max_tokens)
+            .field("temperature", &self.temperature)
+            .finish()
+    }
+}
+
+/// Presence-only view of a secret: whether it is set, never its value.
+///
+/// Formats like a real `Option` so `Debug` output stays readable, without the
+/// surrounding quotes a plain `&str` would pick up.
+enum Redacted {
+    Set,
+    Unset,
+}
+
+impl std::fmt::Debug for Redacted {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Redacted::Set => f.write_str("Some(<redacted>)"),
+            Redacted::Unset => f.write_str("None"),
+        }
+    }
+}
+
+fn redacted(value: Option<&str>) -> Redacted {
+    match value {
+        Some(_) => Redacted::Set,
+        None => Redacted::Unset,
+    }
 }
 
 impl Default for AiConfig {
@@ -294,7 +358,7 @@ impl AiConfig {
 }
 
 /// Builder for AiConfig
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct AiConfigBuilder {
     provider: Option<AiProvider>,
     model: Option<String>,
@@ -1244,5 +1308,48 @@ model = "custom-model"
         let json = serde_json::to_string(&config).unwrap();
         assert!(!json.contains("secret-key"));
         assert!(!json.contains("api_key"));
+    }
+}
+
+#[cfg(test)]
+mod secret_redaction {
+    use super::*;
+
+    #[test]
+    fn debug_never_prints_the_api_key() {
+        let secret = "sk-ant-api03-THIS-MUST-NOT-APPEAR";
+        let config = AiConfig {
+            api_key: Some(secret.to_string()),
+            ..AiConfig::default()
+        };
+
+        let rendered = format!("{:?}", config);
+        assert!(
+            !rendered.contains(secret),
+            "api_key leaked into Debug output: {rendered}"
+        );
+        assert!(rendered.contains("<redacted>"), "expected redaction marker");
+        // Non-secret fields still render, so Debug stays useful.
+        assert!(rendered.contains("max_tokens"));
+    }
+
+    #[test]
+    fn debug_distinguishes_set_from_unset() {
+        let unset = AiConfig {
+            api_key: None,
+            ..AiConfig::default()
+        };
+        assert!(format!("{:?}", unset).contains("api_key: None"));
+    }
+
+    #[test]
+    fn builder_debug_never_prints_the_api_key() {
+        let secret = "sk-proj-BUILDER-MUST-NOT-APPEAR";
+        let builder = AiConfig::builder().api_key(secret);
+        let rendered = format!("{:?}", builder);
+        assert!(
+            !rendered.contains(secret),
+            "api_key leaked into builder Debug output: {rendered}"
+        );
     }
 }
