@@ -1,5 +1,7 @@
 # Async Performance Optimization Plan
 
+**Status:** Partially Implemented (dependency added, core patterns pending)
+
 ## Overview
 
 This document outlines the implementation plan for optimizing async operations in MCPLint's scanner and validator engines to achieve 30-50% faster multi-server scanning and better CPU utilization.

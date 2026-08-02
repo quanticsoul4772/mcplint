@@ -190,7 +190,6 @@ VOYAGE_API_KEY        # Voyage AI API key for embeddings
 ## Dependencies
 
 Key crates:
-- rmcp: MCP SDK
 - clap: CLI parsing
 - tokio: Async runtime
 - serde/serde_json: Serialization
@@ -201,14 +200,14 @@ Key crates:
 ## Test Coverage
 
 Current statistics:
-- **3,068 unique tests** (2,965 unit + 103 integration)
+- **3,413 unique tests** (3,300 unit + 103 integration + 10 doc-tests)
 - Integration tests use live MCP servers (filesystem, memory)
 - Run time: ~80 seconds for full suite
 
 Test breakdown:
 | Suite | Tests |
 |-------|-------|
-| Unit tests (lib.rs) | 2,965 |
+| Unit tests (lib.rs) | 3,300 |
 | ai_integration | 26 |
 | cache_integration | 13 |
 | interactive_tests | 30 |

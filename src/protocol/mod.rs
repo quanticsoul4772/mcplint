@@ -6,7 +6,7 @@
 //! - Connection state machine for lifecycle management
 //!
 //! Public library API - types are available for external library consumers.
-//! CLI uses rmcp crate directly; these types exist for flexibility and testing.
+//! CLI uses the built-in transport layer; these types exist for flexibility and testing.
 
 // Protocol types used by client, validator, and scanner modules.
 // Public API not consumed by CLI - available for library consumers.

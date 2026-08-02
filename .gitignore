@@ -62,6 +62,9 @@ claude_code_prompt.md
 # Local MCP configuration
 .mcp.json
 
+# Claude Code (local agent settings)
+.claude/
+
 # Claude docs (internal working documents)
 claudedocs/
 

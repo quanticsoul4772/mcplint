@@ -268,7 +268,7 @@ jobs:
   "full_hash": "f6e5d4c3b2a1...",
   "schema_version": null,
   "created_at": "2025-01-15T10:30:00Z",
-  "mcplint_version": "0.1.0",
+  "mcplint_version": "0.4.0",
   "metadata": {
     "parameter_count": 2,
     "required_params": ["path"],

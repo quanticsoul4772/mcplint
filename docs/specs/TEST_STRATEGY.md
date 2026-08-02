@@ -1,5 +1,13 @@
 # MCPLint Test Strategy
 
+> **⚠️ Aspirational Roadmap** — This document describes the *target* testing
+> infrastructure and strategy. Many of the fixtures, mock servers, and test
+> directories referenced here (e.g., `tests/fixtures/`, `tests/common/mock_server.rs`,
+> `tests/e2e/`) **do not exist yet** and represent planned work. The current test
+> suite lives primarily in inline `#[cfg(test)]` modules, `tests/ai_integration.rs`,
+> `tests/cache_integration.rs`, `tests/interactive_tests.rs`, and
+> `tests/server_integration.rs`.
+
 This document defines the testing approach for each phase of the MCPLint CLI implementation.
 
 ## Test Pyramid
