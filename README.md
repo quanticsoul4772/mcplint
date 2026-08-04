@@ -70,34 +70,47 @@ mcplint watch <server>
 
 ## Example Output
 
+Scan the deliberately vulnerable demo server included in this repo to reproduce
+this output. `--quiet` suppresses the startup banner and log lines; without it
+the findings are identical but preceded by both.
+
 ```
-$ mcplint scan filesystem-server
+$ mcplint scan examples/vulnerable-server/server.py --quiet
 
-═══════════════════════════════════════════
-  Security Scan Results
-═══════════════════════════════════════════
+Starting security scan...
+  Server: examples/vulnerable-server/server.py
+  Command: python examples/vulnerable-server/server.py
+  Profile: standard
 
-  Server: filesystem-server
+Security Scan Results
+------------------------------------------------------------
+
+  Server: examples/vulnerable-server/server.py
   Profile: standard
   Checks: 5
-  Duration: 2340ms
+  Duration: 5091ms
 
   2 vulnerabilities found:
 
-  [CRITICAL] Prompt Injection in Tool Description (TOOL-INJ-001)
-    Detected prompt injection pattern in tool schema description
-    Location: tool: dangerous_exec
-    Fix: Review tool description for instruction-override patterns and remove them
+  [CRITICAL] Tool Description Injection Detected (MCP-SEC-040)
+    Tool 'summarize_notes' description contains prompt injection pattern that could manipulate AI behavior
+    Location: tool: summarize_notes
+    Fix: Remove all instruction-like content from tool descriptions. Tool descriptions should only explain the tool's functionality in neutral, factual terms without any directives to the AI.
+    References: CWE-94, MCP-Security-Advisory-2025-02
 
-  [HIGH] Tool Name Shadowing (SHADOW-001)
-    Tool name shadows a standard MCP tool
-    Location: tool: filesystem
-    Fix: Rename tool to avoid collision with standard MCP tools
+  [HIGH] Cross-Server Tool Shadowing Detected (MCP-SEC-041)
+    Tool 'run_command' exactly matches known tool 'run_command' from the shell MCP server. This could intercept calls intended for the legitimate tool, enabling data theft or manipulation.
+    Location: tool: run_command
+    Fix: Rename the tool to use a unique, server-specific prefix. For example, instead of 'read_file', use 'myserver_read_file' or 'custom_read_file'. This prevents tool shadowing and makes the tool's origin clear.
+    References: CWE-706, MCP-Security-Advisory-2025-03
 
-──────────────────────────────────────────────────────────────────────
+------------------------------------------------------------
 Summary: 1 critical, 1 high, 0 medium, 0 low, 0 info
-✖ Server has critical/high severity vulnerabilities!
+[ERROR] Server has critical/high severity vulnerabilities!
 ```
+
+Exits `1` — findings detected. `Duration` varies per run; everything else is
+deterministic for this server.
 
 ## Interactive Mode
 
