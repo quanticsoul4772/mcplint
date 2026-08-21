@@ -90,7 +90,7 @@ notify = "6.0"
 serde_bytes = "0.11"
 
 # Redis client (optional)
-redis = { version = "0.27", features = ["tokio-comp", "connection-manager"], optional = true }
+redis = { version = "1.6", features = ["tokio-comp", "connection-manager"], optional = true }
 base64 = "0.22.1"
 
 # Neo4j graph database driver (optional)
