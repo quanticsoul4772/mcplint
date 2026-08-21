@@ -15,10 +15,9 @@ MCPLint is a security testing tool — we take vulnerabilities in the tool itsel
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
-Instead, report them through one of these channels:
+Instead, report them privately through GitHub Security Advisories:
 
-- **GitHub Security Advisories** (preferred): Go to [Security > Advisories](https://github.com/quanticsoul4772/mcplint/security/advisories/new) and submit a private advisory.
-- **Email**: `quanticsoul4772@users.noreply.github.com` (please include "MCPLint Security" in the subject line).
+- Go to [Security > Advisories](https://github.com/quanticsoul4772/mcplint/security/advisories/new) and submit a private advisory.
 
 You should receive an acknowledgment within 48 hours. If you don't, please follow up.
 
