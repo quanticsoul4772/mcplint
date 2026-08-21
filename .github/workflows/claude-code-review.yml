@@ -12,11 +12,22 @@ on:
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    # Skip PRs opened by bots. claude-code-action refuses non-human
+    # actors unless they are named in allowed_bots, so without this the
+    # job fails on every Dependabot PR with an error about the actor
+    # rather than anything to do with the change:
+    #
+    #   Workflow initiated by non-human actor: dependabot (type: Bot)
+    #
+    # Keyed on user.type rather than a login list because the action
+    # rejects ALL bots, so this matches exactly when it would fail and
+    # covers any bot added later.
+    #
+    # Version-bump PRs get little from an LLM review, and admitting the
+    # bot instead would also require CLAUDE_CODE_OAUTH_TOKEN to be
+    # duplicated into the Dependabot secrets store -- Dependabot runs
+    # cannot read Actions secrets.
+    if: github.event.pull_request.user.type != 'Bot'
 
     runs-on: ubuntu-latest
     permissions:
@@ -36,13 +47,6 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-
-          # Dependabot opens PRs as a Bot actor. Without this the action
-          # exits 1 on every dependency PR, leaving a red check that has
-          # nothing to do with the change. Named explicitly rather than
-          # "*": this repo is public, and the action documents that "*"
-          # lets external Apps invoke it with prompts they control.
-          allowed_bots: "dependabot[bot]"
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
