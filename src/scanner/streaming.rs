@@ -241,6 +241,7 @@ impl FindingProducer {
     /// Send a finding to the stream (async, waits if buffer full)
     ///
     /// Returns error if the receiver has been dropped.
+    #[allow(clippy::result_large_err)]
     pub async fn send(&self, finding: Finding) -> Result<(), mpsc::error::SendError<Finding>> {
         self.tx.send(finding).await
     }
