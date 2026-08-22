@@ -250,15 +250,35 @@ fn test_provider_from_string() {
 // The Ollama tests are free and local, so they run by default and skip if the
 // service is unreachable.
 
-/// Helper to get required env var or panic with clear message
+/// Helper to get a required env var, or panic with a clear message.
+///
+/// Rejects an empty value as well as an absent one. `std::env::var`
+/// returns `Ok("")` for a variable that is set but empty, and GitHub
+/// Actions substitutes the empty string for a secret that is missing or
+/// blank -- so an absent credential arrives here as `Ok("")`, not as an
+/// error.
+///
+/// Without this check the test builds a provider with an empty key,
+/// sends `x-api-key: ""`, and spends its whole retry budget on a call
+/// that cannot succeed. The failure then reads as a provider outage --
+/// `HTTP 401: x-api-key header is required` -- when the real problem is
+/// local configuration.
 fn require_env(name: &str) -> String {
-    std::env::var(name).unwrap_or_else(|_| {
+    let value = std::env::var(name).unwrap_or_else(|_| {
         panic!(
             "Required environment variable {} is not set. \
             Set it to run integration tests.",
             name
         )
-    })
+    });
+
+    assert!(
+        !value.trim().is_empty(),
+        "Required environment variable {} is set but empty. In CI this usually means the corresponding repository secret is missing or blank.",
+        name
+    );
+
+    value
 }
 
 /// Create a simple finding for API testing (smaller than sample_finding for faster responses)
