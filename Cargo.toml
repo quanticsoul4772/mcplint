@@ -84,7 +84,7 @@ dirs = "5"
 sha2 = "0.10"
 
 # File watching for watch mode
-notify = "6.0"
+notify = "8.2"
 
 # Binary serialization support
 serde_bytes = "0.11"
