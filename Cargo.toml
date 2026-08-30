@@ -62,7 +62,7 @@ url = "2"
 regex = "1"
 
 # JSON Schema validation
-jsonschema = "0.27"
+jsonschema = "0.52"
 
 # UUID generation
 uuid = { version = "1", features = ["v4"] }
