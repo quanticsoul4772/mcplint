@@ -78,7 +78,7 @@ toml = "1.1"
 directories = "6"
 
 # Home directory detection (for cache path)
-dirs = "5"
+dirs = "6"
 
 # Hashing for baseline fingerprints
 sha2 = "0.10"
