@@ -112,7 +112,7 @@ pub fn select_server() -> Result<String> {
 
     let selection = FuzzySelect::with_theme(&ColorfulTheme::default())
         .with_prompt("Server")
-        .items(&servers.iter().map(|(_, desc)| desc).collect::<Vec<_>>())
+        .items(servers.iter().map(|(_, desc)| desc).collect::<Vec<_>>())
         .default(0)
         .interact()
         .with_context(|| {
@@ -147,7 +147,7 @@ pub fn select_scan_profile() -> Result<ScanProfile> {
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Profile")
         .items(
-            &profiles
+            profiles
                 .iter()
                 .map(|(name, desc)| format!("{} - {}", name.yellow(), desc))
                 .collect::<Vec<_>>(),
@@ -198,7 +198,7 @@ pub fn select_rule_categories() -> Result<Option<Vec<String>>> {
     let selections = MultiSelect::with_theme(&ColorfulTheme::default())
         .with_prompt("Select categories to include")
         .items(
-            &categories
+            categories
                 .iter()
                 .map(|(name, desc)| format!("{} - {}", name, desc))
                 .collect::<Vec<_>>(),
@@ -238,7 +238,7 @@ pub fn select_output_format() -> Result<OutputFormat> {
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Format")
         .items(
-            &formats
+            formats
                 .iter()
                 .map(|(name, desc)| format!("{} - {}", name, desc))
                 .collect::<Vec<_>>(),
@@ -287,7 +287,7 @@ pub fn select_fail_on_severities() -> Result<Option<Vec<Severity>>> {
     let selections = MultiSelect::with_theme(&ColorfulTheme::default())
         .with_prompt("Fail on these severities")
         .items(
-            &severities
+            severities
                 .iter()
                 .map(|(name, desc)| format!("{} - {}", name, desc))
                 .collect::<Vec<_>>(),
@@ -551,7 +551,7 @@ pub fn select_fuzz_profile() -> Result<FuzzProfile> {
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Profile")
         .items(
-            &profiles
+            profiles
                 .iter()
                 .map(|(name, desc)| format!("{} - {}", name.yellow(), desc))
                 .collect::<Vec<_>>(),
@@ -588,7 +588,7 @@ pub fn select_fuzz_duration() -> Result<u64> {
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Duration")
         .items(
-            &durations
+            durations
                 .iter()
                 .map(|(_, desc)| desc.to_string())
                 .collect::<Vec<_>>(),
@@ -618,7 +618,7 @@ pub fn select_fuzz_workers() -> Result<usize> {
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Workers")
         .items(
-            &workers
+            workers
                 .iter()
                 .map(|(_, desc)| desc.to_string())
                 .collect::<Vec<_>>(),
@@ -752,7 +752,7 @@ pub fn select_ai_provider() -> Result<CliAiProvider> {
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Provider")
         .items(
-            &providers
+            providers
                 .iter()
                 .map(|(name, desc)| format!("{} - {}", name.yellow(), desc))
                 .collect::<Vec<_>>(),
@@ -786,7 +786,7 @@ pub fn select_audience_level() -> Result<CliAudienceLevel> {
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Audience")
         .items(
-            &levels
+            levels
                 .iter()
                 .map(|(name, desc)| format!("{} - {}", name.yellow(), desc))
                 .collect::<Vec<_>>(),
@@ -832,7 +832,7 @@ pub fn select_min_severity() -> Result<Option<Severity>> {
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Minimum severity")
         .items(
-            &severities
+            severities
                 .iter()
                 .map(|(name, desc)| format!("{} - {}", name, desc))
                 .collect::<Vec<_>>(),
@@ -879,7 +879,7 @@ pub fn select_max_findings() -> Result<Option<usize>> {
     let selection = Select::with_theme(&ColorfulTheme::default())
         .with_prompt("Maximum findings")
         .items(
-            &counts
+            counts
                 .iter()
                 .map(|(_, desc)| desc.to_string())
                 .collect::<Vec<_>>(),
