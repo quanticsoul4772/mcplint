@@ -323,7 +323,12 @@ async fn test_anthropic_health_check() {
 #[tokio::test]
 #[ignore = "live paid API; needs ANTHROPIC_API_KEY. Run: cargo test --test ai_integration -- --ignored"]
 async fn test_anthropic_provider_name_and_model() {
-    let api_key = require_env("ANTHROPIC_API_KEY");
+    // No API call is made here -- this asserts only on provider metadata
+    // (name, model, streaming support), none of which reads the key. A
+    // placeholder keeps the test meaningful when the credential is absent
+    // or blank, which is what it did before require_env began rejecting
+    // empty values.
+    let api_key = "placeholder-not-sent-anywhere".to_string();
 
     let provider = AnthropicProvider::new(
         api_key,
@@ -401,7 +406,12 @@ async fn test_openai_health_check() {
 #[tokio::test]
 #[ignore = "live paid API; needs OPENAI_API_KEY. Run: cargo test --test ai_integration -- --ignored"]
 async fn test_openai_provider_name_and_model() {
-    let api_key = require_env("OPENAI_API_KEY");
+    // No API call is made here -- this asserts only on provider metadata
+    // (name, model, streaming support), none of which reads the key. A
+    // placeholder keeps the test meaningful when the credential is absent
+    // or blank, which is what it did before require_env began rejecting
+    // empty values.
+    let api_key = "placeholder-not-sent-anywhere".to_string();
 
     let provider = OpenAiProvider::new(
         api_key,
@@ -605,7 +615,15 @@ async fn test_all_providers_explain_same_finding() {
         .with_tech_stack(vec!["Rust".to_string(), "PostgreSQL".to_string()]);
 
     // Anthropic - use Sonnet for combined test as it handles complex JSON more reliably
-    if let Ok(api_key) = std::env::var("ANTHROPIC_API_KEY") {
+    // `.filter()` because std::env::var returns Ok("") for a set-but-empty
+    // variable, and CI substitutes the empty string for a missing secret.
+    // Without it this block runs with an empty key and spends its retry
+    // budget on a call that cannot succeed. Treat empty as absent, which
+    // is what the skip-if-unset shape here already intends.
+    if let Some(api_key) = std::env::var("ANTHROPIC_API_KEY")
+        .ok()
+        .filter(|k| !k.trim().is_empty())
+    {
         let provider = AnthropicProvider::new(
             api_key,
             "claude-sonnet-5".to_string(),
@@ -629,11 +647,21 @@ async fn test_all_providers_explain_same_finding() {
             response.explanation.summary.len()
         );
     } else {
-        panic!("ANTHROPIC_API_KEY not set");
+        panic!(
+            "ANTHROPIC_API_KEY is not set, or is set but empty. In CI this \n             usually means the repository secret is missing or blank."
+        );
     }
 
     // OpenAI
-    if let Ok(api_key) = std::env::var("OPENAI_API_KEY") {
+    // `.filter()` because std::env::var returns Ok("") for a set-but-empty
+    // variable, and CI substitutes the empty string for a missing secret.
+    // Without it this block runs with an empty key and spends its retry
+    // budget on a call that cannot succeed. Treat empty as absent, which
+    // is what the skip-if-unset shape here already intends.
+    if let Some(api_key) = std::env::var("OPENAI_API_KEY")
+        .ok()
+        .filter(|k| !k.trim().is_empty())
+    {
         let provider = OpenAiProvider::new(
             api_key,
             "gpt-4o-mini".to_string(),
@@ -657,7 +685,9 @@ async fn test_all_providers_explain_same_finding() {
             response.explanation.summary.len()
         );
     } else {
-        panic!("OPENAI_API_KEY not set");
+        panic!(
+            "OPENAI_API_KEY is not set, or is set but empty. In CI this \n             usually means the repository secret is missing or blank."
+        );
     }
 
     // Ollama - use longer timeout for CPU inference on CI
