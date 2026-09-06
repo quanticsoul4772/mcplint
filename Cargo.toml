@@ -81,7 +81,7 @@ directories = "6"
 dirs = "6"
 
 # Hashing for baseline fingerprints
-sha2 = "0.10"
+sha2 = "0.11"
 
 # File watching for watch mode
 notify = "8.2"
