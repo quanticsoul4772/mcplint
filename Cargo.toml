@@ -42,7 +42,7 @@ num_cpus = "1.16"
 
 # Terminal output
 colored = "2"
-indicatif = "0.17"
+indicatif = "0.18"
 console = "0.16"
 dialoguer = { version = "0.12", features = ["fuzzy-select"] }
 
